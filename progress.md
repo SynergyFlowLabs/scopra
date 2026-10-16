@@ -2,8 +2,8 @@
 
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
-**Current increment:** `scopra workspace` CLI (Step 10)
-**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
+**Current increment:** Doctor checks the workspace registry (Step 11)
+**Status:** In progress on `arena/c7a368c1-scopra`: acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -610,3 +610,41 @@ Non-goals: removal by path; confirmation prompts; flags after positional argumen
   - cleanup of stale temporary files;
   - a decision on approvals and user presence before any command that authorizes an action.
 - Pushes to `arena/c7a368c1-scopra`: test checkpoint `a389b37` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.
+
+### 2026-10-16 — Step 11: Doctor checks the workspace registry
+
+- Selection: the maintainer replied "Continue next" without choosing between this small doctor check and the containment work, so the smaller increment comes first. The question of whether an environment with rootless Podman is available for containment stays open.
+- Motivation: since Step 8 a bad registry stops Mio, but doctor reports only `daemon: fail` (not running). The reason appears only in `scoprad`'s own error.
+- Findings from the code:
+  - `registry.Open` requires the caller to own the directory exclusively, which Mio does while it holds its lock. Doctor runs alongside Mio, so it needs an explicit read-only entry point. `registry.Check` never writes, and it is safe while Mio runs because Mio replaces the file with an atomic rename.
+  - A missing state directory surfaces from the registry as a wrapped `os.ErrNotExist`, so doctor can report that nothing is registered yet.
+  - A "workspaces" entry in `notChecked` would contradict a registry check. What doctor still does not do is revalidate registered workspaces, so that entry becomes `workspace revalidation`.
+  - ADR-005's Mio integration amendment says that doctor does not inspect the registry; this step resolves that.
+
+#### Acceptance checklist (agreed before implementation)
+
+- [ ] `registry.Check(dir)` validates the registry exactly as `Open` does: the same file and directory checks, strict decoding, and the registry-directory rule. It needs no validator, writes or creates nothing, does not block on a FIFO, and returns the number of registrations.
+- [ ] `scopra doctor` runs a `workspace-registry` check between `state-directory` and `daemon`, and the daemon check still runs:
+  - `pass` with the number of registrations, including none (no file yet, or no state directory yet);
+  - `fail` when the registry is unsafe, invalid, or unreadable. The hint names the file, says that `scoprad` will not start until it is fixed or removed, and says that removing it unregisters every workspace without changing any directory;
+  - `skip` when the platform or state-directory check failed.
+- [ ] Doctor stays read-only. It never creates, changes, or removes the registry file or the state directory, and after a failing check the file's bytes and mode are unchanged.
+- [ ] The JSON schema stays at version 1, because adding a check is compatible, and `notChecked` lists `workspace revalidation` instead of `workspaces`. Text output escapes control characters in the new detail and hint.
+- [ ] ADR-005's amendment is brought up to date, and the CLI README (the doctor table, the JSON example, and the read-only promises), the plan, and this log are updated. The wire protocol and Mio are unchanged.
+
+Non-goals: revalidating registered workspaces; repairing or removing the file; reading the registry through Mio; new IPC commands; changing other checks; and a new schema version.
+
+#### Test-first record
+
+- New and changed tests:
+  - `internal/workspace/registry`:
+    - `TestCheckCountsRegistrationsWithoutWriting`: zero without a file, then two after real additions, with the file and directory unchanged.
+    - `TestCheckReportsMissingDirectory`: `os.ErrNotExist`, which doctor relies on, and nothing is created.
+    - `TestSecurity_CheckRejectsUnsafeRegistryFile`: every occupant in the shared table also used for `Open`, including not blocking on a FIFO.
+    - `TestSecurity_CheckRejectsInvalidRegistry`: an unsupported version, and a record containing the registry directory.
+  - `cmd/scopra`:
+    - `TestRunDoctorChecksWorkspaceRegistry`: no file, one and two registrations, invalid content, and a group-readable file. The cases check exact details, hints that name the file and both consequences, the renamed not-checked area, and that files are left unchanged or not created.
+    - `TestRunDoctorEscapesControlCharactersInRegistryHint`.
+    - Updated: the missing-state-directory test also checks the registry detail, and the human report must show the new check and `workspace revalidation`. The 11 existing check sequences gain `workspace-registry`: a passing or warning state directory gives `pass`, a failing one gives `skip`.
+- First red: the registry package failed to build on exactly `Check`. Doctor built, and 14 tests failed at runtime: the 2 new ones and the 12 whose expectations changed. The other 18 passed.
+- With a declarations-only `Check` skeleton, the 4 new registry tests failed at runtime (7 subtests). The other 19 passed.

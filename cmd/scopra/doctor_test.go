@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -43,7 +44,7 @@ func TestRunDoctorReportsRespondingDaemon(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run(doctor) error = %v, want nil", err)
 	}
-	assertChecks(t, report, "platform=pass", "state-directory=pass", "daemon=pass")
+	assertChecks(t, report, "platform=pass", "state-directory=pass", "workspace-registry=pass", "daemon=pass")
 	if report.Result != "pass" {
 		t.Fatalf("doctor result = %q, want pass", report.Result)
 	}
@@ -74,11 +75,13 @@ func TestRunDoctorHumanReportStatesItsLimits(t *testing.T) {
 	for _, want := range []string{
 		"[pass] platform",
 		"[pass] state-directory",
+		"[pass] workspace-registry",
 		"[pass] daemon",
 		"test-version",
 		stateDir,
 		"Result: pass",
 		"Not checked",
+		"workspace revalidation",
 		"execution",
 	} {
 		if !strings.Contains(output, want) {
@@ -92,7 +95,7 @@ func TestRunDoctorFailsWhenDaemonIsNotRunning(t *testing.T) {
 
 	report, err := runDoctorJSON(t, "--state-dir", stateDir)
 	requireCheckFailure(t, err)
-	assertChecks(t, report, "platform=pass", "state-directory=pass", "daemon=fail")
+	assertChecks(t, report, "platform=pass", "state-directory=pass", "workspace-registry=pass", "daemon=fail")
 	if report.Result != "fail" {
 		t.Fatalf("doctor result = %q, want fail", report.Result)
 	}
@@ -108,9 +111,86 @@ func TestSecurity_DoctorDoesNotCreateMissingStateDirectory(t *testing.T) {
 
 	report, err := runDoctorJSON(t, "--state-dir", stateDir)
 	requireCheckFailure(t, err)
-	assertChecks(t, report, "platform=pass", "state-directory=warn", "daemon=fail")
+	assertChecks(t, report, "platform=pass", "state-directory=warn", "workspace-registry=pass", "daemon=fail")
 	if _, statErr := os.Lstat(parent); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatalf("doctor created part of the missing state directory (Lstat error = %v)", statErr)
+	}
+	if detail := findCheck(t, report, "workspace-registry").Detail; !strings.Contains(detail, "no workspaces are registered") {
+		t.Fatalf("workspace-registry detail = %q, want no registrations reported", detail)
+	}
+}
+
+func TestRunDoctorChecksWorkspaceRegistry(t *testing.T) {
+	tests := []struct {
+		name       string
+		content    string // empty means no registry file
+		mode       os.FileMode
+		wantStatus string
+		wantDetail string
+	}{
+		{name: "no registry file", wantStatus: "pass", wantDetail: "no workspaces are registered"},
+		{name: "one registration", content: registryWithPaths("/srv/a"), mode: 0o600, wantStatus: "pass", wantDetail: "1 workspace is registered"},
+		{name: "two registrations", content: registryWithPaths("/srv/a", "/srv/b"), mode: 0o600, wantStatus: "pass", wantDetail: "2 workspaces are registered"},
+		{name: "unsupported version", content: `{"version":2,"workspaces":[]}`, mode: 0o600, wantStatus: "fail", wantDetail: "registry file is invalid"},
+		{name: "group-readable file", content: registryWithPaths(), mode: 0o640, wantStatus: "fail", wantDetail: "insecure registry file"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			stateDir := makePrivateStateDir(t)
+			file := filepath.Join(stateDir, "workspaces.json")
+			if test.content != "" {
+				writeRegistryFile(t, file, test.content, test.mode)
+			}
+
+			report, err := runDoctorJSON(t, "--state-dir", stateDir)
+			requireCheckFailure(t, err) // Mio is not running
+			assertChecks(t, report, "platform=pass", "state-directory=pass",
+				"workspace-registry="+test.wantStatus, "daemon=fail")
+			check := findCheck(t, report, "workspace-registry")
+			if !strings.Contains(check.Detail, test.wantDetail) {
+				t.Fatalf("workspace-registry detail = %q, want it to contain %q", check.Detail, test.wantDetail)
+			}
+			if test.wantStatus == "fail" {
+				for _, want := range []string{file, "scoprad will not start", "unregisters every workspace"} {
+					if !strings.Contains(check.Hint, want) {
+						t.Fatalf("workspace-registry hint = %q, want it to contain %q", check.Hint, want)
+					}
+				}
+			}
+			if !slices.Contains(report.NotChecked, "workspace revalidation") || slices.Contains(report.NotChecked, "workspaces") {
+				t.Fatalf("doctor notChecked = %q, want workspace revalidation instead of workspaces", report.NotChecked)
+			}
+			if test.content == "" {
+				if _, err := os.Lstat(file); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("doctor created a registry file (Lstat error = %v)", err)
+				}
+				return
+			}
+			requireUnchangedRegistryFile(t, file, test.content, test.mode)
+		})
+	}
+}
+
+func TestRunDoctorEscapesControlCharactersInRegistryHint(t *testing.T) {
+	requireLinux(t)
+	stateDir := filepath.Join(t.TempDir(), "run\x1b[2J\nforged")
+	if err := os.Mkdir(stateDir, 0o700); err != nil {
+		t.Fatalf("Mkdir(state dir) error = %v", err)
+	}
+	writeRegistryFile(t, filepath.Join(stateDir, "workspaces.json"), `{"version":2,"workspaces":[]}`, 0o600)
+
+	var stdout, stderr bytes.Buffer
+	err := run(t.Context(), []string{"doctor", "--state-dir", stateDir}, &stdout, &stderr)
+	requireCheckFailure(t, err)
+	output := stdout.String()
+	if !strings.Contains(output, "[fail] workspace-registry") {
+		t.Fatalf("human report = %q, want a failing workspace-registry check", output)
+	}
+	if strings.ContainsRune(output, '\x1b') || strings.Contains(output, "\nforged") {
+		t.Fatalf("human report contains raw control characters: %q", output)
+	}
+	if !strings.Contains(output, `run\x1b[2J\nforged/workspaces.json`) {
+		t.Fatalf("human report = %q, want the registry path shown escaped", output)
 	}
 }
 
@@ -122,7 +202,7 @@ func TestSecurity_DoctorReportsInsecureStateDirectoryWithoutRepairingIt(t *testi
 
 	report, err := runDoctorJSON(t, "--state-dir", stateDir)
 	requireCheckFailure(t, err)
-	assertChecks(t, report, "platform=pass", "state-directory=fail", "daemon=skip")
+	assertChecks(t, report, "platform=pass", "state-directory=fail", "workspace-registry=skip", "daemon=skip")
 	info, statErr := os.Stat(stateDir)
 	if statErr != nil {
 		t.Fatalf("Stat(state dir) error = %v", statErr)
@@ -146,7 +226,7 @@ func TestSecurity_DoctorLeavesStaleSocketInPlace(t *testing.T) {
 
 	report, err := runDoctorJSON(t, "--state-dir", stateDir)
 	requireCheckFailure(t, err)
-	assertChecks(t, report, "platform=pass", "state-directory=pass", "daemon=fail")
+	assertChecks(t, report, "platform=pass", "state-directory=pass", "workspace-registry=pass", "daemon=fail")
 	after, err := os.Lstat(socketPath)
 	if err != nil {
 		t.Fatalf("doctor removed the stale socket: %v", err)
@@ -162,7 +242,7 @@ func TestSecurity_DoctorRefusesInsecureSocketWithoutConnecting(t *testing.T) {
 
 	report, err := runDoctorJSON(t, "--state-dir", stateDir)
 	requireCheckFailure(t, err)
-	assertChecks(t, report, "platform=pass", "state-directory=pass", "daemon=fail")
+	assertChecks(t, report, "platform=pass", "state-directory=pass", "workspace-registry=pass", "daemon=fail")
 	if daemon := findCheck(t, report, "daemon"); !strings.Contains(daemon.Detail, "unsafe") {
 		t.Fatalf("daemon detail = %q, want the socket reported as unsafe", daemon.Detail)
 	}
@@ -185,7 +265,7 @@ func TestRunDoctorReportsInvalidDaemonResponse(t *testing.T) {
 
 	report, err := runDoctorJSON(t, "--state-dir", stateDir)
 	requireCheckFailure(t, err)
-	assertChecks(t, report, "platform=pass", "state-directory=pass", "daemon=fail")
+	assertChecks(t, report, "platform=pass", "state-directory=pass", "workspace-registry=pass", "daemon=fail")
 	if daemon := findCheck(t, report, "daemon"); !strings.Contains(daemon.Hint, "version") {
 		t.Fatalf("daemon hint = %q, want version guidance for an invalid response", daemon.Hint)
 	}
@@ -205,7 +285,7 @@ func TestRunDoctorChecksDefaultStateDirectory(t *testing.T) {
 	if want := filepath.Join(stateHome, "scopra"); report.StateDir != want {
 		t.Fatalf("doctor stateDir = %q, want the scoprad default %q", report.StateDir, want)
 	}
-	assertChecks(t, report, "platform=pass", "state-directory=warn", "daemon=fail")
+	assertChecks(t, report, "platform=pass", "state-directory=warn", "workspace-registry=pass", "daemon=fail")
 }
 
 func TestRunDoctorFailsWhenStateDirectoryCannotBeResolved(t *testing.T) {
@@ -227,7 +307,7 @@ func TestRunDoctorFailsWhenStateDirectoryCannotBeResolved(t *testing.T) {
 
 			report, err := runDoctorJSON(t)
 			requireCheckFailure(t, err)
-			assertChecks(t, report, "platform=pass", "state-directory=fail", "daemon=skip")
+			assertChecks(t, report, "platform=pass", "state-directory=fail", "workspace-registry=skip", "daemon=skip")
 			if report.StateDir != "" {
 				t.Fatalf("doctor stateDir = %q, want empty when it cannot be resolved", report.StateDir)
 			}
@@ -250,7 +330,7 @@ func TestRunDoctorRejectsOverlongStateDirectory(t *testing.T) {
 
 	report, err := runDoctorJSON(t, "--state-dir", stateDir)
 	requireCheckFailure(t, err)
-	assertChecks(t, report, "platform=pass", "state-directory=fail", "daemon=skip")
+	assertChecks(t, report, "platform=pass", "state-directory=fail", "workspace-registry=skip", "daemon=skip")
 	if hint := findCheck(t, report, "state-directory").Hint; !strings.Contains(hint, "shorter") {
 		t.Fatalf("state-directory hint = %q, want guidance to choose a shorter path", hint)
 	}
@@ -372,7 +452,7 @@ func TestDiagnoseFailsClosedOnUnsupportedPlatform(t *testing.T) {
 		t.Fatalf("json.Unmarshal(report) error = %v", err)
 	}
 	assertReportInvariants(t, decoded)
-	assertChecks(t, decoded, "platform=fail", "state-directory=skip", "daemon=skip")
+	assertChecks(t, decoded, "platform=fail", "state-directory=skip", "workspace-registry=skip", "daemon=skip")
 	if decoded.Result != "fail" {
 		t.Fatalf("doctor result = %q, want fail", decoded.Result)
 	}
@@ -447,6 +527,37 @@ func requireCheckFailure(t *testing.T, err error) {
 	var usageErr *usageError
 	if errors.As(err, &usageErr) || errors.Is(err, context.Canceled) {
 		t.Fatalf("run(doctor) error = %v, want a failing-check error (exit status 1)", err)
+	}
+}
+
+// registryWithPaths returns a valid registry file with one record per path.
+func registryWithPaths(paths ...string) string {
+	records := make([]string, 0, len(paths))
+	for index, path := range paths {
+		records = append(records, fmt.Sprintf(
+			`{"id":"%032x","path":%q,"fingerprint":{"device":1,"inode":%d}}`, index+1, path, index+1))
+	}
+	return `{"version":1,"workspaces":[` + strings.Join(records, ",") + `]}`
+}
+
+func writeRegistryFile(t *testing.T, path, content string, mode os.FileMode) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), mode); err != nil {
+		t.Fatalf("WriteFile(%q) error = %v", path, err)
+	}
+	if err := os.Chmod(path, mode); err != nil {
+		t.Fatalf("Chmod(%q) error = %v", path, err)
+	}
+}
+
+func requireUnchangedRegistryFile(t *testing.T, path, content string, mode os.FileMode) {
+	t.Helper()
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != mode {
+		t.Fatalf("doctor changed the registry file (info = %v, error = %v)", info, err)
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != content {
+		t.Fatalf("doctor changed the registry file content (error = %v)", err)
 	}
 }
 

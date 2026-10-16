@@ -139,6 +139,10 @@ func Open(dir string, validator *workspace.Validator) (*Registry, error) {
 	}, nil
 }
 
+// Check will validate the registry in dir without writing.
+// Skeleton for the Step 11 tests: not implemented yet.
+func Check(dir string) (int, error) { return 0, errors.New("registry: Check is not implemented yet") }
+
 // Add validates the workspace at path and registers it under a new ID. It
 // rejects a directory that is already registered, even under another path; a
 // workspace overlapping a registered one; and a workspace that contains or lies
