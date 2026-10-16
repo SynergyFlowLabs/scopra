@@ -50,7 +50,8 @@ func TestInspectResolvesSymlinksBeforeDotDot(t *testing.T) {
 				t.Fatalf("Inspect(%q) error = %v", test.path, err)
 			}
 			if got.Path != test.want || got.Fingerprint != fingerprintOf(t, test.want) {
-				t.Fatalf("Inspect(%q) = %+v, want path %q and its fingerprint", test.path, got, test.want)
+				t.Fatalf("Inspect(%q) = %+v, want path %q and its fingerprint",
+					test.path, got, test.want)
 			}
 		})
 	}
@@ -63,7 +64,8 @@ func TestInspectRejectsInvalidPaths(t *testing.T) {
 	linkToInvalid := filepath.Join(base, "valid-link")
 	symlink(t, invalidName, linkToInvalid)
 
-	for _, path := range []string{"", "relative/project", "./project", base + "/\xff", linkToInvalid} {
+	invalid := []string{"", "relative/project", "./project", base + "/\xff", linkToInvalid}
+	for _, path := range invalid {
 		if _, err := validator.Inspect(path); !errors.Is(err, ErrInvalidPath) {
 			t.Errorf("Inspect(%q) error = %v, want ErrInvalidPath", path, err)
 		}
@@ -164,6 +166,11 @@ func TestSecurity_InspectRejectsDirectoriesContainingProtectedPaths(t *testing.T
 	sibling := makeDir(t, cache, "other")
 	if _, err := validator.Inspect(sibling); err != nil {
 		t.Fatalf("Inspect(sibling of protected path) error = %v, want nil", err)
+	}
+	// A shared name prefix is not containment: base/cach does not contain base/cache.
+	sharedPrefix := makeDir(t, base, "cach")
+	if _, err := validator.Inspect(sharedPrefix); err != nil {
+		t.Fatalf("Inspect(%q) error = %v, want nil", sharedPrefix, err)
 	}
 }
 

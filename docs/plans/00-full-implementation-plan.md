@@ -124,6 +124,8 @@ If any mandatory stage is unavailable or invalid, deny the request. Never add un
 
 ### Workspace and containment
 
+**Initial increment implemented:** `internal/workspace` canonicalizes and fingerprints workspace roots, rejects the filesystem root and any directory that is or contains a home directory or another protected directory, and revalidates recorded workspaces (ADR-004). It is not yet wired into Mio, persisted, or exposed through IPC or the CLI. The checklist items below stay unchecked until workspace registration and execution-time revalidation exist.
+
 - [ ] Canonicalize workspace and record repository fingerprint.
 - [ ] Reject root and complete home directory.
 - [ ] Revalidate workspace before execution.

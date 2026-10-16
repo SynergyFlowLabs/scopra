@@ -4,7 +4,7 @@ GOFMT ?= gofmt
 .PHONY: help bootstrap test lint security-test
 
 help:
-	@printf '%s\n' 'Scopra development targets:' '  bootstrap     Check the Go toolchain and prepare modules' '  test          Run Go tests with the race detector' '  lint          Check gofmt and run go vet' '  security-test Run protocol, local IPC, and doctor security tests'
+	@printf '%s\n' 'Scopra development targets:' '  bootstrap     Check the Go toolchain and prepare modules' '  test          Run Go tests with the race detector' '  lint          Check gofmt and run go vet' '  security-test Run protocol, local IPC, workspace, and doctor security tests'
 
 bootstrap:
 	@./scripts/bootstrap.sh
@@ -21,4 +21,4 @@ lint:
 	$(GO) vet ./...
 
 security-test:
-	$(GO) test -race ./packages/protocol ./internal/localipc ./cmd/scopra -run '^TestSecurity_'
+	$(GO) test -race ./packages/protocol ./internal/localipc ./internal/workspace ./cmd/scopra -run '^TestSecurity_'
