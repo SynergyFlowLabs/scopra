@@ -3,7 +3,7 @@
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
 **Current increment:** Scopra Messenger envelope v1 structural validation
-**Status:** Implemented; final checks and push in progress
+**Status:** Implemented and pushed
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -12,7 +12,7 @@ This file is the running engineering log. Each increment records scope, verifica
 - The repository was an initial planning scaffold at kickoff: no Go source files or `go.mod` existed; CI only checked documentation and secret-file presence.
 - Scopra remains the umbrella product. The Mercury-inspired component names are documented in `docs/product/naming.md`.
 - The sandbox initially had no Go compiler. A temporary Go 1.26.9 toolchain was built from official `golang/go` source tags under `/tmp`; no toolchain artifacts are committed.
-- GitHub Actions push runs currently return `startup_failure` before creating jobs. Local Go verification is working; the workflow is still configured for a functioning Actions runner.
+- GitHub Actions push runs currently return `startup_failure` before creating jobs. The implementation push run `38851033476` had zero jobs; local Go verification is working, but Actions provides no code-test result.
 
 ## Working practices
 
@@ -43,12 +43,12 @@ This file is the running engineering log. Each increment records scope, verifica
 - Added this log and installed the selected skills; pushed as `ae6779d`.
 - Added a single root Go module, ADR-001, ADR-002 for the envelope contract, pinned Go 1.26.9 CI, and project test/lint/bootstrap targets.
 - Test-first checkpoint `cc91d35` was pushed before the protocol implementation. The local red run failed on the expected missing `Envelope`/`DecodeEnvelope` API.
-- GitHub Actions run `38848464758` ended in `startup_failure` with no jobs, so it is not treated as a code test result.
+- GitHub Actions runs `38848464758` (test checkpoint) and `38851033476` (implementation push) both ended in `startup_failure` with no jobs, so neither is treated as a code test result.
 
 ### 2026-10-16 — Step 1: Messenger envelope v1
 
-- Implemented a bounded JSON envelope decoder with unknown envelope-field rejection, duplicate-key rejection at every JSON depth, a closed message-type set, opaque identifier checks, canonical 128-bit-or-longer base64url nonces, strict expiry, freshness validation via `Envelope.ValidateAt` (five-minute maximum lifetime, 30-second future-clock tolerance, and strict expiry), and exact-payload SHA-256 verification.
+- Implemented a bounded JSON envelope decoder with unknown envelope-field rejection, duplicate-key rejection at every JSON depth, a closed message-type set, opaque identifier checks, canonical 128-bit-or-longer base64url nonces, and freshness validation via `Envelope.ValidateAt` (five-minute maximum lifetime, 30-second future-clock tolerance, and strict expiry), and exact-payload SHA-256 verification.
 - Added focused rejection tests and a fuzz target. Structural validation is explicitly not signature verification, replay protection, authorization, or typed payload validation; all remain required before dispatch.
 - Security review covered untrusted JSON parsing, digest handling, authorization separation, and the surrounding architecture. No high-confidence exploitable issue was identified in this structural-only slice; the omitted trust/authorization checks are documented as mandatory follow-up work.
-- Verification passed locally: `make bootstrap`, `make lint`, `make test`, `make security-test`, `go vet ./...`, and `go test -cover ./...` (89.4% statement coverage). A 10-second fuzz run completed 644,563 executions with no crash or finding.
-- Final step: record the implementation commit and push it to `arena/0b81a55b-scopra`.
+- Verification passed locally: `make bootstrap`, `make lint`, `make test`, `make security-test`, `go vet ./...`, and `go test -cover ./...` (89.4% statement coverage). A 10-second fuzz run completed 644,563 executions; the final 5-second rerun completed 81,360 executions, with no crash or finding.
+- Implementation and documentation were committed as `8a58cc4` (`feat(protocol): add bounded Messenger envelope validation`) and pushed to `arena/0b81a55b-scopra`.
