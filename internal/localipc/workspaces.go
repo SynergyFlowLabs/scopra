@@ -445,8 +445,10 @@ func decodeObjectFields(raw json.RawMessage, keys ...string) (map[string]json.Ra
 	return fields, nil
 }
 
-// validWorkspaceID reports whether id has the registry's format: 128 random
-// bits in lowercase hexadecimal.
+// ValidWorkspaceID reports whether id has the format of a workspace ID: 32
+// lowercase hexadecimal characters (128 random bits).
+func ValidWorkspaceID(id string) bool { return validWorkspaceID(id) }
+
 func validWorkspaceID(id string) bool { return validRequestID(id) }
 
 // validWorkspacePath reports whether path is a canonical workspace path.

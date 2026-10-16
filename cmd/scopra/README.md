@@ -7,10 +7,13 @@ Scopra Mariner is the CLI/TUI for onboarding and machine enrollment. The executa
 ```text
 scopra status [--state-dir PATH] [--json]
 scopra doctor [--state-dir PATH] [--json]
+scopra workspace add [--state-dir PATH] [--json] PATH
+scopra workspace list [--state-dir PATH] [--json]
+scopra workspace remove [--state-dir PATH] [--json] ID
 scopra version
 ```
 
-By default both binaries use `$XDG_STATE_HOME/scopra`, or `~/.local/state/scopra` when `XDG_STATE_HOME` is unset; a relative value fails closed. Pass the same `--state-dir` to `scoprad` and `scopra` to override it. Neither command starts the daemon automatically.
+By default both binaries use `$XDG_STATE_HOME/scopra`, or `~/.local/state/scopra` when `XDG_STATE_HOME` is unset; a relative value fails closed. Pass the same `--state-dir` to `scoprad` and `scopra` to override it. No command starts the daemon automatically. Flags go before `PATH` or `ID`. Errors go to stderr, with control characters escaped.
 
 ### `scopra status`
 
@@ -65,4 +68,36 @@ The human-readable report goes to stdout, with control characters in paths and e
 
 Exit status: `0` when no check fails, `1` when any check fails (after the report is written), `2` for usage errors, and `130` when interrupted.
 
-These commands do not register workspaces or authorize/execute commands. See ADR-003 for the local IPC trust boundary and remaining work.
+### `scopra workspace`
+
+`scopra workspace` manages Mio's workspace registrations over local IPC (ADR-006). Mio must be running.
+
+- `add PATH` registers a directory. A relative `PATH` is joined to the current directory without being cleaned, so `..` is resolved after symlinks, as it is for any other program. Mio then resolves the path and applies ADR-004 validation. It rejects:
+  - the filesystem root, your home directory, Mio's state directory, and any directory containing one of them;
+  - any directory inside the state directory;
+  - directories you do not own;
+  - directories that overlap a registered workspace.
+
+  The output shows the new ID and the canonical path that was registered.
+- `list` prints one `ID  path` line per registration, sorted by path, or `No workspaces are registered.`
+- `remove ID` removes the registration with that ID, as shown by `add` or `list`. It never changes the directory itself and does not ask for confirmation.
+
+Text output escapes control characters in paths and in Mio's messages. `--json` writes a single JSON object on one line. `add` and `remove` write the affected registration, and `list` writes every registration, with an empty array when there are none:
+
+```json
+{"schemaVersion":1,"workspace":{"id":"3f2a9c0b7d1e4f6a8b5c2d0e1f3a4b6c","path":"/home/alice/projects/api"}}
+{"schemaVersion":1,"workspaces":[{"id":"3f2a9c0b7d1e4f6a8b5c2d0e1f3a4b6c","path":"/home/alice/projects/api"}]}
+```
+
+`schemaVersion` changes only for incompatible changes; fields may be added.
+
+Exit status:
+
+- `0` on success.
+- `1` when Mio is unavailable or refuses the request. The error names Mio's code, such as `protected_path`, `overlap`, or `not_found` (see ADR-006).
+- `2` for usage errors, which are detected before Mio is contacted. These include a malformed ID and a path that is not valid UTF-8 or would be longer than 4095 bytes.
+- `130` when interrupted.
+
+Registering a workspace authorizes nothing by itself; nothing in Scopra executes commands yet. Any process running as you can use these commands, just as it can edit your files.
+
+`scopra status` and `scopra doctor` change nothing, and `scopra workspace` changes only Mio's registrations. See ADR-003 and ADR-006 for the local IPC trust boundary and remaining work.

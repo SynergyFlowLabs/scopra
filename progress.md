@@ -3,7 +3,7 @@
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
 **Current increment:** `scopra workspace` CLI (Step 10)
-**Status:** In progress on `arena/c7a368c1-scopra`: acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
+**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -24,7 +24,7 @@ This file is the running engineering log. Each increment records scope, verifica
 ## Roadmap
 
 1. **Protocol foundation** — envelope v1 structural validation is implemented and locally verified. Typed execution requests/results, canonical approval binding, cryptographic verification, replay storage, and compatibility/version guarantees remain pending.
-2. **Local daemon and CLI** — the initial foreground Mio status service with a persistent per-user state directory and an exclusive state-directory lock, Mariner `scopra status`, and a minimal read-only `scopra doctor` (platform, state-directory, and daemon checks) are implemented. Workspace validation (ADR-004) and registry storage (ADR-005) exist; Mio checks its registry at startup and serves add, list, and remove over local IPC (ADR-006). The `scopra workspace` CLI, broader doctor checks, execution, service installation, and expanded CLI/IPC authorization remain pending.
+2. **Local daemon and CLI** — the initial foreground Mio status service with a persistent per-user state directory and an exclusive state-directory lock, Mariner `scopra status`, a minimal read-only `scopra doctor` (platform, state-directory, and daemon checks), and `scopra workspace add/list/remove` are implemented. Workspace validation (ADR-004) and registry storage (ADR-005) exist; Mio checks its registry at startup and serves add, list, and remove over local IPC (ADR-006). Broader doctor checks, execution, service installation, and expanded CLI/IPC authorization remain pending.
 3. **Policy and containment boundary** — implement default-deny policy and rootless containment before enabling execution; no native fallback.
 4. **Structured execution and audit** — limits, cancellation, bounded output, and attributable events with adversarial tests.
 5. **Enrollment, relay, approvals, and integrations** — proceed only after local foundations and security invariants are testable.
@@ -536,16 +536,16 @@ Non-goals: the `scopra workspace` CLI; approvals or any other authorization of a
 
 #### Acceptance checklist (agreed before implementation)
 
-- [ ] `scopra workspace add [--state-dir PATH] [--json] PATH` registers a directory through Mio. A relative PATH gets the working directory prefixed without lexical cleaning, and the CLI never resolves paths itself. Text output names the new ID and the canonical path; `--json` writes `{"schemaVersion":1,"workspace":{"id":...,"path":...}}`.
-- [ ] `scopra workspace list [--state-dir PATH] [--json]` prints every registration sorted by path, one `ID  path` line each, or a message when there are none. `--json` writes `{"schemaVersion":1,"workspaces":[...]}`, with an empty array when there are none.
-- [ ] `scopra workspace remove [--state-dir PATH] [--json] ID` removes a registration without a prompt and says that the directory was not changed. `--json` writes the removed record.
-- [ ] Exit status:
+- [x] `scopra workspace add [--state-dir PATH] [--json] PATH` registers a directory through Mio. A relative PATH gets the working directory prefixed without lexical cleaning, and the CLI never resolves paths itself. Text output names the new ID and the canonical path; `--json` writes `{"schemaVersion":1,"workspace":{"id":...,"path":...}}`.
+- [x] `scopra workspace list [--state-dir PATH] [--json]` prints every registration sorted by path, one `ID  path` line each, or a message when there are none. `--json` writes `{"schemaVersion":1,"workspaces":[...]}`, with an empty array when there are none.
+- [x] `scopra workspace remove [--state-dir PATH] [--json] ID` removes a registration without a prompt and says that the directory was not changed. `--json` writes the removed record.
+- [x] Exit status:
   - `0` on success;
   - `1` when Mio is unavailable or rejects the request, with the error naming Mio's code;
   - `2` for usage errors, detected before Mio is contacted: a missing or extra argument, an unknown subcommand, a malformed ID, or a path that is not valid UTF-8 or would be longer than 4095 bytes;
   - `130` when interrupted.
   Every error message, and every path in text output, has control characters escaped.
-- [ ] `scopra status` and `scopra doctor` behave as before, except that their error text is now escaped too. The README, usage text, plan, architecture overview, and this log are updated, and the wire protocol and Mio are unchanged.
+- [x] `scopra status` and `scopra doctor` behave as before, except that their error text is now escaped too. The README, usage text, plan, architecture overview, and this log are updated, and the wire protocol and Mio are unchanged.
 
 Non-goals: removal by path; confirmation prompts; flags after positional arguments; a doctor check for the registry; revalidation status in listings; shell completion; any change to the IPC protocol or to Mio; and richer output, such as tables or colour.
 
@@ -563,3 +563,50 @@ Non-goals: removal by path; confirmation prompts; flags after positional argumen
 - The usage-error table checks that `workspace` is not reported as an unknown command. Today's CLI already returns a usage error for any unknown command, so without that check the table would pass before any implementation.
 - First red: the test package failed to build on exactly `exitCode`; the workspace commands are reached through `run`.
 - With a declarations-only `exitCode` skeleton, all 9 new tests failed at runtime (22 subtests between them). The package's 21 existing tests passed.
+
+#### Implementation and verification record
+
+- `cmd/scopra/workspace.go`:
+  - `runWorkspace` dispatches `add`, `list`, and `remove`, which share `parseWorkspaceFlags` (`--state-dir`, `--json`) and write single-line JSON with `workspaceSchemaVersion` 1.
+  - `add` checks that the path is valid UTF-8, prefixes `os.Getwd()` to a relative path without cleaning it, and then checks the 4095-byte bound, all before contacting Mio.
+  - `remove` checks the ID with the new `localipc.ValidWorkspaceID`.
+  - Paths in text output pass through `terminalSafe`.
+- `cmd/scopra/main.go`: `main` now exits through `exitCode`, which keeps the existing statuses (0, 2, 130, and 1) and escapes every error message. It also dispatches `workspace`, and the usage text lists the new commands and says that flags go before `PATH` or `ID`.
+- No change to the wire protocol, to Mio, or to any ADR. The CLI README documents the commands, the output, the JSON shapes, the exit statuses, and the trust notes. The README status line, the `scoprad` README, the architecture overview, the plan, and the tree are updated. The plan's checkboxes stay unticked under its own rule, because execution-time revalidation does not exist yet.
+- Green: all tests pass under the race detector with no skips.
+- 20 deliberate, compile-safe mutations, each caught by real test failures:
+  - Exit statuses: error text not escaped; interruption exiting 1; help through a usage error exiting 2; usage errors exiting 1.
+  - Paths: relative paths cleaned lexically, or sent unchanged; no UTF-8 check; no length check.
+  - Arguments: no ID check; `ValidWorkspaceID` accepting anything; `add` accepting extra arguments; `list` accepting arguments.
+  - Output: `add` or `list` not escaped; `remove` without its note that the directory was not changed; `null` instead of `[]`; the wrong schema version.
+  - Wiring: `workspace` not dispatched; workspace help reported as a usage error; usage text without the workspace commands.
+- `main` cannot run under `go test`, so the smoke test checked it directly. A path with ESC and BEL reached stderr as `\x1b[31m\a`, with no raw control bytes.
+- Smoke test with built binaries in a fresh home directory, using the default state directory:
+  - Mio not running: exit 1 with `daemon is unavailable`.
+  - `add` and `list` (text and single-line JSON) work. Run from a directory reached through a symlink, `add ../sibling` registered the physical `real/sibling`. `remove` reports that the directory was not changed, and removing again exits 1 with `not_found`.
+  - A missing path (`unresolvable_path`) and a directory containing the state directory (`protected_path`) exit 1. A malformed ID, a missing subcommand, and a flag after `PATH` exit 2.
+  - `scopra status` and `scopra doctor` are unchanged and pass.
+  - Interruption (130) cannot practically be triggered against commands that finish in milliseconds; `TestExitCode` covers it.
+- Security review covered:
+  - escaping of every error message and of every path in text output;
+  - paths made absolute without lexical cleaning, so the CLI cannot redirect `..` across symlinks;
+  - validation of arguments before any contact with Mio;
+  - removal never touching directories;
+  - single-line JSON;
+  - the unchanged ADR-006 trust model: any same-user process can use these commands, and registration authorizes nothing.
+  No high-confidence exploitable issue was found.
+- Local verification passed:
+  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `go test -race -count=1 -timeout 120s ./...` and ten repeated race runs of the CLI and daemon packages;
+  - the command and internal packages with `CGO_ENABLED=0`;
+  - `git diff --check`;
+  - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64.
+- Coverage: CLI 89.7% (up from 80.1%), local IPC 82.3% (from 82.4%, because the new exported `ValidWorkspaceID` is exercised only by the CLI's tests), daemon 63.3%, registry 93.1%, workspace 93.1%, build info 100%, protocol 89.4%.
+- Environment: this session also started in a fresh sandbox. A temporary index showed the restored working tree was byte-identical to the pushed tip `2b5aac0`, so a mixed reset re-attached the branch without touching files. The toolchain was rebuilt from the pinned source, and the baseline passed before any change.
+- Follow-ups, not part of this increment:
+  - removal by path;
+  - a read-only doctor check for the registry;
+  - revalidation status in listings;
+  - cleanup of stale temporary files;
+  - a decision on approvals and user presence before any command that authorizes an action.
+- Pushes to `arena/c7a368c1-scopra`: test checkpoint `a389b37` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.
