@@ -3,7 +3,7 @@
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
 **Current increment:** Execution request v1 decoding (Step 15)
-**Status:** In progress on `arena/c7a368c1-scopra`: ADR-007 and the acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
+**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -23,7 +23,7 @@ This file is the running engineering log. Each increment records scope, verifica
 
 ## Roadmap
 
-1. **Protocol foundation** — envelope v1 structural validation is implemented and locally verified. Typed execution requests/results, canonical approval binding, cryptographic verification, replay storage, and compatibility/version guarantees remain pending.
+1. **Protocol foundation** — envelope v1 structural validation and strict execution request v1 decoding (ADR-007) are implemented and locally verified. Execution results, output chunks, errors and states, the canonical request and action hash for approval binding, cryptographic verification, replay storage, and compatibility/version guarantees remain pending.
 2. **Local daemon and CLI** — the initial foreground Mio status service with a persistent per-user state directory and an exclusive state-directory lock, Mariner `scopra status`, a minimal read-only `scopra doctor` (platform, state-directory, workspace-registry, registered-workspace revalidation, and daemon checks), and `scopra workspace add/list/remove` are implemented. Workspace validation (ADR-004) and registry storage (ADR-005) exist; Mio checks its registry at startup and serves add, list, and remove over local IPC (ADR-006). Broader doctor checks, execution, service installation, and expanded CLI/IPC authorization remain pending.
 3. **Policy and containment boundary** — implement default-deny policy and rootless containment before enabling execution; no native fallback.
 4. **Structured execution and audit** — limits, cancellation, bounded output, and attributable events with adversarial tests.
@@ -971,14 +971,14 @@ Non-goals:
 
 #### Acceptance checklist (agreed before implementation)
 
-- [ ] ADR-007 is accepted, with any changes the maintainer asks for, and indexed as accepted. `docs/architecture/protocol.md` and the protocol package README describe it.
-- [ ] `protocol.DecodeExecutionRequest(payload)` returns a typed `ExecutionRequest` that follows ADR-007's shape and field rules. Its strict decoding covers size, trailing data, duplicate keys, `null`, invalid UTF-8, invalid `\u` escapes, exact key sets, and integer-only limits. Every error names the field, and no partially valid request is returned.
-- [ ] `Envelope.ExecutionRequest()` decodes only envelopes of type `execution.request`. `ExecutionRequest.ValidateAt(now)` enforces the request window: at most 30 seconds of future skew, strict expiry, and a lifetime of at most 1 hour.
-- [ ] Tests:
+- [x] ADR-007 is accepted, with any changes the maintainer asks for, and indexed as accepted. `docs/architecture/protocol.md` and the protocol package README describe it.
+- [x] `protocol.DecodeExecutionRequest(payload)` returns a typed `ExecutionRequest` that follows ADR-007's shape and field rules. Its strict decoding covers size, trailing data, duplicate keys, `null`, invalid UTF-8, invalid `\u` escapes, exact key sets, and integer-only limits. Every error names the field, and no partially valid request is returned.
+- [x] `Envelope.ExecutionRequest()` decodes only envelopes of type `execution.request`. `ExecutionRequest.ValidateAt(now)` enforces the request window: at most 30 seconds of future skew, strict expiry, and a lifetime of at most 1 hour.
+- [x] Tests:
   - a valid request decodes to the expected values;
   - table-driven rejections cover every field rule and every strictness rule, at both sides of each bound;
   - a fuzz test shows that decoding never panics, and that every accepted request satisfies the field rules again.
-- [ ] The package stays dependency-free. No daemon, CLI, or wire change outside the payload contract.
+- [x] The package stays dependency-free. No daemon, CLI, or wire change outside the payload contract.
 
 Non-goals:
 - The canonical form and action hash.
@@ -1012,3 +1012,59 @@ Non-goals:
    - `FuzzDecodeExecutionRequest` requires that every error wraps `ErrInvalidExecutionRequest`, and that every accepted request passes `Validate` and survives a round trip through an independent wire mirror.
 3. **Build failure.** The new types and functions were undefined.
 4. **Declarations-only skeleton.** It has the final types, constants, and error values; decoding always fails and the methods do nothing. Runtime red: 9 tests failed across 196 subtests. The fuzz seeds passed, as expected, because rejecting everything satisfies the fuzz property.
+
+#### Implementation and verification record
+
+- `packages/protocol/execution_request.go` decodes in three layers, all without new dependencies:
+  1. **`checkRequestDocument`:**
+     - the size bound, and exactly one JSON object;
+     - valid UTF-8;
+     - a raw scan that accepts a `\u` escape only if it decodes to a Unicode scalar value other than NUL, with each high surrogate followed by a low one;
+     - a token walk that rejects duplicate keys and `null` at any depth, with nesting bounded at 64 levels. Errors quote field paths, because unknown keys are untrusted text.
+  2. **`decodeRequestFields`:** `objectFields` requires exactly the listed keys for each of the 5 objects. A missing key "is required", and an unknown key is quoted. Each field is decoded into its typed target, and timestamps must round-trip through the layout `2006-01-02T15:04:05Z` exactly.
+  3. **`ExecutionRequest.Validate`:** every ADR-007 field rule, also usable on requests built in memory. It additionally checks UTF-8, NUL, a UTC location, whole seconds, and years 0 to 9999.
+- `Envelope.ExecutionRequest()` checks the message type before decoding. `ValidateAt` mirrors the envelope's: at most `AllowedClockSkew` (30 seconds) of future skew, strict expiry, and a zero clock is rejected.
+- The bounds are exported constants.
+- Tests added during implementation, all of which pass:
+  - "is required" for each missing field;
+  - quoted control characters in null and duplicate keys;
+  - nesting beyond 64 levels;
+  - a zero-fraction timestamp (`.000Z`) for `createdAt` and `expiresAt`;
+  - uppercase `\u` escapes;
+  - a year beyond 9999 on a typed value.
+- Green: all tests pass under the race detector with no skips.
+- Mutation testing: 55 deliberate, compile-safe mutations. 54 were caught by real test failures:
+  - every document check, including size, UTF-8, escapes, NUL, surrogates, null, duplicates, depth, unknown and missing keys, and the skipping of simple escapes;
+  - every field rule, at off-by-one bounds;
+  - every time rule, including the round trip, UTC, nanoseconds, the year, order, lifetime, skew, strict expiry, and a zero clock;
+  - the envelope type check;
+  - `Validate` skipped, or a partial request returned;
+  - a field decoded from the wrong key;
+  - unquoted paths in three error kinds;
+  - uppercase hexadecimal rejected.
+- One mutation survived, as expected. Q3 weakened the top-level object check; it is equivalent, because `objectFields` still rejects a non-object with a `payload` error. The early check stays for its clearer message.
+- Fuzzing: `FuzzDecodeExecutionRequest` ran for about 4 minutes in four sessions (60, 45, 40, and 90 seconds), about 9.6 million inputs in all, with no failure. Twice the exec count stopped for tens of seconds. A run with `-fuzzminimizetime 0` kept a steady 60,000 to 80,000 inputs per second, so those pauses were the fuzzer minimizing new inputs (up to a minute each by default), not a hang.
+- Cost: decoding grows linearly with input size. In a throwaway timing test, since deleted, 4096 arguments took 2.2 ms, a 128 KiB argument 3.2 ms, and a 480 KB payload heavy with escapes 12 ms (rejected for its length).
+- Coverage: protocol 93.9% (up from 89.4%). The only uncovered lines are defensive branches that cannot be reached once `json.Valid` has passed.
+- Corrections:
+  - The checkpoint commit `7c8bab6` left `docs/repository-tree.txt` without the two new files, because its first attempt stopped at the whitespace check before the tree step. This commit fixes it.
+  - ADR-007's status line lost its trailing Markdown line-break spaces, which `git diff --cached --check` flagged, matching ADR-003 and ADR-006.
+- Documentation: `docs/architecture/protocol.md`, the protocol package README, the plan's Messenger section, the README status line, the roadmap above, and the ADR index (ADR-007 accepted).
+- Security review:
+  - Decoding is bounded (512 KiB, 64 levels, linear time), never returns a partial request, and keeps decoded text equal to transmitted text, so the displayed, approved, and executed request cannot diverge through decoding.
+  - Errors quote untrusted keys.
+  - Nothing here authenticates, authorizes, or executes.
+  - One gap is left as written in ADR-007: U+2028 and U+2029 (line and paragraph separators) are neither control nor format characters, so the executable, working directory, and reason accept them. Rejecting them is proposed as a small amendment.
+  - No high-confidence exploitable issue was found.
+- Local verification passed:
+  - `make bootstrap`, `make lint`, `make test`, and `make security-test` (which now runs the two `TestSecurity_` request tests);
+  - `go test -race -count=1 -timeout 120s ./...` and ten repeated race runs of the protocol package;
+  - every package with `CGO_ENABLED=0`;
+  - `git diff --cached --check`;
+  - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64.
+- Follow-ups, not part of this increment:
+  - the canonical request form and action hash, which need their own ADR;
+  - execution results, output chunks, errors, and states;
+  - Mio consuming requests, which needs the relay and verification first;
+  - the U+2028 and U+2029 tightening.
+- Pushes to `arena/c7a368c1-scopra`: the proposal `4716fab`, test checkpoint `7c8bab6` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.

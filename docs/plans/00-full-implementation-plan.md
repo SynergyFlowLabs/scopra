@@ -111,6 +111,8 @@ If any mandatory stage is unavailable or invalid, deny the request. Never add un
 
 ### Scopra Messenger Protocol
 
+**Initial increments implemented:** envelope v1 structural validation (ADR-002), and strict decoding and validation of the `execution.request` v1 payload (ADR-007). The canonical request and action hash, results, output chunks, errors, and execution states remain pending, so the checklist items below stay unchecked.
+
 - [ ] Define protocol versions, IDs, canonical request, results, output chunks, errors, and execution states.
 - [ ] Add validation and compatibility tests.
 

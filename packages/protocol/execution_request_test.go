@@ -215,8 +215,10 @@ func TestSecurity_DecodeExecutionRequestEnforcesFieldRules(t *testing.T) {
 		{path: "expiresAt", value: "2026-10-16T13:00:01Z"},
 		{path: "expiresAt", value: "2026-10-16T12:00:00Z"},
 		{path: "expiresAt", value: "2026-10-16T11:59:59Z"},
+		{path: "expiresAt", value: "2026-10-16T12:15:00.000Z"},
 		{path: "createdAt", value: "2026-10-16T12:00:00+00:00"},
 		{path: "createdAt", value: "2026-10-16T12:00:00.5Z"},
+		{path: "createdAt", value: "2026-10-16T12:00:00.000Z"},
 		{path: "createdAt", value: "2026-10-16 12:00:00Z"},
 		{path: "createdAt", value: "2026-10-16T12:00:00z"},
 		{path: "createdAt", value: "2026-10-16T12:00Z"},
@@ -292,6 +294,9 @@ func TestSecurity_DecodeExecutionRequestRejectsAmbiguousJSON(t *testing.T) {
 		{name: "unknown top-level field", payload: replace(`"grantId": "grt_1",`, `"grantId": "grt_1", "env": {},`), wantText: "env"},
 		{name: "unknown nested field", payload: replace(`"shell": false,`, `"shell": false, "env": [],`), wantText: "command.env"},
 		{name: "control characters in an unknown field", payload: replace(`"grantId": "grt_1",`, `"grantId": "grt_1", "\u001b[2J": 1,`), wantText: `\x1b[2J`},
+		{name: "control characters in a null field", payload: replace(`"grantId": "grt_1",`, `"grantId": "grt_1", "\u001b[2J": null,`), wantText: `\x1b[2J`},
+		{name: "control characters in a duplicate field", payload: replace(`"grantId": "grt_1",`, `"grantId": "grt_1", "\u001b[2J": 1, "\u001b[2J": 2,`), wantErr: ErrDuplicateJSONKey, wantText: `\x1b[2J`},
+		{name: "nesting over 64 levels", payload: replace(`["test", "./..."]`, strings.Repeat("[", 70)+strings.Repeat("]", 70)), wantText: "nesting"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -314,12 +319,12 @@ func TestSecurity_DecodeExecutionRequestRejectsAmbiguousJSON(t *testing.T) {
 
 func TestDecodeExecutionRequest_PreservesTransmittedText(t *testing.T) {
 	payload := strings.Replace(adrExampleRequest, `["test", "./..."]`,
-		`["\u00e9", "\ud83d\ude00", "a\/b\"c", "tab\tnew\nline"]`, 1)
+		`["\u00e9", "\u00C9", "\ud83d\ude00", "\uD83D\uDE00", "a\/b\"c", "tab\tnew\nline"]`, 1)
 	request, err := DecodeExecutionRequest([]byte(payload))
 	if err != nil {
 		t.Fatalf("DecodeExecutionRequest() error = %v", err)
 	}
-	if want := []string{"é", "😀", `a/b"c`, "tab\tnew\nline"}; !slices.Equal(request.Command.Arguments, want) {
+	if want := []string{"é", "É", "😀", "😀", `a/b"c`, "tab\tnew\nline"}; !slices.Equal(request.Command.Arguments, want) {
 		t.Fatalf("arguments = %q, want %q", request.Command.Arguments, want)
 	}
 }
@@ -343,8 +348,8 @@ func TestDecodeExecutionRequest_RequiresEveryFieldAndNoOthers(t *testing.T) {
 			fields := requestFields(t)
 			object, key := parentOf(t, fields, path)
 			delete(object, key)
-			if _, err := DecodeExecutionRequest(marshalFields(t, fields)); !errors.Is(err, ErrInvalidExecutionRequest) || !strings.Contains(err.Error(), path) {
-				t.Fatalf("DecodeExecutionRequest(without %s) error = %v, want ErrInvalidExecutionRequest naming it", path, err)
+			if _, err := DecodeExecutionRequest(marshalFields(t, fields)); !errors.Is(err, ErrInvalidExecutionRequest) || !strings.Contains(err.Error(), path+": is required") {
+				t.Fatalf("DecodeExecutionRequest(without %s) error = %v, want ErrInvalidExecutionRequest saying it is required", path, err)
 			}
 		})
 	}
@@ -453,6 +458,10 @@ func TestExecutionRequest_ValidateChecksTypedValues(t *testing.T) {
 			r.CreatedAt = r.CreatedAt.In(time.FixedZone("PKT", 5*60*60))
 		}, field: "createdAt"},
 		{name: "fractional expiry", change: func(r *ExecutionRequest) { r.ExpiresAt = r.ExpiresAt.Add(time.Millisecond) }, field: "expiresAt"},
+		{name: "year beyond 9999", change: func(r *ExecutionRequest) {
+			r.CreatedAt = time.Date(10000, time.January, 1, 0, 0, 0, 0, time.UTC)
+			r.ExpiresAt = r.CreatedAt.Add(time.Minute)
+		}, field: "createdAt"},
 		{name: "NUL in an argument", change: func(r *ExecutionRequest) { r.Command.Arguments = []string{"a\x00b"} }, field: "command.arguments"},
 		{name: "invalid UTF-8 in an argument", change: func(r *ExecutionRequest) { r.Command.Arguments = []string{"\xff"} }, field: "command.arguments"},
 		{name: "invalid UTF-8 in the executable", change: func(r *ExecutionRequest) { r.Command.Executable = "go\xff" }, field: "command.executable"},
