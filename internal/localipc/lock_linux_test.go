@@ -51,16 +51,23 @@ func TestSecurity_ConcurrentStartsAgainstStaleSocketYieldOneDaemon(t *testing.T)
 			t.Cleanup(func() { _ = daemon.Close() })
 		}
 		if len(daemons) != 1 {
-			t.Fatalf("trial %d: %d daemons started, want exactly 1 (errors: %v)", trial, len(daemons), errs)
+			t.Fatalf("trial %d: %d daemons started, want exactly 1 (errors: %v)",
+				trial, len(daemons), errs)
 		}
 		for _, err := range errs {
 			if !errors.Is(err, ErrDaemonAlreadyRunning) {
-				t.Fatalf("trial %d: losing start error = %v, want ErrDaemonAlreadyRunning", trial, err)
+				t.Fatalf("trial %d: losing start error = %v, want ErrDaemonAlreadyRunning",
+					trial, err)
 			}
 		}
-		for _, daemon := range daemons {
-			_ = daemon.Close()
+		// The winner must still own the socket path; an unlinked socket would
+		// leave it running but unreachable.
+		current, err := os.Lstat(filepath.Join(stateDir, "scoprad.sock"))
+		if err != nil || !os.SameFile(current, daemons[0].socketInfo) {
+			t.Fatalf("trial %d: the started daemon no longer owns its socket path (Lstat error = %v)",
+				trial, err)
 		}
+		_ = daemons[0].Close()
 	}
 }
 
@@ -79,7 +86,8 @@ func TestSecurity_ListenRefusesUnsafeLockFile(t *testing.T) {
 				t.Fatalf("Listen() error = %v, want ErrInsecureStateDir", err)
 			}
 			verifyUnchanged(t)
-			if _, err := os.Lstat(filepath.Join(stateDir, "scoprad.sock")); !errors.Is(err, os.ErrNotExist) {
+			_, err = os.Lstat(filepath.Join(stateDir, "scoprad.sock"))
+			if !errors.Is(err, os.ErrNotExist) {
 				t.Fatalf("Listen() created a socket despite the unsafe lock file (Lstat error = %v)", err)
 			}
 		})

@@ -45,17 +45,22 @@ var (
 )
 
 // Daemon is the foreground local status service. It intentionally exposes no
-// execution or workspace-mutating operation.
+// execution or workspace-mutating operation. A Daemon holds an exclusive lock
+// on its state directory until it can no longer act, so at most one Mio serves
+// a state directory at a time.
 type Daemon struct {
 	listener      *net.UnixListener
 	socketPath    string
 	socketInfo    os.FileInfo
 	daemonVersion string
+	lock          *os.File
 
 	closeOnce sync.Once
 	closeErr  error
 	serveMu   sync.Mutex
 	served    bool
+	lockOnce  sync.Once
+	lockErr   error
 }
 
 // DefaultStateDir returns the per-user cache location used for Mio's local
@@ -82,10 +87,11 @@ func PlatformSupported() bool { return platformSupported() }
 func ResolveStateDir(stateDir string) (string, error) { return resolveStateDir(stateDir) }
 
 // CheckStateDir applies Listen's state-directory checks without creating,
-// modifying, or removing anything. A nil error means the directory exists, is
-// private to the effective user, has no unsafe ancestors, and leaves room for
-// Mio's socket path. An error matching os.ErrNotExist means the directory has
-// not been created yet.
+// modifying, removing, or locking anything. A nil error means the directory
+// exists, is private to the effective user, has no unsafe ancestors, leaves
+// room for Mio's socket path, and holds no unsafe lock file. An error matching
+// os.ErrNotExist means the directory has not been created yet. CheckStateDir
+// never opens the lock file, so it cannot make a concurrent daemon start fail.
 func CheckStateDir(stateDir string) error {
 	if !platformSupported() {
 		return ErrUnsupportedPlatform
@@ -97,8 +103,10 @@ func CheckStateDir(stateDir string) error {
 	if _, err := socketPathFor(stateDir); err != nil {
 		return err
 	}
-	_, err = validateStateDir(stateDir)
-	return err
+	if _, err := validateStateDir(stateDir); err != nil {
+		return err
+	}
+	return checkLockFile(stateDir)
 }
 
 // Listen creates a private Unix socket for a foreground Mio daemon.
@@ -122,6 +130,18 @@ func Listen(stateDir, daemonVersion string) (*Daemon, error) {
 	if _, err := prepareStateDir(stateDir); err != nil {
 		return nil, err
 	}
+	// Lock before touching the socket so that stale-socket recovery cannot race
+	// with another starting daemon.
+	lock, err := lockStateDir(stateDir)
+	if err != nil {
+		return nil, err
+	}
+	started := false
+	defer func() {
+		if !started {
+			_ = lock.Close()
+		}
+	}()
 	if err := removeStaleSocket(socketPath); err != nil {
 		return nil, err
 	}
@@ -159,11 +179,13 @@ func Listen(stateDir, daemonVersion string) (*Daemon, error) {
 		return nil, err
 	}
 
+	started = true
 	return &Daemon{
 		listener:      listener,
 		socketPath:    socketPath,
 		socketInfo:    socketInfo,
 		daemonVersion: daemonVersion,
+		lock:          lock,
 	}, nil
 }
 
@@ -187,7 +209,11 @@ func (d *Daemon) Serve(ctx context.Context) (serveErr error) {
 	d.serveMu.Unlock()
 
 	if ctx.Err() != nil {
-		return d.Close()
+		closeErr := d.Close()
+		if err := d.releaseLock(); closeErr == nil {
+			closeErr = err
+		}
+		return closeErr
 	}
 
 	closeWatch := make(chan struct{})
@@ -209,6 +235,10 @@ func (d *Daemon) Serve(ctx context.Context) (serveErr error) {
 		}
 		handlers.Wait()
 		<-watcherDone
+		// No request can still act on the state directory; hand it over.
+		if err := d.releaseLock(); serveErr == nil && err != nil {
+			serveErr = err
+		}
 	}()
 
 	for {
@@ -239,7 +269,9 @@ func (d *Daemon) Serve(ctx context.Context) (serveErr error) {
 }
 
 // Close releases the listener and removes only the socket inode created by
-// Listen. It is safe to call repeatedly and during Serve shutdown.
+// Listen. It is safe to call repeatedly and during Serve shutdown. If Serve
+// was never called, Close also releases the state-directory lock; otherwise
+// Serve releases it after in-flight requests finish.
 func (d *Daemon) Close() error {
 	if d == nil {
 		return nil
@@ -267,7 +299,19 @@ func (d *Daemon) Close() error {
 			d.closeErr = fmt.Errorf("remove local socket: %w", err)
 		}
 	})
+	if d.serveStarted() {
+		return d.closeErr
+	}
+	if err := d.releaseLock(); err != nil && d.closeErr == nil {
+		return err
+	}
 	return d.closeErr
+}
+
+func (d *Daemon) serveStarted() bool {
+	d.serveMu.Lock()
+	defer d.serveMu.Unlock()
+	return d.served
 }
 
 // Status queries the read-only Mio status command over the authenticated local

@@ -143,6 +143,10 @@
 ./internal/localipc
 ./internal/localipc/frame.go
 ./internal/localipc/ipc_test.go
+./internal/localipc/lock.go
+./internal/localipc/lock_linux.go
+./internal/localipc/lock_linux_test.go
+./internal/localipc/lock_other.go
 ./internal/localipc/messages.go
 ./internal/localipc/security_linux.go
 ./internal/localipc/security_other.go
