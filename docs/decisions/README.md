@@ -8,9 +8,6 @@ Use `000-template.md`. Accepted initial decisions:
 - `004-workspace-validation.md` — canonical workspace paths; rejection of the filesystem root, home directories, and other protected directories; owner-only roots; filesystem-identity fingerprint v1 and revalidation.
 - `005-workspace-registry-storage.md` — version 1 `workspaces.json` in a directory the caller owns exclusively; no duplicate or overlapping workspaces and none containing the registry; atomic writes and fail-closed reads. Amended 2026-10-16: Mio opens the registry at startup and refuses to serve if it is unusable, and no workspace may contain or lie inside the registry directory.
 - `006-local-workspace-commands.md` — `workspace.add`, `workspace.list`, and `workspace.remove` over IPC v1 with typed error replies and ID-cursor paging that fits each page in one frame; same-UID authorization for registration only, on the local socket only.
-
-Proposed, awaiting confirmation:
-
 - `007-execution-request-v1.md` — the strict `execution.request` payload: exact keys, no nulls, transmitted text preserved exactly, `shell` false only, a workspace-relative working directory, explicit workspace access, network `none` only, sanity-bounded limits, and a request window of at most one hour. The canonical form and action hash remain a follow-up.
 
 Required follow-up ADRs cover device identity, relay transport/reconnect, containment backend, canonical execution requests, audit integrity, MCP authorization, output/redaction, token revocation, and update signing.

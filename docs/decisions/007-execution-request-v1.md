@@ -1,6 +1,6 @@
 # ADR-007: Execution Request v1 Structural Contract
 
-**Status:** Proposed. It awaits the maintainer's confirmation, and no code implements it yet.  
+**Status:** Accepted (proposed, then accepted as written by the maintainer)
 **Date:** 2026-10-16
 
 ## Context

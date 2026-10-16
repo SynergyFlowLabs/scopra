@@ -3,7 +3,7 @@
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
 **Current increment:** Execution request v1 decoding (Step 15)
-**Status:** Proposed. The ADR-007 draft and the checklist below await the maintainer's confirmation, and no code has been written. CI is out of scope for now at the maintainer's request
+**Status:** In progress on `arena/c7a368c1-scopra`: ADR-007 and the acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -949,7 +949,7 @@ Non-goals:
   - Containment and execution. They need rootless Podman, which is not available here, and a decision about which container image runs commands.
 - Pushes to `arena/c7a368c1-scopra`: test checkpoint `5095ae3` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.
 
-### 2026-10-16 — Step 15 (proposed): Execution request v1 decoding
+### 2026-10-16 — Step 15: Execution request v1 decoding
 
 - Selection: after Step 14 the maintainer was told that, without a choice, the plan and API docs would be checked for the execution request shape and option (b) proposed before any code was written. The reply was "Continue", so this entry and the ADR-007 draft are that proposal. Implementation starts only after confirmation; a "continue" accepts the proposal.
 - Research:
@@ -967,7 +967,9 @@ Non-goals:
   - the request window is at most 1 hour, with UTC second-precision timestamps;
   - environment variables, standard input, artifacts, output policy, and the canonical form or action hash are absent from version 1.
 
-#### Acceptance checklist (proposed, not yet agreed)
+- Confirmation: the maintainer replied "Continue", accepting ADR-007 and the checklist below as written.
+
+#### Acceptance checklist (agreed before implementation)
 
 - [ ] ADR-007 is accepted, with any changes the maintainer asks for, and indexed as accepted. `docs/architecture/protocol.md` and the protocol package README describe it.
 - [ ] `protocol.DecodeExecutionRequest(payload)` returns a typed `ExecutionRequest` that follows ADR-007's shape and field rules. Its strict decoding covers size, trailing data, duplicate keys, `null`, invalid UTF-8, invalid `\u` escapes, exact key sets, and integer-only limits. Every error names the field, and no partially valid request is returned.
@@ -983,3 +985,30 @@ Non-goals:
 - Execution results, output chunks, errors, and execution states.
 - Mio accepting remote requests.
 - Policy, approval, and containment.
+
+#### Test-first record
+
+1. **Behaviour checked first** in a scratch program outside the repository:
+   - the ADR example nonce is canonical base64url (16 bytes);
+   - `time.Parse` silently accepts `.5` fractional seconds with the layout `2006-01-02T15:04:05Z`, so a round-trip comparison is needed;
+   - the JSON decoder turns a lone surrogate into U+FFFD without error;
+   - `null` into a `uint64` or `bool` leaves the value unchanged without error;
+   - `1.0`, `1e3`, `-1`, `-0`, and values over 2^64 fail for `uint64`.
+2. **Tests written first** (`packages/protocol/execution_request_test.go`):
+   - `TestDecodeExecutionRequest_AcceptsADRExample` decodes ADR-007's example byte for byte into exact typed values.
+   - `TestSecurity_DecodeExecutionRequestEnforcesFieldRules` covers every field rule with 134 rows, testing both sides of each bound and checking that each rejection names its field and returns no partial request.
+   - `TestSecurity_DecodeExecutionRequestRejectsAmbiguousJSON` covers 23 cases:
+     - size, trailing data, truncation, and a top-level array;
+     - duplicate keys at the top level and nested;
+     - `null` for a value, a nested value, `shell`, an argument, and an object;
+     - invalid UTF-8;
+     - five kinds of invalid `\u` escape, and an escaped NUL;
+     - unknown fields, including one whose name holds an escape sequence that must not appear raw in the error.
+   - `TestDecodeExecutionRequest_PreservesTransmittedText` covers valid escapes.
+   - `TestDecodeExecutionRequest_RequiresEveryFieldAndNoOthers` removes each of the 27 fields, after first checking that this list matches the ADR example. It also adds an unknown field to each of the 5 objects and gives each object the wrong type.
+   - Envelope tests check the message type, both directly and after `DecodeEnvelope`.
+   - `ValidateAt` is tested at both edges of skew and expiry, with a zero clock, and on an invalid request.
+   - `Validate` is tested on typed values: non-UTC or fractional times, NUL or invalid UTF-8, and `shell`.
+   - `FuzzDecodeExecutionRequest` requires that every error wraps `ErrInvalidExecutionRequest`, and that every accepted request passes `Validate` and survives a round trip through an independent wire mirror.
+3. **Build failure.** The new types and functions were undefined.
+4. **Declarations-only skeleton.** It has the final types, constants, and error values; decoding always fails and the methods do nothing. Runtime red: 9 tests failed across 196 subtests. The fuzz seeds passed, as expected, because rejecting everything satisfies the fuzz property.
