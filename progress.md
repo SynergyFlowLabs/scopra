@@ -3,7 +3,7 @@
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
 **Current increment:** Doctor's daemon hint points at a bad registry (Step 13)
-**Status:** In progress on `arena/c7a368c1-scopra`: acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
+**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -796,10 +796,10 @@ Non-goals: revalidation status in `scopra workspace list`, which needs a wire ch
 
 #### Acceptance checklist (agreed before implementation)
 
-- [ ] When the `workspace-registry` check fails and Mio is not running, the `daemon` check's hint says that `scoprad` will not start until the problem reported by the `workspace-registry` check is fixed, and only then says how to start it. The status (`fail`) and detail are unchanged.
-- [ ] Every other daemon result keeps its current hint. This includes an unsafe socket alongside a bad registry, and the not-running hint when the registry check passes.
-- [ ] Doctor stays read-only, the JSON schema stays at version 1, and text output still escapes control characters.
-- [ ] The CLI README's daemon row and this log are updated. The wire protocol, Mio, and the ADRs are unchanged.
+- [x] When the `workspace-registry` check fails and Mio is not running, the `daemon` check's hint says that `scoprad` will not start until the problem reported by the `workspace-registry` check is fixed, and only then says how to start it. The status (`fail`) and detail are unchanged.
+- [x] Every other daemon result keeps its current hint. This includes an unsafe socket alongside a bad registry, and the not-running hint when the registry check passes.
+- [x] Doctor stays read-only, the JSON schema stays at version 1, and text output still escapes control characters.
+- [x] The CLI README's daemon row and this log are updated. The wire protocol, Mio, and the ADRs are unchanged.
 
 Non-goals:
 - Pointing the hint at the `workspaces` check when workspace validation cannot be prepared. That failure cannot be produced in tests here, and that check's own hint already says that `scoprad` will not start.
@@ -812,3 +812,34 @@ Non-goals:
    - `TestRunDoctorChecksWorkspaceRegistry` asserts the daemon hint for each registry outcome. For an invalid or unsafe registry it must begin "scoprad will not start until the problem reported by the workspace-registry check is fixed; " and then say how to start Mio. Otherwise it must be the plain start hint. The daemon detail must stay unchanged in every row.
    - The new `TestRunDoctorKeepsUnsafeSocketHintWithBadRegistry` pins the unsafe-socket hint, word for word, alongside an invalid registry.
 2. **Runtime red.** The tests compiled against the existing code, so no skeleton was needed. Two subtests failed for the intended reason, still getting the plain start hint: `TestRunDoctorChecksWorkspaceRegistry/unsupported_version` and `/group-readable_file`. The unsafe-socket test already passed, as intended. It guards behaviour that must not change, so an implementation that rewrote every daemon hint would fail it.
+
+#### Implementation and verification record
+
+- `cmd/scopra/doctor.go`:
+  - `diagnose` passes `diagnoseDaemon` the name of an earlier failed check that would stop `scoprad` from starting (`blockedBy`). Today that is only `workspace-registry`.
+  - Only the not-running branch uses `blockedBy`. Its hint becomes "scoprad will not start until the problem reported by the workspace-registry check is fixed; then start Mio in the foreground with `scoprad` (pass the same --state-dir, if any)". The status, the detail, and every other branch are unchanged.
+  - The check runs no new I/O, so doctor stays read-only.
+- Documentation: the CLI README's daemon row describes the hint. The wire protocol, Mio, and the ADRs are unchanged.
+- Green: all tests pass under the race detector with no skips.
+- Mutation testing: 8 deliberate, compile-safe mutations, all caught by real test failures:
+  - `blockedBy` never set, or always set;
+  - the blocked prefix added to the unsafe-socket hint too;
+  - an inverted condition;
+  - the hint naming the `workspaces` check;
+  - the start step dropped;
+  - the `workspaces` check run despite a registry failure;
+  - the daemon detail changed.
+- Smoke test with built binaries, using a fresh home directory and the default state directory:
+  - Before Mio ever ran, the plain start hint was shown.
+  - With an unsupported registry version and Mio stopped, the daemon hint pointed at the `workspace-registry` check, in text and in `--json`. `scoprad` then refused to start with "open workspace registry: … unsupported version 2", as the hint says.
+  - After the file was removed, the plain hint returned.
+- Security review: no new input, output channel, or file access. The hint contains only a fixed check name and is escaped like every other hint. No exploitable issue was found.
+- Local verification passed:
+  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `go test -race -count=1 -timeout 60s ./...` and ten repeated race runs of the CLI package;
+  - every package with `CGO_ENABLED=0`;
+  - `git diff --check`;
+  - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64.
+  - The tree is unchanged.
+- Coverage: CLI 90.2% (up from 90.0%); the other packages are unchanged.
+- Pushes to `arena/c7a368c1-scopra`: test checkpoint `3120f08` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.

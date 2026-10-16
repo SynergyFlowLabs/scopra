@@ -140,10 +140,13 @@ func diagnose(ctx context.Context, stateDir string, platform platformInfo) docto
 			var records []registry.Record
 			registryCheck, records = diagnoseWorkspaceRegistry(report.StateDir)
 			workspacesCheck = skippedCheck(checkNameWorkspaces, checkNameWorkspaceRegistry)
-			if registryCheck.Status != checkFail {
+			blockedBy := ""
+			if registryCheck.Status == checkFail {
+				blockedBy = checkNameWorkspaceRegistry // scoprad refuses to start with a bad registry
+			} else {
 				workspacesCheck = diagnoseWorkspaces(report.StateDir, records)
 			}
-			daemonCheck = diagnoseDaemon(ctx, report.StateDir)
+			daemonCheck = diagnoseDaemon(ctx, report.StateDir, blockedBy)
 		}
 	}
 
@@ -349,8 +352,10 @@ func staleReason(err error) string {
 }
 
 // diagnoseDaemon sends Mio the existing authenticated, read-only status
-// request. It never starts Mio or removes a stale socket.
-func diagnoseDaemon(ctx context.Context, stateDir string) doctorCheck {
+// request. It never starts Mio or removes a stale socket. blockedBy names an
+// earlier failed check that would stop scoprad from starting, or is empty; if
+// Mio is not running, the hint then points there before suggesting scoprad.
+func diagnoseDaemon(ctx context.Context, stateDir, blockedBy string) doctorCheck {
 	response, err := localipc.Status(ctx, stateDir)
 	switch {
 	case err == nil:
@@ -363,11 +368,16 @@ func diagnoseDaemon(ctx context.Context, stateDir string) doctorCheck {
 			),
 		}
 	case errors.Is(err, localipc.ErrDaemonUnavailable):
+		hint := "Start Mio in the foreground with `scoprad` (pass the same --state-dir, if any)."
+		if blockedBy != "" {
+			hint = "scoprad will not start until the problem reported by the " + blockedBy +
+				" check is fixed; then start Mio in the foreground with `scoprad` (pass the same --state-dir, if any)."
+		}
 		return doctorCheck{
 			Name:   checkNameDaemon,
 			Status: checkFail,
 			Detail: "Scopra Mio is not running (its socket is missing or refuses connections)",
-			Hint:   "Start Mio in the foreground with `scoprad` (pass the same --state-dir, if any).",
+			Hint:   hint,
 		}
 	case errors.Is(err, localipc.ErrInsecureSocket):
 		return doctorCheck{
