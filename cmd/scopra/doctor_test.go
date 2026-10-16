@@ -196,12 +196,13 @@ func TestRunDoctorReportsInvalidDaemonResponse(t *testing.T) {
 
 func TestRunDoctorChecksDefaultStateDirectory(t *testing.T) {
 	requireLinux(t)
-	cacheDir := t.TempDir()
-	t.Setenv("XDG_CACHE_HOME", cacheDir)
+	stateHome := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", stateHome)
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 
 	report, err := runDoctorJSON(t)
 	requireCheckFailure(t, err)
-	if want := filepath.Join(cacheDir, "scopra", "run"); report.StateDir != want {
+	if want := filepath.Join(stateHome, "scopra"); report.StateDir != want {
 		t.Fatalf("doctor stateDir = %q, want the scoprad default %q", report.StateDir, want)
 	}
 	assertChecks(t, report, "platform=pass", "state-directory=warn", "daemon=fail")
@@ -209,14 +210,34 @@ func TestRunDoctorChecksDefaultStateDirectory(t *testing.T) {
 
 func TestRunDoctorFailsWhenStateDirectoryCannotBeResolved(t *testing.T) {
 	requireLinux(t)
-	t.Setenv("XDG_CACHE_HOME", "")
-	t.Setenv("HOME", "")
+	tests := []struct {
+		name      string
+		stateHome string
+		home      string
+	}{
+		{name: "neither XDG_STATE_HOME nor HOME"},
+		{name: "relative XDG_STATE_HOME", stateHome: "relative/state", home: t.TempDir()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("XDG_STATE_HOME", tt.stateHome)
+			t.Setenv("HOME", tt.home)
+			// A usable cache directory must not become a fallback.
+			t.Setenv("XDG_CACHE_HOME", t.TempDir())
 
-	report, err := runDoctorJSON(t)
-	requireCheckFailure(t, err)
-	assertChecks(t, report, "platform=pass", "state-directory=fail", "daemon=skip")
-	if report.StateDir != "" {
-		t.Fatalf("doctor stateDir = %q, want empty when it cannot be resolved", report.StateDir)
+			report, err := runDoctorJSON(t)
+			requireCheckFailure(t, err)
+			assertChecks(t, report, "platform=pass", "state-directory=fail", "daemon=skip")
+			if report.StateDir != "" {
+				t.Fatalf("doctor stateDir = %q, want empty when it cannot be resolved", report.StateDir)
+			}
+			hint := findCheck(t, report, "state-directory").Hint
+			for _, want := range []string{"XDG_STATE_HOME", "--state-dir"} {
+				if !strings.Contains(hint, want) {
+					t.Fatalf("state-directory hint = %q, want it to mention %s", hint, want)
+				}
+			}
+		})
 	}
 }
 
