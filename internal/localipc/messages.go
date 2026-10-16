@@ -27,6 +27,10 @@ type request struct {
 	ProtocolVersion int    `json:"protocolVersion"`
 	RequestID       string `json:"requestId"`
 	Command         string `json:"command"`
+	// Skeleton for the Step 9 tests: workspace fields are not on the wire yet.
+	Path   string `json:"-"`
+	ID     string `json:"-"`
+	Cursor string `json:"-"`
 }
 
 // StatusResponse is the versioned read-only status reply from Mio.

@@ -24,6 +24,9 @@ var (
 	ErrHomeUnknown = errors.New("workspace: cannot determine the current user's home directory")
 	// ErrInvalidPath reports a path that is not absolute or not valid UTF-8.
 	ErrInvalidPath = errors.New("workspace: path must be absolute and valid UTF-8")
+	// ErrUnresolvable reports a workspace path that cannot be resolved.
+	// Skeleton for the Step 9 tests: not returned yet.
+	ErrUnresolvable = errors.New("workspace: path cannot be resolved")
 	// ErrNotDirectory reports a workspace path that does not resolve to a directory.
 	ErrNotDirectory = errors.New("workspace: path is not a directory")
 	// ErrProtectedPath reports a directory that is, or contains, a protected location.

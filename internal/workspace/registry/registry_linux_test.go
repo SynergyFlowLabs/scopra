@@ -341,6 +341,7 @@ func TestSecurity_OpenRejectsCorruptRegistry(t *testing.T) {
 		{name: "unclean path", content: registryJSON(recordJSON(id, "/srv/a/../b"))},
 		{name: "trailing slash", content: registryJSON(recordJSON(id, "/srv/a/"))},
 		{name: "filesystem root", content: registryJSON(recordJSON(id, "/"))},
+		{name: "path longer than 4095 bytes", content: registryJSON(recordJSON(id, "/"+strings.Repeat("p", MaxPathBytes)))},
 		{name: "duplicate paths", content: registryJSON(recordJSON(id, "/srv/a"),
 			recordJSON(strings.Repeat("f", 32), "/srv/a"))},
 		{name: "overlapping paths", content: registryJSON(recordJSON(id, "/srv/a"),
@@ -457,12 +458,13 @@ func TestSecurity_FailedWriteLeavesRegistryUnchanged(t *testing.T) {
 }
 
 func TestEncodeNeverWritesWhatOpenWouldReject(t *testing.T) {
-	// Long paths can make even a legal number of records exceed the read limit.
+	// The longest storable paths make even a legal number of records exceed
+	// the read limit.
 	records := make([]Record, 0, maxWorkspaces)
 	for index := range maxWorkspaces {
 		records = append(records, Record{
 			ID:        fmt.Sprintf("%032x", index),
-			Workspace: workspace.Workspace{Path: fmt.Sprintf("/%04d/%s", index, strings.Repeat("p", 4090))},
+			Workspace: workspace.Workspace{Path: fmt.Sprintf("/%04d/%s", index, strings.Repeat("p", MaxPathBytes-6))},
 		})
 	}
 

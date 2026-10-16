@@ -79,9 +79,23 @@ func TestInspectRejectsMissingPaths(t *testing.T) {
 	symlink(t, filepath.Join(base, "missing-target"), dangling)
 
 	for _, path := range []string{filepath.Join(base, "missing"), dangling} {
-		if _, err := validator.Inspect(path); !errors.Is(err, os.ErrNotExist) {
-			t.Errorf("Inspect(%q) error = %v, want os.ErrNotExist", path, err)
+		_, err := validator.Inspect(path)
+		if !errors.Is(err, ErrUnresolvable) || !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("Inspect(%q) error = %v, want ErrUnresolvable wrapping os.ErrNotExist", path, err)
 		}
+	}
+}
+
+func TestInspectReportsUnresolvablePaths(t *testing.T) {
+	validator := newTestValidator(t)
+	file := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	// A path that continues through a regular file cannot be resolved.
+	if _, err := validator.Inspect(filepath.Join(file, "child")); !errors.Is(err, ErrUnresolvable) {
+		t.Fatalf("Inspect(path through a file) error = %v, want ErrUnresolvable", err)
 	}
 }
 

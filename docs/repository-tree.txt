@@ -153,6 +153,9 @@
 ./internal/localipc/security_linux.go
 ./internal/localipc/security_other.go
 ./internal/localipc/socket.go
+./internal/localipc/workspaces.go
+./internal/localipc/workspaces_linux_test.go
+./internal/localipc/workspaces_test.go
 ./internal/policy
 ./internal/policy/README.md
 ./internal/redaction

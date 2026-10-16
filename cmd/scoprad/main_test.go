@@ -5,11 +5,14 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/SynergyFlowLabs/scopra/internal/localipc"
 	"github.com/SynergyFlowLabs/scopra/internal/workspace"
@@ -177,6 +180,73 @@ func TestRunStartsWithMissingOrValidWorkspaceRegistry(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRunServesWorkspaceCommands(t *testing.T) {
+	requireLinux(t)
+	stateDir := makeStateDir(t)
+	workspaceDir := makeStateDir(t) // any owner-only directory outside the state directory
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	stderr := &signalOnWrite{written: make(chan struct{})}
+	done := make(chan error, 1)
+	go func() { done <- run(ctx, []string{"--state-dir", stateDir}, io.Discard, stderr) }()
+	select {
+	case <-stderr.written:
+	case err := <-done:
+		t.Fatalf("run() returned before serving: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("scoprad did not report startup")
+	}
+	if !strings.Contains(stderr.String(), "listening") {
+		t.Fatalf("daemon startup did not report listener startup: %q", stderr.String())
+	}
+
+	requestCtx, requestCancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer requestCancel()
+	added, err := localipc.AddWorkspace(requestCtx, stateDir, workspaceDir)
+	if err != nil {
+		t.Fatalf("AddWorkspace() error = %v", err)
+	}
+	listed, err := localipc.ListWorkspaces(requestCtx, stateDir)
+	if err != nil {
+		t.Fatalf("ListWorkspaces() error = %v", err)
+	}
+	if len(listed) != 1 || listed[0] != added || added.Path != workspaceDir {
+		t.Fatalf("ListWorkspaces() = %+v, want only %q", listed, workspaceDir)
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("run() after cancellation error = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("scoprad did not stop after cancellation")
+	}
+}
+
+// signalOnWrite records output and closes written after the first write.
+type signalOnWrite struct {
+	written chan struct{}
+	once    sync.Once
+	mu      sync.Mutex
+	buffer  bytes.Buffer
+}
+
+func (w *signalOnWrite) Write(data []byte) (int, error) {
+	w.mu.Lock()
+	n, err := w.buffer.Write(data)
+	w.mu.Unlock()
+	w.once.Do(func() { close(w.written) })
+	return n, err
+}
+
+func (w *signalOnWrite) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.buffer.String()
 }
 
 func TestWorkspaceValidatorProtectsStateDirectory(t *testing.T) {

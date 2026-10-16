@@ -31,6 +31,14 @@ const (
 	maxFileBytes = 1 << 20
 )
 
+// Skeleton for the Step 9 tests: declared but not enforced yet.
+const (
+	// MaxPathBytes is the longest workspace path the registry stores.
+	MaxPathBytes = 4095
+	// MaxWorkspaces is the largest number of registered workspaces.
+	MaxWorkspaces = maxWorkspaces
+)
+
 var (
 	// ErrUnsupportedPlatform reports that the registry is unavailable on this platform.
 	ErrUnsupportedPlatform = errors.New("registry: unsupported on this platform")
