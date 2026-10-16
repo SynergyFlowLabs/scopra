@@ -3,7 +3,7 @@
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
 **Current increment:** Mio foreground status service and Mariner local IPC foundation
-**Status:** Implemented; final checks and push in progress
+**Status:** Implemented and pushed; local checks passed; Actions did not start jobs
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -12,7 +12,7 @@ This file is the running engineering log. Each increment records scope, verifica
 - The repository was an initial planning scaffold at kickoff: no Go source files or `go.mod` existed; CI only checked documentation and secret-file presence.
 - Scopra remains the umbrella product. The Mercury-inspired component names are documented in `docs/product/naming.md`.
 - The sandbox initially had no Go compiler. A temporary Go 1.26.9 toolchain was built from official `golang/go` source tags under `/tmp`; no toolchain artifacts are committed.
-- GitHub Actions push runs currently return `startup_failure` before creating jobs. The implementation push run `38851033476` had zero jobs; local Go verification is working, but Actions provides no code-test result.
+- GitHub Actions push runs currently return `startup_failure` before creating jobs. Latest run `38854979363` for `90724b2` had no jobs or logs; prior implementation runs `38851033476` and `38851101051` failed the same way. Local Go verification passed, but Actions provides no code-test result.
 
 ## Working practices
 
@@ -62,4 +62,4 @@ This file is the running engineering log. Each increment records scope, verifica
 - This endpoint is read-only and exposes status only. It does not register workspaces, authorize actions, connect to the cloud, or execute commands. These remain mandatory future increments.
 - Security review covered untrusted JSON, filesystem paths and permissions, peer authentication, fail-closed errors, resource limits, and the IPC trust boundary. No high-confidence exploitable issue remains in this status-only slice; the same-UID limitation and all missing execution authorization are documented.
 - Local verification passed: `make bootstrap`, `make lint`, `make test`, `make security-test`, `go test -race -count=1 -timeout 60s ./...`, and `git diff --check`. Coverage: local IPC 75.5%, build info 100%, CLI 53.8%, daemon 55.3%. The final 10-second IPC decoder fuzz run completed 89,260 executions without a crash or failure.
-- The repository tree was regenerated. Final step: commit and push this increment to `arena/0b81a55b-scopra`, then check GitHub Actions.
+- The repository tree was regenerated. Commit `90724b2` (`feat(local): add Mio status IPC foundation`) was pushed to `arena/0b81a55b-scopra`. GitHub Actions run `38854979363` for that commit ended in `startup_failure` before creating jobs/logs; it is not a code-test result.
