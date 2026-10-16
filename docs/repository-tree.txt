@@ -59,6 +59,7 @@
 ./docs/plans/00-full-implementation-plan.md
 ./docs/product
 ./docs/product/alpha-scope.md
+./docs/product/naming.md
 ./docs/repository-tree.txt
 ./docs/security
 ./docs/security/risk-register.md

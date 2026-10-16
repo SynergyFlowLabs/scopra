@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-Scopra is a secure execution gateway that lets AI agents interact with approved developer environments without unrestricted machine access. A local daemon registers workspaces, connects outbound to the control plane, enforces local policy, executes permitted operations in rootless isolation, and returns structured results.
+Scopra is a secure execution gateway that lets AI agents interact with approved developer environments without unrestricted machine access. **Scopra Mariner** provides CLI/TUI onboarding and machine enrollment. **Scopra Mio**, the local daemon, registers workspaces and connects outbound to **Scopra Caloris**, the cloud control plane, over **Scopra Goldstone**, the machine relay, using the **Scopra Messenger Protocol**. **Scopra Resolution** evaluates policy and **Scopra Rupes** is the local enforcement boundary; authorized operations run in **Scopra Hollow**, a rootless isolated environment, and attributable events are recorded in **Scopra Catena**. **Scopra Facula** is the planned security-signal and anomaly-detection layer.
 
 > Give agents enough access to complete the task, never unlimited access to the machine.
 
@@ -71,7 +71,7 @@ Governs shared machines, agents, policies, approvals, identity lifecycle, and re
 ## Alpha Scope
 
 - Linux x86_64
-- Go daemon and CLI/TUI
+- Go Scopra Mio local daemon and Scopra Mariner CLI/TUI
 - Short-lived device enrollment
 - Authenticated outbound machine channel
 - Workspace registration

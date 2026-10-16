@@ -19,7 +19,7 @@ External attacker, compromised agent, prompt-injected agent, malicious repositor
 ## Boundaries
 
 ```text
-AI host -> cloud edge -> control plane -> outbound machine channel -> daemon -> rootless worker -> workspace/network
+AI host -> Scopra Caloris -> Scopra Goldstone / Messenger -> Scopra Mio -> Scopra Rupes -> Scopra Hollow -> workspace / network
 ```
 
 ## Security Invariants
