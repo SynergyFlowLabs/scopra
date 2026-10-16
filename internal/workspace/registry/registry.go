@@ -122,12 +122,9 @@ func Open(dir string, validator *workspace.Validator) (*Registry, error) {
 // diagnostic such as scopra doctor may call it while Mio owns dir: Mio
 // replaces the file atomically. A missing directory is reported as
 // os.ErrNotExist.
-func Check(dir string) (int, error) {
-	_, records, err := load(dir)
-	if err != nil {
-		return 0, err
-	}
-	return len(records), nil
+func Check(dir string) ([]Record, error) {
+	_, _, err := load(dir)
+	return nil, err // skeleton: registrations are not returned yet
 }
 
 // load reads and validates the registry stored in dir without writing, and

@@ -215,7 +215,8 @@ func diagnoseStateDir(stateDir string) (string, doctorCheck) {
 func diagnoseWorkspaceRegistry(stateDir string) doctorCheck {
 	file := filepath.Join(stateDir, registry.FileName)
 	const removal = " Removing the file unregisters every workspace but changes no directory."
-	count, err := registry.Check(stateDir)
+	records, err := registry.Check(stateDir)
+	count := len(records)
 	switch {
 	case errors.Is(err, os.ErrNotExist):
 		return doctorCheck{

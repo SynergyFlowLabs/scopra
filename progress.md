@@ -2,8 +2,8 @@
 
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
-**Current increment:** Doctor checks the workspace registry (Step 11)
-**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
+**Current increment:** Doctor revalidates registered workspaces (Step 12)
+**Status:** In progress on `arena/c7a368c1-scopra`: acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -693,3 +693,37 @@ Non-goals: revalidating registered workspaces; repairing or removing the file; r
   - Removal by path.
   - Containment and execution, which need rootless Podman. That is not available here, and CI is still blocked by an organization setting.
 - Pushes to `arena/c7a368c1-scopra`: test checkpoint `2bc83ca` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.
+
+### 2026-10-16 — Step 12: Doctor revalidates registered workspaces
+
+- Selection: the maintainer again replied "Continue next" without answering whether rootless Podman is available. The README's alpha defaults fix the shape of containment (rootless Podman, workspace-only mounts, network off, an empty environment, no PTY, and no native fallback). Two things remain open: the product decision of which container image runs commands, and any way to test execution here. This step is therefore the smallest useful one that needs neither, and it was offered at the end of Step 11.
+- Doctor revalidates registered workspaces, filling the gap that Step 11 recorded as `workspace revalidation` in `notChecked`. Doctor reads the registry file, so it has each record's fingerprint and can apply ADR-004's read-only `Revalidate`. `scopra workspace list` cannot do this without a wire change, because its replies carry no fingerprints.
+- `registry.Check` returns the registrations instead of a count, so that doctor gets the records from the same validated read.
+
+#### Acceptance checklist (agreed before implementation)
+
+- [ ] `registry.Check(dir)` returns the registrations, sorted by path, from the same read-only validation as before.
+- [ ] `scopra doctor` runs a `workspaces` check after `workspace-registry` and before `daemon`. It revalidates each registration under ADR-004 with the validator configuration that Mio uses, which protects the state directory:
+  - `pass` when none are registered or all still qualify;
+  - `warn` naming up to five stale registrations, each with its ID, its path, and a short reason (missing, not a directory, not owned by you, is or contains a protected location, or changed since it was registered), plus a count of any others. The hint says to restore the directory or to run `scopra workspace remove ID`, which does not change the directory;
+  - `fail` when validation cannot be prepared, because `scoprad` would not start either;
+  - `skip` when the platform, state-directory, or workspace-registry check failed.
+- [ ] Doctor stays read-only: it never changes the registry file, the workspaces, or their contents, and a warning does not change the exit status (`0`).
+- [ ] `notChecked` no longer lists `workspace revalidation`. The JSON schema stays at version 1, and text output escapes control characters in the new detail.
+- [ ] The CLI README, the plan, and this log are updated. The wire protocol, Mio, and the ADRs are unchanged.
+
+Non-goals: revalidation status in `scopra workspace list`, which needs a wire change; removing stale registrations automatically; execution-time revalidation; changing the daemon check's hint; and containment.
+
+#### Test-first record
+
+1. **Tests written first.**
+   - The registry test `TestCheckReturnsRegistrationsWithoutWriting` (renamed from `TestCheckCountsRegistrationsWithoutWriting`) expects `Check` to return the same records, sorted by path, that `List` returns. The other `Check` tests now expect no records alongside each error.
+   - The doctor tests expect a `workspaces` check after `workspace-registry` in every check sequence: `pass` without registrations, and `skip` when an earlier check failed. In the Step 11 table, registrations whose directories do not exist now expect `warn`. The `notChecked` list must be exactly enrollment, relay, policy, containment, and execution.
+   - New doctor tests:
+     - `TestRunDoctorRevalidatesRegisteredWorkspaces` registers real directories through `registry.Open` and `Add` with Mio's validator configuration. It covers seven cases: one and all qualifying; a deleted, a replaced, and a file-swapped directory; two of three missing; and seven stale, of which five are listed plus "and 2 more". It also checks which records are named, the hint, an unchanged registry file, and that a deleted workspace is not recreated.
+     - `TestRunDoctorWarnsWithoutFailingWhenOnlyWorkspacesAreStale` checks exit 0 and result `warn` while Mio responds.
+     - `TestRunDoctorEscapesControlCharactersInStaleWorkspaces` covers an escape sequence and a newline in a stale path.
+2. **Build failure.** The registry tests did not compile, with 6 type errors, because `Check` still returned a count. The CLI tests compiled against existing APIs and 16 failed at runtime: every check sequence lacked `workspaces`, the human report still listed workspace revalidation, and so on.
+3. **Declarations-only skeleton.** `Check` returned `([]Record, error)` without any records, and doctor compiled against it by counting them. Runtime red:
+   - registry: only `TestCheckReturnsRegistrationsWithoutWriting` failed (`Check() = [], <nil>`);
+   - CLI: the same 16 tests failed.

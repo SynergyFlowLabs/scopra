@@ -288,22 +288,23 @@ func TestSecurity_OpenRejectsUnsafeRegistryFile(t *testing.T) {
 	}
 }
 
-func TestCheckCountsRegistrationsWithoutWriting(t *testing.T) {
+func TestCheckReturnsRegistrationsWithoutWriting(t *testing.T) {
 	dir := makeRegistryDir(t)
-	if count, err := Check(dir); err != nil || count != 0 {
-		t.Fatalf("Check(without a registry file) = %d, %v; want 0, nil", count, err)
+	if records, err := Check(dir); err != nil || len(records) != 0 {
+		t.Fatalf("Check(without a registry file) = %+v, %v; want no registrations", records, err)
 	}
 	requireDirEntries(t, dir)
 
 	registry := mustOpen(t, dir, newValidator(t))
 	base := t.TempDir()
-	mustAdd(t, registry, makeDir(t, base, "a"))
 	mustAdd(t, registry, makeDir(t, base, "b"))
+	mustAdd(t, registry, makeDir(t, base, "a"))
 	file := filepath.Join(dir, "workspaces.json")
 	before := string(readFile(t, file))
 
-	if count, err := Check(dir); err != nil || count != 2 {
-		t.Fatalf("Check() = %d, %v; want 2, nil", count, err)
+	records, err := Check(dir)
+	if err != nil || len(records) != 2 || !slices.Equal(records, registry.List()) {
+		t.Fatalf("Check() = %+v, %v; want the two registrations sorted by path, as List returns them", records, err)
 	}
 	if got := string(readFile(t, file)); got != before {
 		t.Fatal("Check() changed the registry file")
@@ -314,8 +315,8 @@ func TestCheckCountsRegistrationsWithoutWriting(t *testing.T) {
 func TestCheckReportsMissingDirectory(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "missing")
 
-	if count, err := Check(missing); !errors.Is(err, os.ErrNotExist) || count != 0 {
-		t.Fatalf("Check(missing directory) = %d, %v; want 0 and os.ErrNotExist", count, err)
+	if records, err := Check(missing); !errors.Is(err, os.ErrNotExist) || records != nil {
+		t.Fatalf("Check(missing directory) = %+v, %v; want os.ErrNotExist", records, err)
 	}
 	if _, err := os.Lstat(missing); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("Check() created the directory (Lstat error = %v)", err)
@@ -328,8 +329,8 @@ func TestSecurity_CheckRejectsUnsafeRegistryFile(t *testing.T) {
 			dir := makeRegistryDir(t)
 			verifyUnchanged := occupant.plant(t, filepath.Join(dir, "workspaces.json"))
 
-			if count, err := checkWithin(t, dir, 5*time.Second); !errors.Is(err, ErrInsecureRegistry) || count != 0 {
-				t.Fatalf("Check() = %d, %v; want 0 and ErrInsecureRegistry", count, err)
+			if records, err := checkWithin(t, dir, 5*time.Second); !errors.Is(err, ErrInsecureRegistry) || records != nil {
+				t.Fatalf("Check() = %+v, %v; want ErrInsecureRegistry", records, err)
 			}
 			verifyUnchanged(t)
 		})
@@ -357,8 +358,8 @@ func TestSecurity_CheckRejectsInvalidRegistry(t *testing.T) {
 			content := test.content(dir)
 			writeFile(t, file, content)
 
-			if count, err := Check(dir); !errors.Is(err, ErrCorruptRegistry) || count != 0 {
-				t.Fatalf("Check() = %d, %v; want 0 and ErrCorruptRegistry", count, err)
+			if records, err := Check(dir); !errors.Is(err, ErrCorruptRegistry) || records != nil {
+				t.Fatalf("Check() = %+v, %v; want ErrCorruptRegistry", records, err)
 			}
 			if got := string(readFile(t, file)); got != content {
 				t.Fatal("Check() changed the registry file")
@@ -727,23 +728,23 @@ func openWithin(
 
 // checkWithin calls Check but fails the test instead of hanging if Check
 // blocks, for example on a FIFO planted at the registry path.
-func checkWithin(t *testing.T, dir string, timeout time.Duration) (int, error) {
+func checkWithin(t *testing.T, dir string, timeout time.Duration) ([]Record, error) {
 	t.Helper()
 	type result struct {
-		count int
-		err   error
+		records []Record
+		err     error
 	}
 	done := make(chan result, 1)
 	go func() {
-		count, err := Check(dir)
-		done <- result{count: count, err: err}
+		records, err := Check(dir)
+		done <- result{records: records, err: err}
 	}()
 	select {
 	case got := <-done:
-		return got.count, got.err
+		return got.records, got.err
 	case <-time.After(timeout):
 		t.Fatalf("Check() did not return within %v", timeout)
-		return 0, nil
+		return nil, nil
 	}
 }
 
