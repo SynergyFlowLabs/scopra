@@ -3,7 +3,7 @@
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
 **Current increment:** Workspace commands over local IPC (Step 9)
-**Status:** In progress on `arena/c7a368c1-scopra`: acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
+**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -24,7 +24,7 @@ This file is the running engineering log. Each increment records scope, verifica
 ## Roadmap
 
 1. **Protocol foundation** — envelope v1 structural validation is implemented and locally verified. Typed execution requests/results, canonical approval binding, cryptographic verification, replay storage, and compatibility/version guarantees remain pending.
-2. **Local daemon and CLI** — the initial foreground Mio status service with a persistent per-user state directory and an exclusive state-directory lock, Mariner `scopra status`, and a minimal read-only `scopra doctor` (platform, state-directory, and daemon checks) are implemented. Workspace validation (ADR-004) and registry storage (ADR-005) exist, and Mio checks its registry at startup. Workspace CRUD, broader doctor checks, execution, service installation, and expanded CLI/IPC authorization remain pending.
+2. **Local daemon and CLI** — the initial foreground Mio status service with a persistent per-user state directory and an exclusive state-directory lock, Mariner `scopra status`, and a minimal read-only `scopra doctor` (platform, state-directory, and daemon checks) are implemented. Workspace validation (ADR-004) and registry storage (ADR-005) exist; Mio checks its registry at startup and serves add, list, and remove over local IPC (ADR-006). The `scopra workspace` CLI, broader doctor checks, execution, service installation, and expanded CLI/IPC authorization remain pending.
 3. **Policy and containment boundary** — implement default-deny policy and rootless containment before enabling execution; no native fallback.
 4. **Structured execution and audit** — limits, cancellation, bounded output, and attributable events with adversarial tests.
 5. **Enrollment, relay, approvals, and integrations** — proceed only after local foundations and security invariants are testable.
@@ -443,11 +443,11 @@ Non-goals: workspace IPC commands and the `scopra workspace` CLI; keeping the lo
 
 #### Acceptance checklist (agreed before implementation)
 
-- [ ] Once its registry is open, Mio serves `workspace.add {path}`, `workspace.list {cursor}`, and `workspace.remove {id}` over IPC v1, each with an exact key set. `localipc` provides the client functions `AddWorkspace`, `ListWorkspaces` (which follows every page and returns records sorted by path), and `RemoveWorkspace`. Records carry only an ID and a canonical path.
-- [ ] A failed workspace operation returns an error reply. Its code comes from a closed set (`invalid_path`, `unresolvable_path`, `not_directory`, `protected_path`, `not_owned`, `already_registered`, `overlap`, `registry_full`, `not_found`, `internal`) and its message is bounded. Malformed requests still get no reply: invalid UTF-8, unknown or wrongly cased keys, bad IDs or cursors, empty or overlong paths, and unknown commands. A daemon without a registry treats workspace commands as unknown, and Mio never resolves a relative path.
-- [ ] Every list page fits in one 64 KiB frame and holds at least one record while any remain. Following `nextCursor` returns each record exactly once while the registry is unchanged, even with 4095-byte, escape-heavy paths. `registry.Open` rejects paths longer than 4095 bytes, and the client rejects pages that do not advance.
-- [ ] The status request and reply encodings are unchanged, so older clients keep working. Existing status, peer-credential, framing, lock, and doctor tests pass unchanged. `scoprad` serves the new commands end to end.
-- [ ] ADR-006 records the commands, the error replies, paging, compatibility, and authorization, and ADR-003 notes where ADR-006 extends and qualifies it. The ADR index, READMEs, plan, architecture overview, and this log are updated.
+- [x] Once its registry is open, Mio serves `workspace.add {path}`, `workspace.list {cursor}`, and `workspace.remove {id}` over IPC v1, each with an exact key set. `localipc` provides the client functions `AddWorkspace`, `ListWorkspaces` (which follows every page and returns records sorted by path), and `RemoveWorkspace`. Records carry only an ID and a canonical path.
+- [x] A failed workspace operation returns an error reply. Its code comes from a closed set (`invalid_path`, `unresolvable_path`, `not_directory`, `protected_path`, `not_owned`, `already_registered`, `overlap`, `registry_full`, `not_found`, `internal`) and its message is bounded. Malformed requests still get no reply: invalid UTF-8, unknown or wrongly cased keys, bad IDs or cursors, empty or overlong paths, and unknown commands. A daemon without a registry treats workspace commands as unknown, and Mio never resolves a relative path.
+- [x] Every list page fits in one 64 KiB frame and holds at least one record while any remain. Following `nextCursor` returns each record exactly once while the registry is unchanged, even with 4095-byte, escape-heavy paths. `registry.Open` rejects paths longer than 4095 bytes, and the client rejects pages that do not advance.
+- [x] The status request and reply encodings are unchanged, so older clients keep working. Existing status, peer-credential, framing, lock, and doctor tests pass unchanged. `scoprad` serves the new commands end to end.
+- [x] ADR-006 records the commands, the error replies, paging, compatibility, and authorization, and ADR-003 notes where ADR-006 extends and qualifies it. The ADR index, READMEs, plan, architecture overview, and this log are updated.
 
 Non-goals: the `scopra workspace` CLI; approvals or any other authorization of actions; revalidation status in listings; renaming or updating workspaces; a new protocol version; longer timeouts for commands that change state; a doctor check for the registry; any Caloris, Goldstone, or Messenger path for workspaces.
 
@@ -466,3 +466,57 @@ Non-goals: the `scopra workspace` CLI; approvals or any other authorization of a
   - `cmd/scoprad`: `TestRunServesWorkspaceCommands`, end to end through `run`.
 - First red: all four packages failed to build, on exactly the declarations this step introduces. These include `localipc.Workspace`, `WorkspaceError`, the error codes, `AddWorkspace`, `ListWorkspaces`, `RemoveWorkspace`, `Daemon.EnableWorkspaces`, the request fields, `registry.MaxPathBytes`, `registry.MaxWorkspaces`, and `workspace.ErrUnresolvable`.
 - With declarations-only skeletons, 20 tests failed at runtime. The other 126 passed, and so did one table: the 21 malformed requests pass because today's decoder rejects every workspace command. That table is a guard paired with the encoding test, which fails, so the new decoder must accept valid requests and still reject every malformed one.
+
+#### Implementation and verification record
+
+- `internal/localipc`:
+  - `messages.go`: `decodeRequest` reads `command` first, then requires exactly that command's keys and decodes each field strictly, rejecting `null` and wrong types. `checkJSONDocument` adds a whole-document UTF-8 check to the existing size, syntax, and duplicate-key checks. `encodeRequest` uses explicit per-command structs, so status bytes are unchanged.
+  - `workspaces.go`: the client functions, `EnableWorkspaces`, the dispatcher, paging, the error mapping, and strict reply decoding. Nested objects get the same exact-key checks as the top level.
+  - `socket.go`: `Status`'s connection logic became a shared `roundTrip` that validates the request before touching the filesystem and keeps status's error wording. Requests are dispatched through `reply`.
+- `internal/workspace` gains `ErrUnresolvable`, wrapped together with the underlying error, so existing `os.ErrNotExist` checks still hold. `registry.Open` bounds paths at `MaxPathBytes` (4095), and `MaxWorkspaces` is exported. `scoprad` enables workspace dispatch with the registry it opened.
+- Documentation: ADR-006 is new. ADR-003 notes where ADR-006 extends and qualifies it, and the risk register's R-01 now lists no access to Mio's state directory or socket. The ADR index, READMEs, plan, architecture overview, and tree are updated.
+- Green: all tests pass under the race detector with no skips.
+- Added after the first green run, each for a gap found by reasoning or mutation:
+  - `TestListWorkspacesSortsByPath`, using a fixed registry whose ID order is the reverse of its path order. With random IDs, a missing client sort would only sometimes be caught.
+  - An error message of 1000 invalid bytes, showing that the message must be made valid UTF-8 before it is truncated.
+  - `TestWorkspacePagesFitFramesWhenRecordsFillThePage`, after the mutation that removes the budget margin survived. It sweeps path lengths so that some page fills its budget almost exactly.
+  - `TestSecurity_ListWorkspacesStopsAnEndlessListing`, with a fake daemon that always answers with another valid page.
+- 34 deliberate, compile-safe mutations, each caught by real test failures:
+  - Protocol strictness: invalid UTF-8 accepted; `null` accepted as a string; per-command key sets skipped; no path bound; no cursor or ID validation; workspace fields on status; status encoding gaining a key.
+  - Dispatch: an error reply instead of silence without a registry; `EnableWorkspaces` allowed after `Serve` or with `nil`; `scoprad` not enabling workspaces.
+  - Paging: the cursor record included again; the next cursor dropped; the budget ignored; the budget margin removed.
+  - Client: no sort by path; non-ascending pages, any next cursor, or non-strict nested objects accepted; error replies decoded with success keys; request ID, version, path form, or error code not checked; the listing unbounded.
+  - Errors: unresolvable mapped to `invalid_path`; no truncation; truncation splitting characters; truncation before the message is made valid.
+  - Remove: replying without the path; never removing.
+  - Libraries: the registry path bound not enforced; `ErrUnresolvable` not wrapped.
+  - Two mutations first failed to compile, because each left an import or variable unused. Rerun in compile-safe form, both were caught.
+- Smoke test with built binaries and an independent Python client speaking the wire format:
+  - `add` replies with the canonical path, including through a symlink. Error replies carried the codes `invalid_path` (relative path), `unresolvable_path`, `already_registered` (naming the existing ID), `protected_path` (the state directory), and `not_found`.
+  - `list` and `remove` work, and registrations survive a restart in a `0600` file.
+  - A real `0xFF` byte, an extra key, and an unknown command each got no reply. A JSON lone-surrogate escape decoded to U+FFFD and was reported, as ADR-006 states.
+  - Compatibility with the binaries from before this step (`9e300e3`): the old `scopra status` works against the new `scoprad`, and the new `scopra status` against the old one. A workspace command to the old daemon gets the connection closed. Doctor passes.
+  - Harness note: the first invalid-UTF-8 smoke check sent a literal backslash-`xff`, because bash does not expand escapes in double quotes. That tested invalid JSON, not invalid UTF-8. Rerun with a real byte, it got no reply and registered nothing.
+- Security review covered:
+  - authorization scope (same-UID registration on the local socket only, never through Caloris, Goldstone, or Messenger, and not acceptable for approvals);
+  - the future sandbox requirement (no socket in workspaces), now recorded in R-01;
+  - input bounds (frame, path, ID, cursor, message, and page);
+  - silent UTF-8 replacement;
+  - relative paths, which never reach a lookup;
+  - client termination against a misbehaving daemon;
+  - error text (bounded, valid UTF-8, to be escaped on display);
+  - status compatibility.
+  No high-confidence exploitable issue was found. Same-UID processes can register and remove workspaces, which ADR-006 records as a deliberate limit.
+- Local verification passed:
+  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `go test -race -count=1 -timeout 120s ./...` and ten repeated race runs of the IPC, daemon, and workspace packages;
+  - the command and internal packages with `CGO_ENABLED=0`;
+  - `git diff --check`;
+  - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64.
+- Coverage: local IPC 82.4% (up from 77.4%), daemon 63.3% (up from 61.4%), registry 93.1% (up from 93.0%), workspace 93.1%, CLI 80.1%, build info 100%, protocol 89.4%. The worst-case paging test takes about 4 seconds under the race detector and 0.3 seconds without it.
+- Follow-ups, not part of this increment:
+  - the `scopra workspace add/list/remove` CLI (Step 10), which must make paths absolute before sending them and escape Mio's messages;
+  - a read-only doctor check for the registry;
+  - revalidation status in listings;
+  - cleanup of stale temporary files;
+  - a decision on approvals and user presence before any command that authorizes an action.
+- Pushes to `arena/c7a368c1-scopra`: test checkpoint `f93a06f` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.

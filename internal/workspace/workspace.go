@@ -24,8 +24,9 @@ var (
 	ErrHomeUnknown = errors.New("workspace: cannot determine the current user's home directory")
 	// ErrInvalidPath reports a path that is not absolute or not valid UTF-8.
 	ErrInvalidPath = errors.New("workspace: path must be absolute and valid UTF-8")
-	// ErrUnresolvable reports a workspace path that cannot be resolved.
-	// Skeleton for the Step 9 tests: not returned yet.
+	// ErrUnresolvable reports a workspace path that cannot be resolved, for
+	// example because it does not exist or continues through a file. The
+	// underlying error is wrapped as well.
 	ErrUnresolvable = errors.New("workspace: path cannot be resolved")
 	// ErrNotDirectory reports a workspace path that does not resolve to a directory.
 	ErrNotDirectory = errors.New("workspace: path is not a directory")
@@ -121,7 +122,7 @@ func (v *Validator) Inspect(path string) (Workspace, error) {
 	// does; cleaning the path first would resolve ".." lexically instead.
 	canonical, err := filepath.EvalSymlinks(path)
 	if err != nil {
-		return Workspace{}, fmt.Errorf("resolve workspace path: %w", err)
+		return Workspace{}, fmt.Errorf("%w: %w", ErrUnresolvable, err)
 	}
 	if !utf8.ValidString(canonical) {
 		return Workspace{}, fmt.Errorf("%w: %q resolves to %q", ErrInvalidPath, path, canonical)

@@ -31,9 +31,10 @@ const (
 	maxFileBytes = 1 << 20
 )
 
-// Skeleton for the Step 9 tests: declared but not enforced yet.
 const (
-	// MaxPathBytes is the longest workspace path the registry stores.
+	// MaxPathBytes is the longest workspace path the registry stores: Linux
+	// PATH_MAX without its terminating NUL. Longer paths cannot be resolved,
+	// so Add never produces them.
 	MaxPathBytes = 4095
 	// MaxWorkspaces is the largest number of registered workspaces.
 	MaxWorkspaces = maxWorkspaces
@@ -330,6 +331,9 @@ func checkRecord(record Record, accepted []Record) error {
 	canonical := filepath.IsAbs(path) && filepath.Clean(path) == path
 	if !canonical || path == string(filepath.Separator) {
 		return fmt.Errorf("%q is not a canonical workspace path", path)
+	}
+	if len(path) > MaxPathBytes {
+		return fmt.Errorf("a workspace path is longer than %d bytes", MaxPathBytes)
 	}
 	for _, other := range accepted {
 		switch {

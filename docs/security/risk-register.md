@@ -6,7 +6,7 @@
 
 ### R-01 Workspace or sandbox escape, 20
 
-Rootless containment, minimal mounts, canonical paths, restricted `/proc`, no Docker socket or host PID namespace, seccomp/MAC, and adversarial tests.
+Rootless containment, minimal mounts, canonical paths, restricted `/proc`, no Docker socket or host PID namespace, no access to Mio's state directory or socket (ADR-006), seccomp/MAC, and adversarial tests.
 
 ### R-02 Long-lived credential compromise, 20
 

@@ -72,9 +72,13 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return fmt.Errorf("start Scopra Mio: %w", err)
 	}
 	// The daemon now holds the state-directory lock, which makes Mio the
-	// registry's only writer (ADR-005). Workspace commands do not exist yet, so
-	// the registry is only checked here; Mio refuses to serve if it is unusable.
-	if _, err := openWorkspaceRegistry(daemon.StateDir()); err != nil {
+	// registry's only writer (ADR-005). Mio refuses to serve if the registry
+	// is unusable, and serves workspace commands from it otherwise (ADR-006).
+	workspaces, err := openWorkspaceRegistry(daemon.StateDir())
+	if err == nil {
+		err = daemon.EnableWorkspaces(workspaces)
+	}
+	if err != nil {
 		return errors.Join(fmt.Errorf("start Scopra Mio: %w", err), daemon.Close())
 	}
 	if _, err := fmt.Fprintln(stderr, "scoprad: listening"); err != nil {

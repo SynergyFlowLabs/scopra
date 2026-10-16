@@ -189,6 +189,32 @@ func TestWorkspacePagesFitFramesAndListEveryRecordOnce(t *testing.T) {
 	}
 }
 
+func TestWorkspacePagesFitFramesWhenRecordsFillThePage(t *testing.T) {
+	// Sweep path lengths so that some page fills its budget almost exactly:
+	// the rest of the reply must still fit in the frame.
+	for length := 4000; length <= registry.MaxPathBytes; length++ {
+		records := make([]Workspace, 0, 17)
+		for index := range 17 {
+			records = append(records, Workspace{
+				ID:   fmt.Sprintf("%032x", index+1),
+				Path: fmt.Sprintf("/%02d/%s", index, strings.Repeat("p", length-4)),
+			})
+		}
+		for cursor := ""; ; {
+			page, next := workspacePage(records, cursor, listPageBudget)
+			encoded, err := encodeListReply(testRequestID, page, next)
+			if err != nil || len(encoded) > MaxFrameBytes {
+				t.Fatalf("encodeListReply(%d records of %d-byte paths) = %d bytes, %v; want at most one frame",
+					len(page), length, len(encoded), err)
+			}
+			if next == "" {
+				break
+			}
+			cursor = next
+		}
+	}
+}
+
 func TestWorkspacePageEdges(t *testing.T) {
 	a := Workspace{ID: strings.Repeat("a", 32), Path: "/srv/a"}
 	b := Workspace{ID: strings.Repeat("b", 32), Path: "/srv/b"}
@@ -248,6 +274,9 @@ func TestErrorRepliesCarryBoundedValidMessages(t *testing.T) {
 		// The leading byte makes a cut at 1 KiB fall inside a two-byte character.
 		{name: "multibyte message over 1 KiB", err: errors.New("a" + strings.Repeat("é", maxErrorMessageBytes))},
 		{name: "invalid UTF-8", err: errors.New("lstat /srv/\xff: permission denied")},
+		// Each invalid byte would grow to a three-byte replacement character if
+		// the message were cut before being made valid.
+		{name: "invalid UTF-8 over 1 KiB", err: errors.New(strings.Repeat("x\xff", maxErrorMessageBytes))},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

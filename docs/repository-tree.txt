@@ -111,6 +111,7 @@
 ./docs/decisions/003-local-status-ipc.md
 ./docs/decisions/004-workspace-validation.md
 ./docs/decisions/005-workspace-registry-storage.md
+./docs/decisions/006-local-workspace-commands.md
 ./docs/decisions/README.md
 ./docs/operations
 ./docs/operations/runbooks.md

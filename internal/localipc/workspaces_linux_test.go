@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -118,6 +119,9 @@ func TestWorkspaceErrorsReachTheClient(t *testing.T) {
 			if !errors.As(err, &replyErr) || replyErr.Code != test.want || replyErr.Message == "" {
 				t.Fatalf("error = %v, want a *WorkspaceError with code %q and a message", err, test.want)
 			}
+			if text := err.Error(); !strings.Contains(text, test.want) || !strings.Contains(text, replyErr.Message) {
+				t.Fatalf("Error() = %q, want the code and the message", text)
+			}
 		})
 	}
 }
@@ -195,6 +199,71 @@ func TestListWorkspacesFollowsPagesOverTheSocket(t *testing.T) {
 	slices.SortFunc(want, func(a, b Workspace) int { return strings.Compare(a.Path, b.Path) })
 	if !slices.Equal(listed, want) {
 		t.Fatalf("ListWorkspaces() returned %d records, want all %d sorted by path", len(listed), len(want))
+	}
+}
+
+func TestListWorkspacesSortsByPath(t *testing.T) {
+	stateDir, daemon := listenForTest(t)
+	// IDs in the opposite order to paths: Mio pages by ID, the client sorts by path.
+	records := []registry.Record{
+		{ID: strings.Repeat("b", 32), Workspace: workspace.Workspace{Path: "/srv/a"}},
+		{ID: strings.Repeat("a", 32), Workspace: workspace.Workspace{Path: "/srv/b"}},
+	}
+	if err := daemon.EnableWorkspaces(fixedRegistry{records: records}); err != nil {
+		t.Fatalf("EnableWorkspaces() error = %v", err)
+	}
+	serveInBackground(t, daemon)
+
+	listed, err := ListWorkspaces(requestContext(t), stateDir)
+	if err != nil {
+		t.Fatalf("ListWorkspaces() error = %v", err)
+	}
+	want := []Workspace{{ID: strings.Repeat("b", 32), Path: "/srv/a"}, {ID: strings.Repeat("a", 32), Path: "/srv/b"}}
+	if !slices.Equal(listed, want) {
+		t.Fatalf("ListWorkspaces() = %+v, want %+v", listed, want)
+	}
+}
+
+func TestSecurity_ListWorkspacesStopsAnEndlessListing(t *testing.T) {
+	stateDir := filepath.Join(t.TempDir(), "run")
+	if err := os.Mkdir(stateDir, 0o700); err != nil {
+		t.Fatalf("Mkdir() error = %v", err)
+	}
+	socketPath := filepath.Join(stateDir, "scoprad.sock")
+	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: socketPath, Net: "unix"})
+	if err != nil {
+		t.Fatalf("ListenUnix() error = %v", err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	if err := os.Chmod(socketPath, 0o600); err != nil {
+		t.Fatalf("Chmod(socket) error = %v", err)
+	}
+	// A misbehaving daemon that answers every page with a valid, advancing
+	// page and always another cursor.
+	var pages atomic.Int64
+	go func() {
+		for {
+			connection, err := listener.AcceptUnix()
+			if err != nil {
+				return
+			}
+			encoded, err := readFrame(connection)
+			if message, decodeErr := decodeRequest(encoded); err == nil && decodeErr == nil {
+				page := pages.Add(1)
+				id := fmt.Sprintf("%032x", page)
+				reply, _ := encodeListReply(message.RequestID, []Workspace{{ID: id, Path: fmt.Sprintf("/srv/%d", page)}}, id)
+				_ = writeFrame(connection, reply)
+			}
+			_ = connection.Close()
+		}
+	}()
+
+	listed, err := ListWorkspaces(requestContext(t), stateDir)
+	if !errors.Is(err, ErrInvalidMessage) {
+		t.Fatalf("ListWorkspaces() = %d records, %v; want ErrInvalidMessage", len(listed), err)
+	}
+	if got := pages.Load(); got != registry.MaxWorkspaces+1 {
+		t.Fatalf("client requested %d pages, want it to stop after %d records", got, registry.MaxWorkspaces+1)
 	}
 }
 
@@ -324,6 +393,18 @@ func makeWorkspaceDir(t *testing.T, parent string, names ...string) string {
 	}
 	return canonical
 }
+
+// fixedRegistry lists fixed records and supports nothing else.
+type fixedRegistry struct{ records []registry.Record }
+
+func (r fixedRegistry) Add(string) (registry.Record, error) {
+	return registry.Record{}, errors.New("unsupported")
+}
+func (r fixedRegistry) Get(string) (registry.Record, error) {
+	return registry.Record{}, errors.New("unsupported")
+}
+func (r fixedRegistry) Remove(string) error     { return errors.New("unsupported") }
+func (r fixedRegistry) List() []registry.Record { return slices.Clone(r.records) }
 
 // failingRegistry fails every operation with err.
 type failingRegistry struct{ err error }

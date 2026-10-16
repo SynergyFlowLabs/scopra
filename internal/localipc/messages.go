@@ -9,6 +9,9 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"unicode/utf8"
+
+	"github.com/SynergyFlowLabs/scopra/internal/workspace/registry"
 )
 
 const (
@@ -23,14 +26,29 @@ const (
 // ErrInvalidMessage reports a malformed or unsupported local IPC message.
 var ErrInvalidMessage = errors.New("localipc: invalid message")
 
+// request is a decoded IPC request. Each command uses only its own fields.
 type request struct {
+	ProtocolVersion int
+	RequestID       string
+	Command         string
+	Path            string // workspace.add
+	ID              string // workspace.remove
+	Cursor          string // workspace.list
+}
+
+// requestHeader holds the fields that every request carries.
+type requestHeader struct {
 	ProtocolVersion int    `json:"protocolVersion"`
 	RequestID       string `json:"requestId"`
 	Command         string `json:"command"`
-	// Skeleton for the Step 9 tests: workspace fields are not on the wire yet.
-	Path   string `json:"-"`
-	ID     string `json:"-"`
-	Cursor string `json:"-"`
+}
+
+// requestKeys lists the exact keys of each command's request.
+var requestKeys = map[string][]string{
+	statusCommand:          {"protocolVersion", "requestId", "command"},
+	addWorkspaceCommand:    {"protocolVersion", "requestId", "command", "path"},
+	listWorkspacesCommand:  {"protocolVersion", "requestId", "command", "cursor"},
+	removeWorkspaceCommand: {"protocolVersion", "requestId", "command", "id"},
 }
 
 // StatusResponse is the versioned read-only status reply from Mio.
@@ -45,12 +63,70 @@ func encodeRequest(message request) ([]byte, error) {
 	if err := validateRequest(message); err != nil {
 		return nil, err
 	}
-	return json.Marshal(message)
+	header := requestHeader{
+		ProtocolVersion: message.ProtocolVersion,
+		RequestID:       message.RequestID,
+		Command:         message.Command,
+	}
+	switch message.Command {
+	case addWorkspaceCommand:
+		return json.Marshal(struct {
+			requestHeader
+			Path string `json:"path"`
+		}{header, message.Path})
+	case listWorkspacesCommand:
+		return json.Marshal(struct {
+			requestHeader
+			Cursor string `json:"cursor"`
+		}{header, message.Cursor})
+	case removeWorkspaceCommand:
+		return json.Marshal(struct {
+			requestHeader
+			ID string `json:"id"`
+		}{header, message.ID})
+	default:
+		return json.Marshal(header)
+	}
 }
 
+// decodeRequest reads the command first, then requires exactly that
+// command's keys and decodes each field strictly.
 func decodeRequest(encoded []byte) (request, error) {
-	var message request
-	if err := decodeStrictJSON(encoded, &message, "protocolVersion", "requestId", "command"); err != nil {
+	if err := checkJSONDocument(encoded); err != nil {
+		return request{}, err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &fields); err != nil {
+		return request{}, fmt.Errorf("%w: top-level JSON value must be an object", ErrInvalidMessage)
+	}
+	command, err := jsonString(fields["command"])
+	if err != nil {
+		return request{}, err
+	}
+	keys, ok := requestKeys[command]
+	if !ok {
+		return request{}, fmt.Errorf("%w: unsupported command", ErrInvalidMessage)
+	}
+	if err := validateObjectKeys(encoded, keys); err != nil {
+		return request{}, err
+	}
+
+	message := request{Command: command}
+	if err := json.Unmarshal(fields["protocolVersion"], &message.ProtocolVersion); err != nil {
+		return request{}, fmt.Errorf("%w: malformed protocol version", ErrInvalidMessage)
+	}
+	if message.RequestID, err = jsonString(fields["requestId"]); err != nil {
+		return request{}, err
+	}
+	switch command {
+	case addWorkspaceCommand:
+		message.Path, err = jsonString(fields["path"])
+	case listWorkspacesCommand:
+		message.Cursor, err = jsonString(fields["cursor"])
+	case removeWorkspaceCommand:
+		message.ID, err = jsonString(fields["id"])
+	}
+	if err != nil {
 		return request{}, err
 	}
 	if err := validateRequest(message); err != nil {
@@ -60,12 +136,40 @@ func decodeRequest(encoded []byte) (request, error) {
 }
 
 func validateRequest(message request) error {
-	if message.ProtocolVersion != protocolVersion ||
-		!validRequestID(message.RequestID) ||
-		message.Command != statusCommand {
-		return fmt.Errorf("%w: unsupported version, request ID, or command", ErrInvalidMessage)
+	if message.ProtocolVersion != protocolVersion || !validRequestID(message.RequestID) {
+		return fmt.Errorf("%w: unsupported version or request ID", ErrInvalidMessage)
+	}
+	var valid bool
+	switch message.Command {
+	case statusCommand:
+		valid = message.Path == "" && message.ID == "" && message.Cursor == ""
+	case addWorkspaceCommand:
+		valid = validRequestPath(message.Path) && message.ID == "" && message.Cursor == ""
+	case listWorkspacesCommand:
+		valid = (message.Cursor == "" || validWorkspaceID(message.Cursor)) && message.Path == "" && message.ID == ""
+	case removeWorkspaceCommand:
+		valid = validWorkspaceID(message.ID) && message.Path == "" && message.Cursor == ""
+	}
+	if !valid {
+		return fmt.Errorf("%w: unsupported command or fields", ErrInvalidMessage)
 	}
 	return nil
+}
+
+// validRequestPath reports whether path may be sent to Mio. Mio itself
+// decides whether the path is absolute and acceptable as a workspace.
+func validRequestPath(path string) bool {
+	return path != "" && len(path) <= registry.MaxPathBytes && utf8.ValidString(path)
+}
+
+// jsonString decodes a JSON string. Null and every other type are rejected.
+func jsonString(raw json.RawMessage) (string, error) {
+	raw = bytes.TrimSpace(raw)
+	var value string
+	if len(raw) == 0 || raw[0] != '"' || json.Unmarshal(raw, &value) != nil {
+		return "", fmt.Errorf("%w: expected a JSON string", ErrInvalidMessage)
+	}
+	return value, nil
 }
 
 func encodeResponse(response StatusResponse) ([]byte, error) {
@@ -98,16 +202,7 @@ func validateResponse(response StatusResponse, expectedRequestID string) error {
 }
 
 func decodeStrictJSON(encoded []byte, destination any, expectedKeys ...string) error {
-	if len(encoded) == 0 {
-		return fmt.Errorf("%w: empty JSON document", ErrInvalidMessage)
-	}
-	if len(encoded) > MaxFrameBytes {
-		return ErrFrameTooLarge
-	}
-	if !json.Valid(encoded) {
-		return fmt.Errorf("%w: malformed or trailing JSON", ErrInvalidMessage)
-	}
-	if err := rejectDuplicateJSONKeys(encoded); err != nil {
+	if err := checkJSONDocument(encoded); err != nil {
 		return err
 	}
 	if err := validateObjectKeys(encoded, expectedKeys); err != nil {
@@ -120,6 +215,25 @@ func decodeStrictJSON(encoded []byte, destination any, expectedKeys ...string) e
 		return fmt.Errorf("%w: decode JSON: %v", ErrInvalidMessage, err)
 	}
 	return nil
+}
+
+// checkJSONDocument checks the size, encoding, syntax, and keys of a complete
+// JSON document.
+func checkJSONDocument(encoded []byte) error {
+	if len(encoded) == 0 {
+		return fmt.Errorf("%w: empty JSON document", ErrInvalidMessage)
+	}
+	if len(encoded) > MaxFrameBytes {
+		return ErrFrameTooLarge
+	}
+	// encoding/json silently replaces invalid UTF-8, which would change paths.
+	if !utf8.Valid(encoded) {
+		return fmt.Errorf("%w: JSON is not valid UTF-8", ErrInvalidMessage)
+	}
+	if !json.Valid(encoded) {
+		return fmt.Errorf("%w: malformed or trailing JSON", ErrInvalidMessage)
+	}
+	return rejectDuplicateJSONKeys(encoded)
 }
 
 func validateObjectKeys(encoded []byte, expectedKeys []string) error {

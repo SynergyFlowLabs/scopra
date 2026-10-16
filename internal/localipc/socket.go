@@ -1,5 +1,6 @@
 // Package localipc provides bounded, same-user Unix-socket communication for
-// Scopra's local daemon and CLI. It currently exposes status only.
+// Scopra's local daemon and CLI: Mio's status (ADR-003) and, once enabled, its
+// workspace commands (ADR-006).
 package localipc
 
 import (
@@ -44,10 +45,11 @@ var (
 	ErrDaemonAlreadyServing = errors.New("localipc: daemon Serve may only be called once")
 )
 
-// Daemon is the foreground local status service. It intentionally exposes no
-// execution or workspace-mutating operation. A Daemon holds an exclusive lock
-// on its state directory until it can no longer act, so at most one Mio serves
-// a state directory at a time.
+// Daemon is Mio's foreground local IPC service. It serves status and, once
+// EnableWorkspaces is called, workspace registration commands (ADR-006); it
+// exposes no execution. A Daemon holds an exclusive lock on its state
+// directory until it can no longer act, so at most one Mio serves a state
+// directory at a time.
 type Daemon struct {
 	listener      *net.UnixListener
 	stateDir      string
@@ -55,6 +57,7 @@ type Daemon struct {
 	socketInfo    os.FileInfo
 	daemonVersion string
 	lock          *os.File
+	workspaces    WorkspaceRegistry // nil until EnableWorkspaces
 
 	closeOnce sync.Once
 	closeErr  error
@@ -340,50 +343,71 @@ func (d *Daemon) serveStarted() bool {
 // Status queries the read-only Mio status command over the authenticated local
 // socket. It never falls back to an unauthenticated transport.
 func Status(ctx context.Context, stateDir string) (StatusResponse, error) {
-	if ctx == nil {
-		return StatusResponse{}, ErrInvalidContext
-	}
-	if !platformSupported() {
-		return StatusResponse{}, ErrUnsupportedPlatform
-	}
-
-	stateDir, err := resolveStateDir(stateDir)
+	encoded, requestID, err := roundTrip(ctx, stateDir, request{Command: statusCommand}, "status")
 	if err != nil {
 		return StatusResponse{}, err
+	}
+	return decodeResponse(encoded, requestID)
+}
+
+// roundTrip sends one request to Mio over the socket in stateDir and returns
+// the encoded reply with the request ID that the reply must carry. The request
+// is validated before the filesystem or the socket is touched.
+func roundTrip(ctx context.Context, stateDir string, message request, operation string) ([]byte, string, error) {
+	if ctx == nil {
+		return nil, "", ErrInvalidContext
+	}
+	if !platformSupported() {
+		return nil, "", ErrUnsupportedPlatform
+	}
+	requestID, err := newRequestID()
+	if err != nil {
+		return nil, "", err
+	}
+	message.ProtocolVersion = protocolVersion
+	message.RequestID = requestID
+	encodedRequest, err := encodeRequest(message)
+	if err != nil {
+		return nil, "", err
+	}
+
+	stateDir, err = resolveStateDir(stateDir)
+	if err != nil {
+		return nil, "", err
 	}
 	socketPath, err := socketPathFor(stateDir)
 	if err != nil {
-		return StatusResponse{}, err
+		return nil, "", err
 	}
 	if _, err := validateStateDir(stateDir); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return StatusResponse{}, ErrDaemonUnavailable
+			return nil, "", ErrDaemonUnavailable
 		}
-		return StatusResponse{}, err
+		return nil, "", err
 	}
 	socketInfo, err := os.Lstat(socketPath)
 	if errors.Is(err, os.ErrNotExist) {
-		return StatusResponse{}, ErrDaemonUnavailable
+		return nil, "", ErrDaemonUnavailable
 	}
 	if err != nil {
-		return StatusResponse{}, fmt.Errorf("inspect daemon socket: %w", err)
+		return nil, "", fmt.Errorf("inspect daemon socket: %w", err)
 	}
 	if err := validateSocketInfo(socketInfo); err != nil {
-		return StatusResponse{}, err
+		return nil, "", err
 	}
 
 	dialer := net.Dialer{Timeout: connectionTimeout}
 	connection, err := dialer.DialContext(ctx, "unix", socketPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) || isStaleSocketProbeError(err) {
-			return StatusResponse{}, ErrDaemonUnavailable
+			return nil, "", ErrDaemonUnavailable
 		}
-		return StatusResponse{}, fmt.Errorf("connect to Mio: %w", err)
+		return nil, "", fmt.Errorf("connect to Mio: %w", err)
 	}
 	unixConnection, ok := connection.(*net.UnixConn)
 	if !ok {
 		_ = connection.Close()
-		return StatusResponse{}, ErrUnsupportedPlatform
+		return nil, "", ErrUnsupportedPlatform
 	}
 	defer unixConnection.Close()
 	stopCancellation := context.AfterFunc(ctx, func() { _ = unixConnection.Close() })
@@ -391,39 +415,22 @@ func Status(ctx context.Context, stateDir string) (StatusResponse, error) {
 
 	peerUID, err := peerUID(unixConnection)
 	if err != nil {
-		return StatusResponse{}, contextualError(ctx, "authenticate Mio peer", err)
+		return nil, "", contextualError(ctx, "authenticate Mio peer", err)
 	}
 	if err := authorizePeer(peerUID, effectiveUID()); err != nil {
-		return StatusResponse{}, err
+		return nil, "", err
 	}
 	if err := setConnectionDeadline(ctx, unixConnection); err != nil {
-		return StatusResponse{}, contextualError(ctx, "set IPC deadline", err)
-	}
-
-	requestID, err := newRequestID()
-	if err != nil {
-		return StatusResponse{}, err
-	}
-	encodedRequest, err := encodeRequest(request{
-		ProtocolVersion: protocolVersion,
-		RequestID:       requestID,
-		Command:         statusCommand,
-	})
-	if err != nil {
-		return StatusResponse{}, err
+		return nil, "", contextualError(ctx, "set IPC deadline", err)
 	}
 	if err := writeFrame(unixConnection, encodedRequest); err != nil {
-		return StatusResponse{}, contextualError(ctx, "write status request", err)
+		return nil, "", contextualError(ctx, "write "+operation+" request", err)
 	}
 	encodedResponse, err := readFrame(unixConnection)
 	if err != nil {
-		return StatusResponse{}, contextualError(ctx, "read status response", err)
+		return nil, "", contextualError(ctx, "read "+operation+" response", err)
 	}
-	response, err := decodeResponse(encodedResponse, requestID)
-	if err != nil {
-		return StatusResponse{}, err
-	}
-	return response, nil
+	return encodedResponse, requestID, nil
 }
 
 func (d *Daemon) handleConnection(connection *net.UnixConn) {
@@ -443,16 +450,28 @@ func (d *Daemon) handleConnection(connection *net.UnixConn) {
 	if err != nil {
 		return
 	}
-	encodedResponse, err := encodeResponse(StatusResponse{
-		ProtocolVersion: protocolVersion,
-		RequestID:       message.RequestID,
-		Status:          statusRunning,
-		DaemonVersion:   d.daemonVersion,
-	})
+	encodedResponse, err := d.reply(message)
 	if err != nil {
 		return
 	}
 	_ = writeFrame(connection, encodedResponse)
+}
+
+// reply returns the encoded reply to a decoded request, or an error when the
+// request must go unanswered.
+func (d *Daemon) reply(message request) ([]byte, error) {
+	if message.Command == statusCommand {
+		return encodeResponse(StatusResponse{
+			ProtocolVersion: protocolVersion,
+			RequestID:       message.RequestID,
+			Status:          statusRunning,
+			DaemonVersion:   d.daemonVersion,
+		})
+	}
+	if d.workspaces == nil {
+		return nil, fmt.Errorf("%w: workspace commands are not enabled", ErrInvalidMessage)
+	}
+	return d.replyToWorkspaceCommand(message)
 }
 
 func removeStaleSocket(path string) error {
