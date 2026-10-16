@@ -40,5 +40,13 @@ This roadmap is staged; each entry remains pending until implementation and veri
 ### 2026-10-16 — Naming checkpoint and implementation setup
 
 - Adopted the supplied Mercury-inspired component naming system and pushed it in commit `398b337` on `arena/0b81a55b-scopra`.
-- Added this progress log and installed the selected skills locally in the repository.
-- Next: establish a single Go module and branch CI, then specify the first Scopra Messenger protocol behavior test-first. Use remote CI for Go verification because the sandbox toolchain is absent.
+- Added this progress log and installed the selected skills locally in the repository; setup was pushed in `ae6779d`.
+- Confirmed Go 1.26.9 is the current patch toolchain for this project baseline, but the sandbox itself has no Go compiler.
+
+### 2026-10-16 — Step 1: Go module, CI, and protocol tests (in progress)
+
+- Chose a single root Go module for the monorepo; recorded the choice in ADR-001. No external Go dependencies are needed for the first protocol increment.
+- Added ADR-002 for a strict, bounded Scopra Messenger v1 envelope. It explicitly separates structural parsing from signature verification, replay defense, authorization, and typed payload validation.
+- Added a Go 1.26.9 CI path with read-only permissions, pinned GitHub Actions, formatting, `go test -race`, and `go vet`. CI now runs on branch pushes as well as pull requests.
+- Wrote protocol behavior/security tests before the implementation. Next: push the red test checkpoint, confirm the expected CI failure, then implement the minimum passing behavior and push the green checkpoint.
+- Verification limitation: no local Go binary is available, so Go execution must be confirmed by the remote CI run; no local Go test result is claimed.

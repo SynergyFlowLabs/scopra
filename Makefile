@@ -1,11 +1,24 @@
+GO ?= go
+GOFMT ?= gofmt
+
 .PHONY: help bootstrap test lint security-test
+
 help:
-	@echo "Scopra scaffold: bootstrap, test, lint, security-test"
+	@printf '%s\n' 'Scopra development targets:' '  bootstrap     Check the Go toolchain and prepare modules' '  test          Run Go tests with the race detector' '  lint          Check gofmt and run go vet' '  security-test Run protocol rejection/security tests'
+
 bootstrap:
-	@echo "Implemented in Milestone 1"
+	@./scripts/bootstrap.sh
+
 test:
-	@echo "Implemented in Milestone 1"
+	$(GO) test -race ./...
+
 lint:
-	@echo "Implemented in Milestone 1"
+	@unformatted="$$(find . -type f -name '*.go' -not -path './.git/*' -print0 | xargs -0 -r $(GOFMT) -l)"; \
+	if [ -n "$$unformatted" ]; then \
+		printf '%s\n' 'Run gofmt on these files:' "$$unformatted" >&2; \
+		exit 1; \
+	fi
+	$(GO) vet ./...
+
 security-test:
-	@echo "Implemented with local execution foundation"
+	$(GO) test -race ./packages/protocol -run '^TestSecurity_'
