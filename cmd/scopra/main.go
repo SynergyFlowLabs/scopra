@@ -51,6 +51,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	switch args[0] {
 	case "status":
 		return runStatus(ctx, args[1:], stdout, stderr)
+	case "doctor":
+		return runDoctor(ctx, args[1:], stdout, stderr)
 	case "version", "--version":
 		if len(args) != 1 {
 			return failUsage(stderr, "version takes no arguments")
@@ -98,7 +100,13 @@ func failUsage(writer io.Writer, format string, values ...any) error {
 }
 
 func printUsage(writer io.Writer) {
-	_, _ = fmt.Fprintln(writer, "usage: scopra status [--state-dir PATH] [--json] | version")
+	_, _ = fmt.Fprint(writer, `usage: scopra <command> [flags]
+
+commands:
+  status [--state-dir PATH] [--json]  query Scopra Mio's local IPC status
+  doctor [--state-dir PATH] [--json]  run read-only local diagnostics
+  version                             print the scopra version
+`)
 }
 
 type usageError struct {

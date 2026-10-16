@@ -63,7 +63,8 @@ func TestRunDoctorHumanReportStatesItsLimits(t *testing.T) {
 	defer stop()
 
 	var stdout, stderr bytes.Buffer
-	if err := run(t.Context(), []string{"doctor", "--state-dir", stateDir}, &stdout, &stderr); err != nil {
+	err := run(t.Context(), []string{"doctor", "--state-dir", stateDir}, &stdout, &stderr)
+	if err != nil {
 		t.Fatalf("run(doctor) error = %v; stderr = %q", err, stderr.String())
 	}
 	if stderr.Len() != 0 {
@@ -219,6 +220,62 @@ func TestRunDoctorFailsWhenStateDirectoryCannotBeResolved(t *testing.T) {
 	}
 }
 
+func TestRunDoctorRejectsOverlongStateDirectory(t *testing.T) {
+	requireLinux(t)
+	stateDir := filepath.Join(t.TempDir(), strings.Repeat("d", 100))
+	if err := os.Mkdir(stateDir, 0o700); err != nil {
+		t.Fatalf("Mkdir(state dir) error = %v", err)
+	}
+
+	report, err := runDoctorJSON(t, "--state-dir", stateDir)
+	requireCheckFailure(t, err)
+	assertChecks(t, report, "platform=pass", "state-directory=fail", "daemon=skip")
+	if hint := findCheck(t, report, "state-directory").Hint; !strings.Contains(hint, "shorter") {
+		t.Fatalf("state-directory hint = %q, want guidance to choose a shorter path", hint)
+	}
+}
+
+func TestOverallResultReportsMostSevereStatus(t *testing.T) {
+	tests := []struct {
+		name     string
+		statuses []checkStatus
+		want     checkStatus
+	}{
+		{
+			name:     "all checks pass",
+			statuses: []checkStatus{checkPass, checkPass},
+			want:     checkPass,
+		},
+		{
+			name:     "warning without failure",
+			statuses: []checkStatus{checkPass, checkWarn, checkPass},
+			want:     checkWarn,
+		},
+		{
+			name:     "failure outranks warning",
+			statuses: []checkStatus{checkWarn, checkFail, checkSkip},
+			want:     checkFail,
+		},
+		{
+			name:     "skip alone is not a failure",
+			statuses: []checkStatus{checkPass, checkSkip},
+			want:     checkPass,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			checks := make([]doctorCheck, 0, len(test.statuses))
+			for _, status := range test.statuses {
+				checks = append(checks, doctorCheck{Status: status})
+			}
+			if got := overallResult(checks); got != test.want {
+				t.Fatalf("overallResult(%q) = %q, want %q", test.statuses, got, test.want)
+			}
+		})
+	}
+}
+
 func TestRunDoctorRejectsInvalidUsage(t *testing.T) {
 	tests := []struct {
 		name string
@@ -298,7 +355,8 @@ func TestDiagnoseFailsClosedOnUnsupportedPlatform(t *testing.T) {
 	if decoded.Result != "fail" {
 		t.Fatalf("doctor result = %q, want fail", decoded.Result)
 	}
-	if platform := findCheck(t, decoded, "platform"); !strings.Contains(platform.Detail, "darwin/arm64") {
+	platform := findCheck(t, decoded, "platform")
+	if !strings.Contains(platform.Detail, "darwin/arm64") {
 		t.Fatalf("platform detail = %q, want the unsupported platform named", platform.Detail)
 	}
 }
@@ -310,7 +368,7 @@ func runDoctorJSON(t *testing.T, args ...string) (doctorReportJSON, error) {
 	var stdout, stderr bytes.Buffer
 	err := run(t.Context(), append([]string{"doctor", "--json"}, args...), &stdout, &stderr)
 	if stderr.Len() != 0 {
-		t.Fatalf("run(doctor --json) wrote unexpected stderr: %q (error = %v)", stderr.String(), err)
+		t.Fatalf("run(doctor --json) wrote stderr %q (error = %v), want none", stderr.String(), err)
 	}
 	var report doctorReportJSON
 	if decodeErr := json.Unmarshal(stdout.Bytes(), &report); decodeErr != nil {

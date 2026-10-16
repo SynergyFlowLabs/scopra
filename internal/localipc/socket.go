@@ -71,6 +71,36 @@ func DefaultStateDir() (string, error) {
 	return filepath.Join(cacheDir, "scopra", "run"), nil
 }
 
+// PlatformSupported reports whether authenticated local IPC is available on
+// this operating system. Where it is not, Listen, Status, and CheckStateDir
+// fail closed with ErrUnsupportedPlatform.
+func PlatformSupported() bool { return platformSupported() }
+
+// ResolveStateDir returns the absolute, cleaned state directory that Listen and
+// Status use for stateDir, substituting DefaultStateDir when stateDir is empty.
+// It neither inspects nor creates the directory.
+func ResolveStateDir(stateDir string) (string, error) { return resolveStateDir(stateDir) }
+
+// CheckStateDir applies Listen's state-directory checks without creating,
+// modifying, or removing anything. A nil error means the directory exists, is
+// private to the effective user, has no unsafe ancestors, and leaves room for
+// Mio's socket path. An error matching os.ErrNotExist means the directory has
+// not been created yet.
+func CheckStateDir(stateDir string) error {
+	if !platformSupported() {
+		return ErrUnsupportedPlatform
+	}
+	stateDir, err := resolveStateDir(stateDir)
+	if err != nil {
+		return err
+	}
+	if _, err := socketPathFor(stateDir); err != nil {
+		return err
+	}
+	_, err = validateStateDir(stateDir)
+	return err
+}
+
 // Listen creates a private Unix socket for a foreground Mio daemon.
 // On Linux, both endpoints authenticate their peer with SO_PEERCRED.
 func Listen(stateDir, daemonVersion string) (*Daemon, error) {

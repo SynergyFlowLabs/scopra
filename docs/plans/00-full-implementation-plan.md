@@ -116,7 +116,7 @@ If any mandatory stage is unavailable or invalid, deny the request. Never add un
 
 ### Scopra Mio daemon and Scopra Mariner CLI
 
-**Initial increment implemented:** foreground `scoprad`, `scopra status`, local version reporting, context-driven shutdown, and strict same-UID Unix-socket status IPC are in place. Workspace CRUD, service installation, `doctor`, execution, and the broader CLI remain pending; the checklist items below describe those larger milestones and are intentionally unchecked.
+**Initial increments implemented:** foreground `scoprad`, `scopra status`, a minimal read-only `scopra doctor` (platform, state-directory, and Mio status checks), local version reporting, context-driven shutdown, and strict same-UID Unix-socket status IPC are in place. Workspace CRUD, service installation, broader doctor checks (such as containment readiness), execution, and the broader CLI remain pending; the checklist items below describe those larger milestones and are intentionally unchecked.
 
 - [ ] Implement Scopra Mio (`scoprad`), foreground mode, Linux service, state directory, lock, shutdown, health, logging, and versioning.
 - [ ] Implement Scopra Mariner commands, including `scopra doctor`, daemon status, workspace CRUD, local execution, status, logs, cancellation, JSON output, and TTY output.

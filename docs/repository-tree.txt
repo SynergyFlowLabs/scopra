@@ -79,6 +79,7 @@
 ./cmd
 ./cmd/scopra
 ./cmd/scopra/README.md
+./cmd/scopra/doctor.go
 ./cmd/scopra/doctor_test.go
 ./cmd/scopra/main.go
 ./cmd/scopra/main_test.go
