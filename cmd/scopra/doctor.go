@@ -159,7 +159,7 @@ func diagnoseStateDir(stateDir string) (string, doctorCheck) {
 			Name:   checkNameStateDirectory,
 			Status: checkFail,
 			Detail: err.Error(),
-			Hint:   "Set XDG_CACHE_HOME or HOME, or pass the same --state-dir to scopra and scoprad.",
+			Hint:   "Set XDG_STATE_HOME or HOME to an absolute path, or pass the same --state-dir to scopra and scoprad.",
 		}
 	}
 

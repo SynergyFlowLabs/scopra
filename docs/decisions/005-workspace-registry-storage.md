@@ -9,7 +9,7 @@ The PRD requires registering and removing existing directories as workspaces, an
 
 ## Decision
 
-- `internal/workspace/registry` stores registrations in `<dir>/workspaces.json`, where `dir` is a private directory that the caller owns exclusively. Mio will pass its state directory while holding the state-directory lock (see the ADR-003 amendment), which makes Mio the single writer. Calls within a process are serialized.
+- `internal/workspace/registry` stores registrations in `<dir>/workspaces.json`, where `dir` is a private directory that the caller owns exclusively. Mio will pass its state directory while holding the state-directory lock (see the ADR-003 state-directory lock amendment), which makes Mio the single writer. Calls within a process are serialized.
 - The version 1 format is `{"version":1,"workspaces":[{"id":"<32 lowercase hex digits>","path":"<canonical path>","fingerprint":{"device":<uint64>,"inode":<uint64>}}]}`, with records sorted by path. Each ID is a random 128-bit value.
 - `Add` requires ADR-004 validation and rejects:
   - the same directory again, matched by canonical path or by fingerprint, so a moved directory still counts as the same workspace;
@@ -30,7 +30,7 @@ The PRD requires registering and removing existing directories as workspaces, an
 ## Consequences
 
 - Part 2 (Mio wiring, IPC commands, and the `scopra workspace` CLI) can build on tested storage. Mio does not use the registry yet.
-- Mio's default state directory is under the user's cache directory (ADR-003), and cache cleaners may delete it. Losing the registry fails safe, because no workspace is then available, but it would surprise users. Part 2 must therefore choose a persistent default, such as `$XDG_STATE_HOME/scopra`, before exposing registration.
+- Mio's default state directory was under the user's cache directory (ADR-003), and cache cleaners may delete it. Losing the registry fails safe, because no workspace is then available, but it would surprise users, so part 2 needed a persistent default before exposing registration. Resolved: the ADR-003 persistent default state directory amendment moved the default to `$XDG_STATE_HOME/scopra`, or `~/.local/state/scopra`.
 - A corrupt or unsafe registry blocks every registration until a person fixes or removes it; there is no automatic repair.
 - Temporary files left by a crash (`.workspaces-*.tmp`) are not cleaned up yet. They are owner-only and never read.
 - The overlap and duplicate rules may need revisiting when read-only and read-write modes arrive.
@@ -44,6 +44,6 @@ The PRD requires registering and removing existing directories as workspaces, an
 
 ## Alternatives
 
-- **A separate persistent data directory with its own lock:** deferred. It would duplicate Mio's single-writer guarantee and directory validation. It will be reconsidered together with the default-location decision.
+- **A separate persistent data directory with its own lock:** rejected when the default location was decided (see the ADR-003 persistent default state directory amendment). It would duplicate Mio's single-writer guarantee and directory validation.
 - **An append-only log or an embedded database:** unnecessary for at most 256 records, and it would add dependencies.
 - **Skipping invalid records or repairing the file on load:** rejected. Silently dropping registrations hides tampering, and failing closed is easier to reason about.

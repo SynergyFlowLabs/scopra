@@ -10,7 +10,7 @@ scopra doctor [--state-dir PATH] [--json]
 scopra version
 ```
 
-By default both binaries use `<user-cache-dir>/scopra/run`; pass the same `--state-dir` to `scoprad` and `scopra` to override it. Neither command starts the daemon automatically.
+By default both binaries use `$XDG_STATE_HOME/scopra`, or `~/.local/state/scopra` when `XDG_STATE_HOME` is unset; a relative value fails closed. Pass the same `--state-dir` to `scoprad` and `scopra` to override it. Neither command starts the daemon automatically.
 
 ### `scopra status`
 
@@ -34,7 +34,7 @@ The human-readable report goes to stdout, with control characters in paths and e
 {
   "schemaVersion": 1,
   "scopraVersion": "v0.1.0",
-  "stateDir": "/home/alice/.cache/scopra/run",
+  "stateDir": "/home/alice/.local/state/scopra",
   "result": "fail",
   "checks": [
     {

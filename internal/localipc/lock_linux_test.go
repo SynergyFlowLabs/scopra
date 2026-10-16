@@ -22,7 +22,7 @@ func TestSecurity_ListenRefusesSecondDaemonWhenSocketIsMissing(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = first.Close() })
 	socketPath := filepath.Join(stateDir, "scoprad.sock")
-	// A cache cleaner, or a racing start, can unlink the live daemon's socket.
+	// Another same-user process, or a racing start, can unlink the live daemon's socket.
 	if err := os.Remove(socketPath); err != nil {
 		t.Fatalf("Remove(socket) error = %v", err)
 	}

@@ -63,17 +63,27 @@ type Daemon struct {
 	lockErr   error
 }
 
-// DefaultStateDir returns the per-user cache location used for Mio's local
-// runtime socket. The returned directory is not created by this function.
+// DefaultStateDir returns Mio's default state directory, which holds its socket
+// and lock file and must survive restarts and cache cleaning. Following the XDG
+// Base Directory specification, it is $XDG_STATE_HOME/scopra, or
+// $HOME/.local/state/scopra when XDG_STATE_HOME is unset or empty. A relative
+// location fails closed with ErrInsecureStateDir instead of being resolved
+// against the working directory. The directory is not created.
 func DefaultStateDir() (string, error) {
-	cacheDir, err := os.UserCacheDir()
+	if stateHome := os.Getenv("XDG_STATE_HOME"); stateHome != "" {
+		if !filepath.IsAbs(stateHome) {
+			return "", fmt.Errorf("%w: $XDG_STATE_HOME must be an absolute path", ErrInsecureStateDir)
+		}
+		return filepath.Join(stateHome, "scopra"), nil
+	}
+	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", fmt.Errorf("locate user cache directory: %w", err)
+		return "", fmt.Errorf("locate user state directory: %w", err)
 	}
-	if !filepath.IsAbs(cacheDir) {
-		return "", fmt.Errorf("%w: user cache directory must be absolute", ErrInsecureStateDir)
+	if !filepath.IsAbs(home) {
+		return "", fmt.Errorf("%w: home directory must be an absolute path", ErrInsecureStateDir)
 	}
-	return filepath.Join(cacheDir, "scopra", "run"), nil
+	return filepath.Join(home, ".local", "state", "scopra"), nil
 }
 
 // PlatformSupported reports whether authenticated local IPC is available on
