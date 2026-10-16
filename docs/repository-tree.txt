@@ -110,6 +110,7 @@
 ./docs/decisions/002-messenger-envelope-v1.md
 ./docs/decisions/003-local-status-ipc.md
 ./docs/decisions/004-workspace-validation.md
+./docs/decisions/005-workspace-registry-storage.md
 ./docs/decisions/README.md
 ./docs/operations
 ./docs/operations/runbooks.md
@@ -165,7 +166,9 @@
 ./internal/workspace/platform_other.go
 ./internal/workspace/registry
 ./internal/workspace/registry/registry.go
+./internal/workspace/registry/registry_linux.go
 ./internal/workspace/registry/registry_linux_test.go
+./internal/workspace/registry/registry_other.go
 ./internal/workspace/workspace.go
 ./internal/workspace/workspace_linux_test.go
 ./package.json

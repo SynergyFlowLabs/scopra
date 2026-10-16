@@ -3,7 +3,7 @@
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
 **Current increment:** Workspace registry storage, part 1 (no Mio, IPC, or CLI wiring)
-**Status:** In progress on `arena/c7a368c1-scopra`; acceptance checklist defined before implementation; CI is out of scope for now at the maintainer's request
+**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -24,7 +24,7 @@ This file is the running engineering log. Each increment records scope, verifica
 ## Roadmap
 
 1. **Protocol foundation** — envelope v1 structural validation is implemented and locally verified. Typed execution requests/results, canonical approval binding, cryptographic verification, replay storage, and compatibility/version guarantees remain pending.
-2. **Local daemon and CLI** — the initial foreground Mio status service with an exclusive state-directory lock, Mariner `scopra status`, and a minimal read-only `scopra doctor` (platform, state-directory, and daemon checks) are implemented. Workspace validation rules exist as a library (ADR-004). Workspace CRUD, broader doctor checks, execution, service installation, and expanded CLI/IPC authorization remain pending.
+2. **Local daemon and CLI** — the initial foreground Mio status service with an exclusive state-directory lock, Mariner `scopra status`, and a minimal read-only `scopra doctor` (platform, state-directory, and daemon checks) are implemented. Workspace validation (ADR-004) and registry storage (ADR-005) exist as libraries. Workspace CRUD, broader doctor checks, execution, service installation, and expanded CLI/IPC authorization remain pending.
 3. **Policy and containment boundary** — implement default-deny policy and rootless containment before enabling execution; no native fallback.
 4. **Structured execution and audit** — limits, cancellation, bounded output, and attributable events with adversarial tests.
 5. **Enrollment, relay, approvals, and integrations** — proceed only after local foundations and security invariants are testable.
@@ -243,7 +243,7 @@ Non-goals: the workspace registry or any persistence, IPC commands, a `scopra wo
   - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64.
 - Follow-ups, not part of this increment: a workspace registry (persistence, IPC commands, and the `scopra workspace` CLI, which will need an ADR for the new wire commands), mount-aware alias checks, descriptor-based binding at execution time, and a decision on a content-based repository identity.
 
-### 2026-10-16 — Step 6: Workspace registry storage, part 1 (in progress)
+### 2026-10-16 — Step 6: Workspace registry storage, part 1
 
 - Selection: the registry is split into two parts. Part 1, this step, stores registrations behind the ADR-004 rules. Part 2 will add Mio wiring, IPC commands, and the `scopra workspace` CLI, which change the IPC format and need their own ADR.
 - Mio's state-directory lock is its only single-writer guarantee, so the library takes a directory that the caller must own exclusively; Mio will pass its locked state directory. Mio's default state directory is under the cache directory, so part 2 must settle on a persistent default before registration is exposed. Losing records fails safe, since lost records grant no access. Nothing is persisted in production yet.
@@ -251,16 +251,16 @@ Non-goals: the workspace registry or any persistence, IPC commands, a `scopra wo
 
 #### Acceptance checklist (agreed before implementation)
 
-- [ ] New package `internal/workspace/registry`, using the standard library only. `Open(dir, validator)` loads `<dir>/workspaces.json`, or starts empty and creates nothing when the file is missing. `dir` must be a real directory owned by the effective user with no group or other access. Only a process that owns `dir` exclusively may open it (Mio, under its state-directory lock). Calls within a process are serialized, and other platforms fail closed.
-- [ ] `Add(path)` registers a workspace only after `Validator.Inspect` (ADR-004) succeeds, and records the canonical path, the fingerprint, and a random 128-bit ID. It rejects:
+- [x] New package `internal/workspace/registry`, using the standard library only. `Open(dir, validator)` loads `<dir>/workspaces.json`, or starts empty and creates nothing when the file is missing. `dir` must be a real directory owned by the effective user with no group or other access. Only a process that owns `dir` exclusively may open it (Mio, under its state-directory lock). Calls within a process are serialized, and other platforms fail closed.
+- [x] `Add(path)` registers a workspace only after `Validator.Inspect` (ADR-004) succeeds, and records the canonical path, the fingerprint, and a random 128-bit ID. It rejects:
   - the same directory under the same or another canonical path, with `ErrAlreadyRegistered`;
   - overlap with an existing workspace, with `ErrOverlap`;
   - a workspace that contains the registry directory, with `workspace.ErrProtectedPath`;
   - a 257th workspace, with `ErrRegistryFull`.
-- [ ] `Remove(id)` deletes only the registration, never the workspace directory or its contents, and returns `ErrNotFound` for an unknown ID. `Get(id)` and `List()` return detached copies, and `List` is sorted by path.
-- [ ] Every change is persisted atomically: an owner-only temporary file is written in the same directory, synced, and renamed over `workspaces.json`, and then the directory is synced. A failed write leaves the previous file and the in-memory registry unchanged and leaves no temporary file behind.
-- [ ] The file is opened without following symlinks or blocking on FIFOs. It must be an owner-only regular file owned by the effective user; otherwise `Open` returns `ErrInsecureRegistry` and leaves the file untouched. The content is versioned JSON (`version: 1`), read up to a 1 MiB limit and decoded strictly. Invalid UTF-8, malformed JSON, unknown fields, trailing data, an unsupported version, malformed or duplicate IDs, non-canonical, duplicate, or overlapping paths, or too many records fail closed with `ErrCorruptRegistry`.
-- [ ] ADR-005 records the storage format, write protocol, registration rules, and limits. The plan, progress log, and repository tree are updated.
+- [x] `Remove(id)` deletes only the registration, never the workspace directory or its contents, and returns `ErrNotFound` for an unknown ID. `Get(id)` and `List()` return detached copies, and `List` is sorted by path.
+- [x] Every change is persisted atomically: an owner-only temporary file is written in the same directory, synced, and renamed over `workspaces.json`, and then the directory is synced. A failed write leaves the previous file and the in-memory registry unchanged and leaves no temporary file behind.
+- [x] The file is opened without following symlinks or blocking on FIFOs. It must be an owner-only regular file owned by the effective user; otherwise `Open` returns `ErrInsecureRegistry` and leaves the file untouched. The content is versioned JSON (`version: 1`), read up to a 1 MiB limit and decoded strictly. Invalid UTF-8, malformed JSON, unknown fields, trailing data, an unsupported version, malformed or duplicate IDs, non-canonical, duplicate, or overlapping paths, or too many records fail closed with `ErrCorruptRegistry`.
+- [x] ADR-005 records the storage format, write protocol, registration rules, and limits. The plan, progress log, and repository tree are updated.
 
 Non-goals: wiring into `scoprad`, IPC commands, the `scopra workspace` CLI, read-only and read-write modes, moving Mio's default state directory to a persistent location (to be decided before part 2), cleaning up temporary files left by crashes, and migration tooling.
 
@@ -269,3 +269,38 @@ Non-goals: wiring into `scoprad`, IPC commands, the `scopra workspace` CLI, read
 - Added `internal/workspace/registry/registry_linux_test.go`: 16 white-box tests, which run only on Linux, including 18 corrupt-file cases and 5 unsafe occupants. The tests pin the version 1 format in both directions (as written and as hand-written) and cover the atomic write failing both before the temporary file exists and after it is written.
 - First red: the build failed because the API was undefined (`undefined: Registry`).
 - With a declarations-only skeleton, all 16 tests failed at runtime against the behaviour they specify.
+
+#### Implementation and verification record
+
+- `registry.go` contains the platform-neutral format, registration rules, atomic save, and strict decoding. `registry_linux.go` checks the directory and file (`O_NOFOLLOW|O_NONBLOCK`, then `fstat` on the opened file) and syncs the directory; `registry_other.go` fails closed. ADR-005 records the format, rules, write protocol, limits, and the open decision about the default location.
+- Before implementation, three more corrupt-file cases were added and seen to fail: a missing workspace list, a `null` workspace list, and duplicate fingerprints. Each describes a file that Mio could not have written.
+- Green: all 17 tests and their subtests pass under the race detector, with no skips; the read-only-directory case ran because the tests do not run as root. Package coverage is 92.9%. The uncovered lines are write, sync, and close failure branches that cannot be triggered without fault injection.
+- Twenty-one deliberate mutations were each caught by real test failures; the harness reports build failures separately, and none occurred. The mutations covered:
+  - skipping ADR-004 validation;
+  - allowing a workspace to contain the registry;
+  - detecting duplicates by path only;
+  - no overlap check;
+  - no maximum;
+  - writing non-atomically, straight to the registry file;
+  - adopting records after a failed write;
+  - leaving the temporary file behind;
+  - following symlinks;
+  - blocking on FIFOs (caught by the five-second guard);
+  - ignoring group and other permission bits;
+  - accepting unknown fields, trailing data, or invalid UTF-8;
+  - skipping load-time duplicate and overlap checks;
+  - no read limit;
+  - `List` returning the internal slice;
+  - no mutex (caught by the race detector);
+  - accepting a missing workspace list;
+  - unsorted records;
+  - `encode` writing files larger than the read limit.
+- The last mutation came from the coverage review: `TestEncodeNeverWritesWhatOpenWouldReject` pins the guarantee that `Add` can never write a file that `Open` would reject.
+- Security review: covered file and directory occupants (symlink, FIFO, directory, group-readable), validating the opened file rather than the path, temporary-file permissions and cleanup, rename atomicity and directory sync, single-writer assumptions, structural checks on load versus revalidation at use time, the read and write limits, and silent UTF-8 substitution. No high-confidence exploitable issue was found. ADR-005 records the remaining limits: the exclusive-owner precondition, no checks on the directory's ancestors, same-UID edits, and the cache-directory default.
+- Local verification passed:
+  - `make bootstrap`, `make lint`, `make test`, and `make security-test` (which now includes `./internal/workspace/...`);
+  - `go test -race -count=1 -timeout 60s ./...` and ten repeated race runs of the workspace packages;
+  - the workspace packages with `CGO_ENABLED=0`;
+  - `git diff --check`;
+  - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64.
+- Follow-ups for part 2: choose a persistent default state directory, wire the registry into Mio under its lock, add IPC commands and the `scopra workspace` CLI (with an ADR for the new wire commands and frame-size limits for `list`), and clean up stale temporary files.

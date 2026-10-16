@@ -84,11 +84,12 @@ func TestRegistryFileFormatVersion1(t *testing.T) {
 
 	handWritten := makeRegistryDir(t)
 	writeFile(t, filepath.Join(handWritten, "workspaces.json"), `{"version":1,"workspaces":[`+
-		`{"id":"0123456789abcdef0123456789abcdef","path":"/srv/app","fingerprint":{"device":7,"inode":42}}]}`)
-	wantRecord := Record{
-		ID:        "0123456789abcdef0123456789abcdef",
-		Workspace: workspace.Workspace{Path: "/srv/app", Fingerprint: workspace.Fingerprint{Device: 7, Inode: 42}},
-	}
+		`{"id":"0123456789abcdef0123456789abcdef","path":"/srv/app",`+
+		`"fingerprint":{"device":7,"inode":42}}]}`)
+	wantRecord := Record{ID: "0123456789abcdef0123456789abcdef", Workspace: workspace.Workspace{
+		Path:        "/srv/app",
+		Fingerprint: workspace.Fingerprint{Device: 7, Inode: 42},
+	}}
 	if got := mustOpen(t, handWritten, validator).List(); !slices.Equal(got, []Record{wantRecord}) {
 		t.Fatalf("List() of a hand-written version 1 registry = %+v, want [%+v]", got, wantRecord)
 	}
@@ -266,7 +267,8 @@ func TestSecurity_OpenRejectsUnsafeRegistryFile(t *testing.T) {
 			dir := makeRegistryDir(t)
 			verifyUnchanged := occupant.plant(t, filepath.Join(dir, "workspaces.json"))
 
-			if _, err := openWithin(t, dir, newValidator(t), 5*time.Second); !errors.Is(err, ErrInsecureRegistry) {
+			_, err := openWithin(t, dir, newValidator(t), 5*time.Second)
+			if !errors.Is(err, ErrInsecureRegistry) {
 				t.Fatalf("Open() error = %v, want ErrInsecureRegistry", err)
 			}
 			verifyUnchanged(t)
@@ -303,7 +305,8 @@ func TestSecurity_OpenRejectsCorruptRegistry(t *testing.T) {
 	const id = "0123456789abcdef0123456789abcdef"
 	tooMany := make([]string, 0, maxWorkspaces+1)
 	for index := range maxWorkspaces + 1 {
-		tooMany = append(tooMany, recordJSON(fmt.Sprintf("%032x", index), fmt.Sprintf("/srv/w%03d", index)))
+		id, path := fmt.Sprintf("%032x", index), fmt.Sprintf("/srv/w%03d", index)
+		tooMany = append(tooMany, recordJSON(id, path))
 	}
 	tests := []struct {
 		name    string
@@ -313,9 +316,11 @@ func TestSecurity_OpenRejectsCorruptRegistry(t *testing.T) {
 		{name: "invalid UTF-8", content: registryJSON(recordJSON(id, "/srv/\xff"))},
 		{name: "trailing data", content: registryJSON() + ` {}`},
 		{name: "unknown top-level field", content: `{"version":1,"workspaces":[],"mode":"rw"}`},
-		{name: "unknown record field", content: registryJSON(strings.TrimSuffix(recordJSON(id, "/srv/a"), "}") +
-			`,"mode":"rw"}`)},
+		{name: "unknown record field", content: registryJSON(
+			strings.TrimSuffix(recordJSON(id, "/srv/a"), "}") + `,"mode":"rw"}`)},
 		{name: "missing version", content: `{"workspaces":[]}`},
+		{name: "missing workspace list", content: `{"version":1}`},
+		{name: "null workspace list", content: `{"version":1,"workspaces":null}`},
 		{name: "unsupported version", content: `{"version":2,"workspaces":[]}`},
 		{name: "malformed ID", content: registryJSON(recordJSON("abc", "/srv/a"))},
 		{name: "uppercase ID", content: registryJSON(recordJSON(strings.ToUpper(id), "/srv/a"))},
@@ -328,6 +333,9 @@ func TestSecurity_OpenRejectsCorruptRegistry(t *testing.T) {
 			recordJSON(strings.Repeat("f", 32), "/srv/a"))},
 		{name: "overlapping paths", content: registryJSON(recordJSON(id, "/srv/a"),
 			recordJSON(strings.Repeat("f", 32), "/srv/a/b"))},
+		// recordJSON gives every record the same fingerprint.
+		{name: "duplicate fingerprints", content: registryJSON(recordJSON(id, "/srv/a"),
+			recordJSON(strings.Repeat("f", 32), "/srv/b"))},
 		{name: "too many records", content: registryJSON(tooMany...)},
 		{name: "larger than 1 MiB", content: registryJSON() + strings.Repeat(" ", 1<<20)},
 	}
@@ -396,6 +404,28 @@ func TestSecurity_FailedWriteLeavesRegistryUnchanged(t *testing.T) {
 		}
 		requireDirEntries(t, dir, "workspaces.json")
 	})
+}
+
+func TestEncodeNeverWritesWhatOpenWouldReject(t *testing.T) {
+	// Long paths can make even a legal number of records exceed the read limit.
+	records := make([]Record, 0, maxWorkspaces)
+	for index := range maxWorkspaces {
+		records = append(records, Record{
+			ID:        fmt.Sprintf("%032x", index),
+			Workspace: workspace.Workspace{Path: fmt.Sprintf("/%04d/%s", index, strings.Repeat("p", 4090))},
+		})
+	}
+
+	if _, err := encode(records); !errors.Is(err, ErrRegistryFull) {
+		t.Fatalf("encode(%d records of about 4 KiB each) error = %v, want ErrRegistryFull", len(records), err)
+	}
+	data, err := encode(records[:1])
+	if err != nil {
+		t.Fatalf("encode(one record) error = %v", err)
+	}
+	if _, err := decode(data); err != nil {
+		t.Fatalf("decode(encode(one record)) error = %v, want a round trip", err)
+	}
 }
 
 func TestConcurrentAddsAreAllPersisted(t *testing.T) {
@@ -542,7 +572,9 @@ func mustAdd(t *testing.T, registry *Registry, path string) Record {
 
 // openWithin calls Open but fails the test instead of hanging if Open blocks,
 // for example on a FIFO planted at the registry path.
-func openWithin(t *testing.T, dir string, validator *workspace.Validator, timeout time.Duration) (*Registry, error) {
+func openWithin(
+	t *testing.T, dir string, validator *workspace.Validator, timeout time.Duration,
+) (*Registry, error) {
 	t.Helper()
 	type result struct {
 		registry *Registry
