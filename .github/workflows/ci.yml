@@ -1,0 +1,17 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          test -f PRD.md
+          test -f docs/plans/00-full-implementation-plan.md
+          test -f docs/security/threat-model.md
+          test -f docs/security/risk-register.md
+      - run: |
+          if find . -type f \( -name '*.pem' -o -name '*.key' -o -name '.env' \) | grep -q .; then exit 1; fi

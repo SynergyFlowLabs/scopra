@@ -1,0 +1,10 @@
+{
+  "name": "scopra-monorepo",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "lint": "echo 'Added in Milestone 1'",
+    "test": "echo 'Added in Milestone 1'",
+    "build": "echo 'Added in Milestone 1'"
+  }
+}
