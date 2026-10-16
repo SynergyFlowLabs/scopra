@@ -3,7 +3,7 @@
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
 **Current increment:** Canonical execution request and action hash (Step 17)
-**Status:** Proposed. The ADR-008 draft and the checklist below await the maintainer's confirmation, and no code has been written. CI is out of scope for now at the maintainer's request
+**Status:** In progress on `arena/c7a368c1-scopra`: ADR-008 and the acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -1109,7 +1109,7 @@ Non-goals:
   - The tree is unchanged.
 - Pushes to `arena/c7a368c1-scopra`: test checkpoint `f5bebbb` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.
 
-### 2026-10-16 — Step 17 (proposed): Canonical execution request and action hash
+### 2026-10-16 — Step 17: Canonical execution request and action hash
 
 - Selection: after Step 16 the default was to draft the canonical form and action hash as a proposal before writing any code, as was done for ADR-007. The maintainer replied "continue". Implementation starts only after confirmation; a "continue" accepts the proposal.
 - Research:
@@ -1125,7 +1125,9 @@ Non-goals:
   - Mio always recomputes the hash and never trusts a transmitted one;
   - the approval record's format is left to a later ADR.
 
-#### Acceptance checklist (proposed, not yet agreed)
+- Confirmation: the maintainer replied "continue", accepting ADR-008 and the checklist below as written.
+
+#### Acceptance checklist (agreed before implementation)
 
 - [ ] ADR-008 is accepted, with any changes the maintainer asks for, and indexed as accepted. The protocol docs describe it.
 - [ ] `ExecutionRequest.CanonicalJSON()` returns the JCS bytes of a valid request, or an error wrapping `ErrInvalidExecutionRequest`. It reproduces both test vectors byte for byte.
@@ -1143,3 +1145,16 @@ Non-goals:
 - Policy versions.
 - Display rendering.
 - Other message types.
+
+#### Test-first record
+
+1. **Tests written first** (`packages/protocol/canonical_test.go`):
+   - Both ADR-008 test vectors, copied verbatim: vector 1 byte for byte, and for vector 2 its length, the hex of its arguments member, and both action hashes.
+   - `TestSecurity_CanonicalJSONEscapesExactlyAsRFC8785` covers every C0 control except NUL, the quote and the backslash, and characters that other encoders escape but JCS writes literally: DEL, `<`, `&`, `>`, `/`, U+2028, U+2029, and non-ASCII characters.
+   - A round trip: the canonical form decodes to the same request, and canonicalizing it again gives the same bytes.
+   - `TestSecurity_ActionHashChangesWithEveryField` covers 26 changes, all pairwise distinct: each of the 21 leaf fields that has another valid value, plus six argument variants (joined, containing an encoded `","`, an extra empty argument, reordered, none, and changed). `shell` and `network` have a single valid value in version 1, so the vectors pin their encoding instead.
+   - Five transmission forms share vector 1's hash: as in ADR-007, compact, re-indented, keys reordered, and escaped.
+   - Invalid requests get no canonical form and no hash.
+   - `FuzzCanonicalExecutionRequest` checks every accepted payload against an independent RFC 8785 reference built from the generically decoded payload, then the round trip, stability, and the labelled hash.
+2. **Build failure.** `CanonicalJSON` and `ActionHash` were undefined.
+3. **Declarations-only skeleton.** Both methods fail. Runtime red: 7 tests failed across 12 subtests. `TestExecutionRequest_CanonicalJSONRejectsInvalidRequests` passed, as expected, because rejecting everything satisfies it.

@@ -185,6 +185,8 @@
 ./packages/policy-schema/README.md
 ./packages/protocol
 ./packages/protocol/README.md
+./packages/protocol/canonical.go
+./packages/protocol/canonical_test.go
 ./packages/protocol/envelope.go
 ./packages/protocol/envelope_test.go
 ./packages/protocol/execution_request.go
