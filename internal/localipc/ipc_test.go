@@ -698,6 +698,97 @@ func TestDefaultStateDirIsAbsolute(t *testing.T) {
 	}
 }
 
+func TestResolveStateDirDefaultsToUserCacheDirectory(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("XDG_CACHE_HOME selects the user cache directory on Linux")
+	}
+	cacheDir := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", cacheDir)
+
+	got, err := ResolveStateDir("")
+	if err != nil {
+		t.Fatalf("ResolveStateDir(\"\") error = %v", err)
+	}
+	if want := filepath.Join(cacheDir, "scopra", "run"); got != want {
+		t.Fatalf("ResolveStateDir(\"\") = %q, want %q", got, want)
+	}
+}
+
+func TestResolveStateDirReturnsCleanAbsolutePath(t *testing.T) {
+	workingDir := t.TempDir()
+	t.Chdir(workingDir)
+
+	got, err := ResolveStateDir("nested/../run")
+	if err != nil {
+		t.Fatalf("ResolveStateDir(relative) error = %v", err)
+	}
+	if want := filepath.Join(workingDir, "run"); got != want {
+		t.Fatalf("ResolveStateDir(relative) = %q, want %q", got, want)
+	}
+}
+
+func TestCheckStateDirAcceptsPrivateDirectory(t *testing.T) {
+	requireLinux(t)
+	stateDir := filepath.Join(t.TempDir(), "run")
+	if err := os.Mkdir(stateDir, 0o700); err != nil {
+		t.Fatalf("Mkdir(state dir) error = %v", err)
+	}
+
+	if err := CheckStateDir(stateDir); err != nil {
+		t.Fatalf("CheckStateDir(private dir) error = %v, want nil", err)
+	}
+}
+
+func TestSecurity_CheckStateDirDoesNotCreateMissingDirectory(t *testing.T) {
+	requireLinux(t)
+	parent := filepath.Join(t.TempDir(), "missing")
+	stateDir := filepath.Join(parent, "run")
+
+	if err := CheckStateDir(stateDir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("CheckStateDir(missing dir) error = %v, want os.ErrNotExist", err)
+	}
+	if _, err := os.Lstat(parent); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("CheckStateDir() created part of the state directory (Lstat error = %v)", err)
+	}
+}
+
+func TestSecurity_CheckStateDirRejectsInsecureDirectoryWithoutRepairingIt(t *testing.T) {
+	requireLinux(t)
+	stateDir := filepath.Join(t.TempDir(), "run")
+	if err := os.Mkdir(stateDir, 0o700); err != nil {
+		t.Fatalf("Mkdir(state dir) error = %v", err)
+	}
+	if err := os.Chmod(stateDir, 0o750); err != nil {
+		t.Fatalf("Chmod(state dir) error = %v", err)
+	}
+
+	if err := CheckStateDir(stateDir); !errors.Is(err, ErrInsecureStateDir) {
+		t.Fatalf("CheckStateDir(group-readable dir) error = %v, want ErrInsecureStateDir", err)
+	}
+	info, err := os.Stat(stateDir)
+	if err != nil {
+		t.Fatalf("Stat(state dir) error = %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o750 {
+		t.Fatalf("state directory mode after CheckStateDir() = %#o, want unchanged 0750", got)
+	}
+}
+
+func TestCheckStateDirRejectsOverlongSocketPath(t *testing.T) {
+	requireLinux(t)
+	stateDir := filepath.Join(t.TempDir(), strings.Repeat("d", 90))
+	if len(filepath.Join(stateDir, socketName)) <= maxSocketPathBytes {
+		t.Skip("temporary directory path is shorter than the Unix socket limit")
+	}
+	if err := os.Mkdir(stateDir, 0o700); err != nil {
+		t.Fatalf("Mkdir(state dir) error = %v", err)
+	}
+
+	if err := CheckStateDir(stateDir); !errors.Is(err, ErrSocketPathTooLong) {
+		t.Fatalf("CheckStateDir(overlong dir) error = %v, want ErrSocketPathTooLong", err)
+	}
+}
+
 func FuzzDecodeRequest(f *testing.F) {
 	f.Add(validStatusRequest)
 	f.Add(`{"protocolVersion":`)
