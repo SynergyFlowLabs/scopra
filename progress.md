@@ -2,8 +2,8 @@
 
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
-**Current increment:** Execution request v1 decoding (Step 15)
-**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
+**Current increment:** Reject line and paragraph separators in execution request text (Step 16)
+**Status:** In progress on `arena/c7a368c1-scopra`: acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -1068,3 +1068,26 @@ Non-goals:
   - Mio consuming requests, which needs the relay and verification first;
   - the U+2028 and U+2029 tightening.
 - Pushes to `arena/c7a368c1-scopra`: the proposal `4716fab`, test checkpoint `7c8bab6` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.
+
+### 2026-10-16 — Step 16: Reject line and paragraph separators in execution request text
+
+- Selection: after Step 15 the default was to close the gap found in its security review, then to propose the canonical form and action hash. The maintainer replied "continue".
+- The gap: U+2028 LINE SEPARATOR (category Zl) and U+2029 PARAGRAPH SEPARATOR (Zp) are neither control (Cc) nor format (Cf) characters, so ADR-007 as accepted lets them into `command.executable`, `command.workingDirectory`, and `reason`. Many renderers break lines at them, so they could fake a line in an approval display, as a newline could.
+
+#### Acceptance checklist (agreed before implementation)
+
+- [ ] ADR-007 gains a dated amendment: those three fields also reject Zl and Zp. Arguments are unchanged: any character except NUL, and displays must escape.
+- [ ] Field-rule tests reject U+2028 and U+2029 in each of the three fields, and still accept both in arguments.
+- [ ] `validText` rejects Zl and Zp, and the error messages name line and paragraph separators.
+- [ ] The protocol README is updated, and full verification passes.
+
+Non-goals:
+- Other spaces (Zs, such as U+00A0), which add no confusion beyond the ordinary space that is already allowed.
+- Confusable characters (homoglyphs), which are a display concern.
+- The argument character set.
+- Any other ADR-007 rule.
+
+#### Test-first record
+
+1. **Tests written first:** six field-rule rows reject `go\u2028`, `go\u2029`, `src\u2028`, `src\u2029`, and a reason holding either separator. The accepted-arguments row now includes both separators.
+2. **Expected failure.** The tests compiled with no skeleton needed. Exactly the six new rejection rows failed (`error = <nil>`), and the arguments row passed, because arguments are unchanged.

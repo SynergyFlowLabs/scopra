@@ -138,9 +138,11 @@ func TestSecurity_DecodeExecutionRequestEnforcesFieldRules(t *testing.T) {
 		{path: "command.executable", value: "go\x7f"},
 		{path: "command.executable", value: "go\u0085"},
 		{path: "command.executable", value: "go\u202e"},
+		{path: "command.executable", value: "go\u2028"},
+		{path: "command.executable", value: "go\u2029"},
 
 		{path: "command.arguments", value: []any{}, accept: true},
-		{path: "command.arguments", value: []any{"", "tab\there", "new\nline", "\u202e"}, accept: true},
+		{path: "command.arguments", value: []any{"", "tab\there", "new\nline", "\u202e", "\u2028", "\u2029"}, accept: true},
 		{path: "command.arguments", value: arguments(4096), accept: true},
 		{path: "command.arguments", value: arguments(4097)},
 		{path: "command.arguments", value: []any{long(131072)}, accept: true},
@@ -167,6 +169,8 @@ func TestSecurity_DecodeExecutionRequestEnforcesFieldRules(t *testing.T) {
 		{path: "command.workingDirectory", value: "a/./b"},
 		{path: "command.workingDirectory", value: "src\t"},
 		{path: "command.workingDirectory", value: "src\u2066"},
+		{path: "command.workingDirectory", value: "src\u2028"},
+		{path: "command.workingDirectory", value: "src\u2029"},
 
 		{path: "workspaceAccess", value: "read-write", accept: true},
 		{path: "workspaceAccess", value: "readonly"},
@@ -210,6 +214,8 @@ func TestSecurity_DecodeExecutionRequestEnforcesFieldRules(t *testing.T) {
 		{path: "reason", value: "line\nbreak"},
 		{path: "reason", value: "\u200fhidden"},
 		{path: "reason", value: "\u202eevil"},
+		{path: "reason", value: "line\u2028separator"},
+		{path: "reason", value: "paragraph\u2029separator"},
 
 		{path: "expiresAt", value: "2026-10-16T13:00:00Z", accept: true},
 		{path: "expiresAt", value: "2026-10-16T13:00:01Z"},
