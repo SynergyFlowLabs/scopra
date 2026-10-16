@@ -2,8 +2,8 @@
 
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
-**Current increment:** Canonical execution request and action hash (Step 17)
-**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
+**Current increment:** Execution results (Step 18, the first increment of ADR-009)
+**Status:** Proposed. The ADR-009 draft and the checklist below await the maintainer's confirmation, and no code has been written. CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -1210,3 +1210,44 @@ Non-goals:
   - execution results, output chunks, errors, and states;
   - Mio consuming requests, which needs the relay and verification first.
 - Pushes to `arena/c7a368c1-scopra`: the proposal `9bd038f`, test checkpoint `2e0ba82` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.
+
+### 2026-10-16 — Step 18 (proposed): Execution results (ADR-009, increment 1 of 3)
+
+- Selection: after Step 17 the default was to draft ADR-009, covering execution states, results, output chunks, errors, and cancellation, as a proposal before any code. This finishes the plan's Messenger task "results, output chunks, errors, and execution states". The maintainer replied "continue". Implementation starts only after confirmation; a "continue" accepts the proposal.
+- Research:
+  - The PRD's Execution, Reliability, Performance, and Audit sections.
+  - The plan's Execution and policy tasks ("sequence, limits, backpressure, and truncation"; "status, timing, exit code, cancellation, descendants, and cleanup"), its MCP tasks ("distinguish denial, approval, offline, timeout, and failure"), and its audit tasks ("Exclude tokens, secrets, and raw output from metadata").
+  - The risk register's "Output leakage into cloud logs".
+  - ADR-002's reserved `execution.result` and `execution.cancel`.
+  - ADR-006's typed-error convention.
+  - The example chunk's base64url value was computed and checked as canonical.
+- Decisions proposed in ADR-009 that most need a maintainer's view:
+  - four messages, one of them a terminal result sent exactly once, which requires two new message types in ADR-002's version 1 set;
+  - seven terminal states, each with an exact key set; killed states carry no exit code;
+  - output as base64url chunks of up to 64 KiB, numbered in one sequence across both streams, with truncation that does not stop the process and output kept out of metadata;
+  - a closed set of error codes for senders, while receivers accept unknown well-formed codes;
+  - no reply to requests that fail to decode or authenticate;
+  - millisecond timestamps for timing;
+  - retries and acknowledgements left to the relay ADR.
+- Implementation is proposed in three increments: results first, then `execution.started` and `execution.output`, then `execution.cancel`.
+
+#### Acceptance checklist (proposed, not yet agreed)
+
+- [ ] ADR-009 is accepted, with any changes the maintainer asks for, and indexed as accepted. The protocol docs describe it.
+- [ ] ADR-007's strict-document checks (size, UTF-8, a single object, escapes, duplicate keys, `null`, and exact key sets) are generalized for any payload, with no change in behaviour: every existing execution request test still passes unchanged.
+- [ ] `DecodeExecutionResult(payload)` strictly decodes `execution.result`: all seven states with exact key sets, every field rule, and errors that name the field. `ExecutionResult.Validate()` checks typed values.
+- [ ] `ExecutionResult.ValidateAgainst(request)` checks that the execution ID and action hash match the request, and that the output total is within the request's `limits.outputBytes`. `ExecutionResult.CanonicalJSON()` encodes a valid result with the ADR-008 writer, and the encoding decodes back to the same result.
+- [ ] Tests:
+  - every state's example decodes;
+  - table-driven rejections cover every field rule at both sides of its bounds, and wrong key sets for each state;
+  - unknown well-formed error codes are accepted, and malformed codes rejected;
+  - a fuzz test checks the round trip.
+
+  There is no new dependency, and no daemon, CLI, or envelope change in this step.
+
+Non-goals:
+- `execution.started`, `execution.output`, and `execution.cancel`, which are increments 2 and 3.
+- New envelope message types, which come in increment 2.
+- Retries and acknowledgements.
+- Mio producing results.
+- Output storage and redaction.
