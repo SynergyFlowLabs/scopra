@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "skills": {
+    "go-cli": {
+      "source": "eduardo-sl/go-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/(architecture)/go-cli/SKILL.md",
+      "computedHash": "c391f28453602190e2af679278cb60df76d2b5e4cee38748d09b117160fe9e4a"
+    },
+    "go-coding-standards": {
+      "source": "eduardo-sl/go-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/(code-quality)/go-coding-standards/SKILL.md",
+      "computedHash": "14d197e28d2c67afe206ad8b8b0bc15c4b1e41aeb38cb973d9847bafe29dd9df"
+    },
+    "go-project-layout": {
+      "source": "eduardo-sl/go-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/(architecture)/go-project-layout/SKILL.md",
+      "computedHash": "d0e6dd913328d4e2e82031d6aaf54409c47232a6cd5bc9504b3a48abd89e3217"
+    },
+    "go-test-quality": {
+      "source": "eduardo-sl/go-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/(testing)/go-test-quality/SKILL.md",
+      "computedHash": "aaa8a367e648dfc7a62da6805966cd7698ef6027b5d10bbe304c0a30a236fd43"
+    },
+    "security-review": {
+      "source": "getsentry/skills",
+      "sourceType": "github",
+      "skillPath": "skills/security-review/SKILL.md",
+      "computedHash": "6b3e784d5589c67a11bbcc881b479fc8c2fdc1661a28d3f9d0213772b38fbd80"
+    },
+    "test-driven-development": {
+      "source": "obra/superpowers",
+      "sourceType": "github",
+      "skillPath": "skills/test-driven-development/SKILL.md",
+      "computedHash": "3cfe4ebb6fa7288f668d87880d279c8e48f7a92b63415e296857060f5ce22e05"
+    }
+  }
+}

@@ -25,14 +25,15 @@ If any mandatory stage is unavailable or invalid, deny the request. Never add un
 ## Technical Baseline
 
 - Monorepo
-- Go daemon, CLI, relay, and security-sensitive services
+- Go Scopra Mio daemon, Scopra Mariner CLI, Scopra Goldstone relay, and security-sensitive services
 - TypeScript, React, and Next.js dashboard
 - PostgreSQL system of record
 - Redis for ephemeral coordination
 - Encrypted object storage for optional artifacts
-- Outbound TLS WebSocket machine channel with authenticated envelopes
-- Rootless Podman behind a containment interface
+- Scopra Goldstone outbound TLS WebSocket machine relay carrying authenticated Scopra Messenger Protocol envelopes
+- Rootless Podman behind a containment interface for Scopra Hollow
 - OpenTelemetry-compatible observability
+- Canonical component names are defined in `docs/product/naming.md`; retain `scopra` and `scoprad` executable names unless a separate compatibility decision changes them.
 
 ## Milestone Summary
 
@@ -108,15 +109,17 @@ If any mandatory stage is unavailable or invalid, deny the request. Never add un
 - [ ] Initialize monorepo, branch protection, CODEOWNERS, CI, linting, testing, secret scanning, dependency checks, SBOM, schemas, and templates.
 - [ ] Create one-command local development setup.
 
-### Protocol
+### Scopra Messenger Protocol
 
 - [ ] Define protocol versions, IDs, canonical request, results, output chunks, errors, and execution states.
 - [ ] Add validation and compatibility tests.
 
-### Daemon and CLI
+### Scopra Mio daemon and Scopra Mariner CLI
 
-- [ ] Implement `scoprad`, foreground mode, Linux service, state directory, lock, shutdown, health, logging, and versioning.
-- [ ] Implement `scopra doctor`, daemon status, workspace CRUD, local execution, status, logs, cancellation, JSON output, and TTY output.
+**Initial increment implemented:** foreground `scoprad`, `scopra status`, local version reporting, context-driven shutdown, and strict same-UID Unix-socket status IPC are in place. Workspace CRUD, service installation, `doctor`, execution, and the broader CLI remain pending; the checklist items below describe those larger milestones and are intentionally unchecked.
+
+- [ ] Implement Scopra Mio (`scoprad`), foreground mode, Linux service, state directory, lock, shutdown, health, logging, and versioning.
+- [ ] Implement Scopra Mariner commands, including `scopra doctor`, daemon status, workspace CRUD, local execution, status, logs, cancellation, JSON output, and TTY output.
 - [ ] Implement authenticated bounded Unix-socket IPC and malformed-message tests.
 
 ### Workspace and containment
@@ -124,7 +127,7 @@ If any mandatory stage is unavailable or invalid, deny the request. Never add un
 - [ ] Canonicalize workspace and record repository fingerprint.
 - [ ] Reject root and complete home directory.
 - [ ] Revalidate workspace before execution.
-- [ ] Implement rootless Podman adapter.
+- [ ] Implement the Scopra Hollow rootless Podman adapter behind the containment interface.
 - [ ] Mount only workspace; default read-only.
 - [ ] Disable network, devices, privileged mode, Docker socket, and host PID namespace.
 - [ ] Drop capabilities and enable `no-new-privileges`.
@@ -138,7 +141,7 @@ If any mandatory stage is unavailable or invalid, deny the request. Never add un
 - [ ] Exclude credential sockets and host secrets.
 - [ ] Capture stdout and stderr with sequence, limits, backpressure, and truncation.
 - [ ] Track status, timing, exit code, cancellation, descendants, and cleanup.
-- [ ] Implement default-deny local maximum policy and initial policy profiles.
+- [ ] Implement Scopra Resolution default-deny evaluation and initial policy profiles; enforce the local maximum through Scopra Rupes.
 
 ### Adversarial tests
 
@@ -162,7 +165,7 @@ If any mandatory stage is unavailable or invalid, deny the request. Never add un
 - [ ] Provision development, staging, PostgreSQL, Redis, secrets, identities, TLS, DNS, migrations, logs, metrics, and traces.
 - [ ] Implement account creation, sign-in, secure sessions, recent authentication, listing, revocation, and enrollment notices.
 
-### Device enrollment
+### Scopra Mariner device enrollment
 
 - [ ] Generate key locally and store securely.
 - [ ] Define machine credential, expiry, rotation, and revocation.
@@ -170,7 +173,7 @@ If any mandatory stage is unavailable or invalid, deny the request. Never add un
 - [ ] Display machine characteristics and fingerprint in browser.
 - [ ] Audit and notify enrollment.
 
-### Relay
+### Scopra Goldstone relay
 
 - [ ] Implement authenticated outbound connection.
 - [ ] Validate revocation and minimum version.
@@ -233,10 +236,10 @@ If any mandatory stage is unavailable or invalid, deny the request. Never add un
 - [ ] Verify approver, integrity-protect decision, recompute locally, and consume atomically.
 - [ ] Invalidate after change or revocation.
 
-### Audit
+### Scopra Catena audit
 
-- [ ] Emit versioned events for all identity, grant, session, execution, policy, approval, revocation, timeout, cancellation, truncation, and resource-limit actions.
-- [ ] Persist append-only with sequence integrity, buffering, and reconciliation.
+- [ ] Emit versioned Scopra Catena events for all identity, grant, session, execution, policy, approval, revocation, timeout, cancellation, truncation, and resource-limit actions.
+- [ ] Persist the Catena event chain append-only with sequence integrity, buffering, and reconciliation.
 - [ ] Exclude tokens, secrets, and raw output from metadata.
 
 ### Negative tests and exit gate
@@ -294,7 +297,7 @@ If any mandatory stage is unavailable or invalid, deny the request. Never add un
 
 ### Documentation, metrics, and cohort
 
-- [ ] Publish installation, activation, workspace, policies, MCP, approvals, troubleshooting, removal, limitations, security, and data handling.
+- [ ] Publish installation, activation, workspace, policies, MCP, approvals, naming, troubleshooting, removal, limitations, security, and data handling.
 - [ ] Instrument activation and execution funnels without commands, raw output, secrets, or full paths.
 - [ ] Recruit 20–50 qualified users and establish onboarding, support, diagnostics, triage, patching, and emergency communication.
 
@@ -337,14 +340,14 @@ If any mandatory stage is unavailable or invalid, deny the request. Never add un
 
 ```text
 protocol
- -> local daemon and IPC
- -> containment
- -> enrollment
- -> relay
+ -> Scopra Mio daemon and IPC
+ -> Scopra Hollow containment
+ -> Scopra Mariner enrollment
+ -> Scopra Goldstone relay
  -> grants and authorization
- -> local policy intersection
+ -> Scopra Rupes local policy enforcement
  -> approval
- -> audit
+ -> Scopra Catena audit
  -> remote MCP
  -> end-to-end tests
  -> signed release
@@ -358,7 +361,7 @@ protocol
 - [ ] Complete five observations.
 - [ ] Bootstrap repo and CI.
 - [ ] Approve core ADRs.
-- [ ] Build daemon and doctor spike.
+- [ ] Build Scopra Mio daemon and Scopra Mariner doctor spike.
 - [ ] Validate rootless Podman.
 - [ ] Draft protocol.
 
@@ -381,7 +384,7 @@ protocol
 ### Week 4
 
 - [ ] Complete development enrollment.
-- [ ] Establish authenticated relay.
+- [ ] Establish authenticated Scopra Goldstone relay.
 - [ ] Show presence.
 - [ ] Route signed no-op.
 - [ ] Review risks and estimates.

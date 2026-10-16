@@ -1,6 +1,6 @@
 # Security Architecture
 
-Scopra separates identity, policy, human approval, and local enforcement authorities.
+Scopra Caloris coordinates identity, grants, and cloud authorization; Scopra Resolution evaluates policy; human approval remains separate; and Scopra Rupes is the authoritative local enforcement boundary.
 
 ```text
 Execute = valid user

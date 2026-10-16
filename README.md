@@ -4,7 +4,7 @@ Scopra is the controlled execution layer for AI agents. It connects agents to ap
 
 ## Status
 
-Initial planning and repository scaffold. Production behavior is not implemented.
+Early implementation: Scopra Messenger v1 envelope validation and a read-only Mio status service over local IPC. Workspace management, authorization, and execution are not implemented.
 
 ## Start Here
 
@@ -14,16 +14,23 @@ Initial planning and repository scaffold. Production behavior is not implemented
 - `docs/security/risk-register.md`
 - `docs/security/security-architecture.md`
 - `docs/architecture/system-overview.md`
+- `progress.md`
 
 ## Planned Components
 
-- `scopra` CLI/TUI
-- `scoprad` daemon
-- API and control plane
-- Relay
-- Remote MCP server
-- Dashboard
-- Shared protocol and policy packages
+- **Scopra Mariner** — CLI/TUI onboarding and machine enrollment (`scopra` command).
+- **Scopra Mio** — local execution daemon (`scoprad` command).
+- **Scopra Caloris** — cloud API and control plane.
+- **Scopra Goldstone** — secure agent-to-machine relay.
+- **Scopra Messenger Protocol** — internal request and dispatch protocol.
+- **Scopra Resolution** — cloud and local policy evaluation.
+- **Scopra Rupes** — local policy-enforcement boundary.
+- **Scopra Hollow** — ephemeral, isolated execution environment.
+- **Scopra Catena** — append-only execution and audit event chain.
+- **Scopra Facula** — security signals and anomaly detection.
+- Remote MCP server, dashboard, and shared SDK, protocol, policy-schema, and UI packages.
+
+See [`docs/product/naming.md`](docs/product/naming.md) for the component naming map.
 
 ## Alpha Defaults
 

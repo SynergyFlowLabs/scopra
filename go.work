@@ -1,3 +1,5 @@
-go 1.23
+go 1.26.0
 
-// Service modules will be added during implementation.
+toolchain go1.26.9
+
+use .

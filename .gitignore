@@ -19,6 +19,7 @@ coverage/
 *.tfstate
 *.tfstate.*
 *.log
+*.sock
 .tmp/
 tmp/
 artifacts/

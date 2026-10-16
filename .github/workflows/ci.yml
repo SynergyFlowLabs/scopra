@@ -1,17 +1,58 @@
 name: CI
+
 on:
   pull_request:
   push:
-    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   integrity:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      GOTOOLCHAIN: local
     steps:
-      - uses: actions/checkout@v4
-      - run: |
+      - name: Check out source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Verify required project documents and secret-file hygiene
+        run: |
           test -f PRD.md
+          test -f progress.md
           test -f docs/plans/00-full-implementation-plan.md
           test -f docs/security/threat-model.md
           test -f docs/security/risk-register.md
-      - run: |
-          if find . -type f \( -name '*.pem' -o -name '*.key' -o -name '.env' \) | grep -q .; then exit 1; fi
+          if find . -type f \( -name '*.pem' -o -name '*.key' -o -name '.env' \) -not -path './.git/*' | grep -q .; then
+            echo 'Unexpected key or environment file found in the checkout.' >&2
+            exit 1
+          fi
+
+      - name: Set up Go 1.26.9
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.9'
+          cache: false
+
+      - name: Check Go formatting
+        run: |
+          unformatted="$(find . -type f -name '*.go' -not -path './.git/*' -print0 | xargs -0 -r gofmt -l)"
+          if [ -n "$unformatted" ]; then
+            echo 'Run gofmt on these files:' >&2
+            echo "$unformatted" >&2
+            exit 1
+          fi
+
+      - name: Run Go tests with the race detector
+        run: go test -race ./...
+
+      - name: Run go vet
+        run: go vet ./...
