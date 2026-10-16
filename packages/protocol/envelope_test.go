@@ -163,3 +163,181 @@ func hashTestPayload(payload []byte) string {
 	sum := sha256.Sum256(payload)
 	return hex.EncodeToString(sum[:])
 }
+
+func TestDecodeEnvelope_RejectsInvalidWireFields(t *testing.T) {
+	now := time.Date(2026, time.October, 16, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name   string
+		mutate func(*Envelope)
+		want   error
+	}{
+		{
+			name: "unsupported version",
+			mutate: func(envelope *Envelope) {
+				envelope.Version = "v2"
+			},
+			want: ErrUnsupportedVersion,
+		},
+		{
+			name: "invalid identifier",
+			mutate: func(envelope *Envelope) {
+				envelope.Issuer = "caloris/1"
+			},
+			want: ErrInvalidEnvelope,
+		},
+		{
+			name: "zero sequence",
+			mutate: func(envelope *Envelope) {
+				envelope.Sequence = 0
+			},
+			want: ErrInvalidEnvelope,
+		},
+		{
+			name: "zero creation time",
+			mutate: func(envelope *Envelope) {
+				envelope.CreatedAt = time.Time{}
+			},
+			want: ErrInvalidEnvelope,
+		},
+		{
+			name: "expiration before creation",
+			mutate: func(envelope *Envelope) {
+				envelope.ExpiresAt = envelope.CreatedAt.Add(-time.Second)
+			},
+			want: ErrInvalidEnvelope,
+		},
+		{
+			name: "lifetime exceeds limit",
+			mutate: func(envelope *Envelope) {
+				envelope.CreatedAt = now.Add(-10 * time.Minute)
+				envelope.ExpiresAt = now.Add(time.Minute)
+			},
+			want: ErrEnvelopeLifetimeTooLong,
+		},
+		{
+			name: "short nonce",
+			mutate: func(envelope *Envelope) {
+				envelope.Nonce = "AQID"
+			},
+			want: ErrInvalidEnvelope,
+		},
+		{
+			name: "padded nonce is not canonical",
+			mutate: func(envelope *Envelope) {
+				envelope.Nonce = "AAECAwQFBgcICQoLDA0ODw=="
+			},
+			want: ErrInvalidEnvelope,
+		},
+		{
+			name: "missing proof",
+			mutate: func(envelope *Envelope) {
+				envelope.AuthenticationProof = ""
+			},
+			want: ErrInvalidEnvelope,
+		},
+		{
+			name: "oversized proof",
+			mutate: func(envelope *Envelope) {
+				envelope.AuthenticationProof = strings.Repeat("p", 8<<10+1)
+			},
+			want: ErrInvalidEnvelope,
+		},
+		{
+			name: "missing payload",
+			mutate: func(envelope *Envelope) {
+				envelope.Payload = nil
+			},
+			want: ErrInvalidEnvelope,
+		},
+		{
+			name: "payload must be an object",
+			mutate: func(envelope *Envelope) {
+				envelope.Payload = json.RawMessage(`[]`)
+				envelope.PayloadHash = hashTestPayload(envelope.Payload)
+			},
+			want: ErrInvalidEnvelope,
+		},
+		{
+			name: "payload digest mismatch",
+			mutate: func(envelope *Envelope) {
+				envelope.PayloadHash = strings.Repeat("0", sha256.Size*2)
+			},
+			want: ErrPayloadHashMismatch,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			envelope := validTestEnvelope(t, now)
+			test.mutate(&envelope)
+
+			_, err := DecodeEnvelope(bytes.NewReader(marshalTestEnvelope(t, envelope)))
+			if !errors.Is(err, test.want) {
+				t.Fatalf("DecodeEnvelope() error = %v, want %v", err, test.want)
+			}
+		})
+	}
+}
+
+func TestEnvelope_ValidateAtRejectsInvalidClock(t *testing.T) {
+	now := time.Date(2026, time.October, 16, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name   string
+		now    time.Time
+		mutate func(*Envelope)
+		want   error
+	}{
+		{
+			name: "zero validation time",
+			now:  time.Time{},
+			want: ErrInvalidEnvelope,
+		},
+		{
+			name: "issued beyond allowed clock skew",
+			now:  now,
+			mutate: func(envelope *Envelope) {
+				envelope.CreatedAt = now.Add(AllowedClockSkew + time.Second)
+				envelope.ExpiresAt = envelope.CreatedAt.Add(time.Minute)
+			},
+			want: ErrEnvelopeNotYetValid,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			envelope := validTestEnvelope(t, now)
+			if test.mutate != nil {
+				test.mutate(&envelope)
+			}
+			if err := envelope.ValidateAt(test.now); !errors.Is(err, test.want) {
+				t.Fatalf("ValidateAt() error = %v, want %v", err, test.want)
+			}
+		})
+	}
+}
+
+func TestDecodeEnvelope_RejectsMalformedPayloadAndNilReader(t *testing.T) {
+	if _, err := DecodeEnvelope(nil); !errors.Is(err, ErrInvalidEnvelope) {
+		t.Fatalf("DecodeEnvelope(nil) error = %v, want ErrInvalidEnvelope", err)
+	}
+
+	now := time.Date(2026, time.October, 16, 12, 0, 0, 0, time.UTC)
+	envelope := validTestEnvelope(t, now)
+	envelope.Payload = json.RawMessage(`{`)
+	if err := envelope.ValidateStructure(); !errors.Is(err, ErrInvalidEnvelope) {
+		t.Fatalf("ValidateStructure() error = %v, want ErrInvalidEnvelope", err)
+	}
+}
+
+func TestSecurity_RejectsOverlyDeepPayload(t *testing.T) {
+	now := time.Date(2026, time.October, 16, 12, 0, 0, 0, time.UTC)
+	envelope := validTestEnvelope(t, now)
+	deepValue := strings.Repeat("[", maxJSONDepth+1) + "0" + strings.Repeat("]", maxJSONDepth+1)
+	envelope.Payload = json.RawMessage(`{"deep":` + deepValue + `}`)
+	envelope.PayloadHash = hashTestPayload(envelope.Payload)
+
+	_, err := DecodeEnvelope(bytes.NewReader(marshalTestEnvelope(t, envelope)))
+	if !errors.Is(err, ErrInvalidEnvelope) {
+		t.Fatalf("DecodeEnvelope() error = %v, want ErrInvalidEnvelope", err)
+	}
+}

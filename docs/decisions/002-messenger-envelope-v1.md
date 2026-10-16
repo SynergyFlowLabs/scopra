@@ -14,6 +14,7 @@ Cloud-to-daemon messages carry an authenticated envelope and an arbitrary typed 
 - Limit an individual payload to 512 KiB and bind its exact transmitted JSON bytes with a lowercase SHA-256 digest.
 - Require a nonzero sequence, opaque message/issuer/audience identifiers, a 128-bit-or-longer URL-safe nonce, and a nonempty bounded authentication-proof field.
 - Limit envelope lifetime to five minutes and allow up to 30 seconds of issuer clock skew for a future creation time. Expiry itself is strict.
+- `DecodeEnvelope` validates bounded, non-time-dependent structure. Receivers must call `Envelope.ValidateAt(now)` to enforce the timestamp policy before dispatch.
 - Keep signature verification, issuer/device key binding, sequence/replay storage, authorization, and payload-specific decoding as separate mandatory checks before dispatch. The protocol package must not present structural validation as proof of trust.
 
 ## Consequences

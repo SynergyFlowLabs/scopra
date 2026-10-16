@@ -144,6 +144,7 @@
 ./packages/policy-schema/README.md
 ./packages/protocol
 ./packages/protocol/README.md
+./packages/protocol/envelope.go
 ./packages/protocol/envelope_test.go
 ./packages/sdk-typescript
 ./packages/sdk-typescript/README.md

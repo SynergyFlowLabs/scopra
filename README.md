@@ -4,7 +4,7 @@ Scopra is the controlled execution layer for AI agents. It connects agents to ap
 
 ## Status
 
-Initial planning and repository scaffold. Production behavior is not implemented.
+Early implementation: Scopra Messenger v1 envelope validation. Execution and production behavior are not implemented.
 
 ## Start Here
 
@@ -14,6 +14,7 @@ Initial planning and repository scaffold. Production behavior is not implemented
 - `docs/security/risk-register.md`
 - `docs/security/security-architecture.md`
 - `docs/architecture/system-overview.md`
+- `progress.md`
 
 ## Planned Components
 
