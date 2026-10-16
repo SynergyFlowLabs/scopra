@@ -12,6 +12,7 @@ import (
 
 	"github.com/SynergyFlowLabs/scopra/internal/buildinfo"
 	"github.com/SynergyFlowLabs/scopra/internal/localipc"
+	"github.com/SynergyFlowLabs/scopra/internal/workspace"
 )
 
 func main() {
@@ -74,6 +75,12 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return fmt.Errorf("report daemon startup: %w", err)
 	}
 	return daemon.Serve(ctx)
+}
+
+// newWorkspaceValidator returns the workspace validator that Mio uses.
+// Skeleton for the Step 8 tests: it does not protect stateDir yet.
+func newWorkspaceValidator(stateDir string) (*workspace.Validator, error) {
+	return workspace.NewValidator()
 }
 
 func failUsage(writer io.Writer, format string, values ...any) error {

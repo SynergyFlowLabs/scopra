@@ -832,6 +832,26 @@ func TestResolveStateDirReturnsCleanAbsolutePath(t *testing.T) {
 	}
 }
 
+func TestDaemonStateDirIsTheLockedDirectory(t *testing.T) {
+	requireLinux(t)
+	workingDir := t.TempDir()
+	t.Chdir(workingDir)
+
+	daemon, err := Listen("nested/../run", "test-version")
+	if err != nil {
+		t.Fatalf("Listen(relative) error = %v", err)
+	}
+	t.Cleanup(func() { _ = daemon.Close() })
+
+	want := filepath.Join(workingDir, "run")
+	if got := daemon.StateDir(); got != want {
+		t.Fatalf("StateDir() = %q, want the absolute locked directory %q", got, want)
+	}
+	if _, err := os.Lstat(filepath.Join(want, "scoprad.lock")); err != nil {
+		t.Fatalf("Lstat(lock file in StateDir) error = %v", err)
+	}
+}
+
 func TestCheckStateDirAcceptsPrivateDirectory(t *testing.T) {
 	requireLinux(t)
 	stateDir := filepath.Join(t.TempDir(), "run")

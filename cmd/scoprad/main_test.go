@@ -10,6 +10,10 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/SynergyFlowLabs/scopra/internal/localipc"
+	"github.com/SynergyFlowLabs/scopra/internal/workspace"
+	"github.com/SynergyFlowLabs/scopra/internal/workspace/registry"
 )
 
 func TestRunHelpReturnsSuccessSentinel(t *testing.T) {
@@ -75,5 +79,170 @@ func TestRunRejectsUnexpectedArguments(t *testing.T) {
 	err := run(t.Context(), []string{"unexpected"}, &stdout, &stderr)
 	if err == nil {
 		t.Fatal("run() error = nil, want usage error")
+	}
+}
+
+func TestSecurity_RunRefusesUnusableWorkspaceRegistry(t *testing.T) {
+	requireLinux(t)
+	tests := []struct {
+		name    string
+		content func(stateDir string) string
+		mode    os.FileMode
+		want    error
+	}{
+		{
+			name:    "unsupported version",
+			content: func(string) string { return `{"version":2,"workspaces":[]}` },
+			mode:    0o600,
+			want:    registry.ErrCorruptRegistry,
+		},
+		{
+			name:    "group-readable file",
+			content: func(string) string { return `{"version":1,"workspaces":[]}` },
+			mode:    0o640,
+			want:    registry.ErrInsecureRegistry,
+		},
+		{
+			// For example, a state directory moved into a registered workspace.
+			name:    "registry inside a registered workspace",
+			content: func(stateDir string) string { return registryWithWorkspace(filepath.Dir(stateDir)) },
+			mode:    0o600,
+			want:    registry.ErrCorruptRegistry,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stateDir := makeStateDir(t)
+			file := filepath.Join(stateDir, "workspaces.json")
+			content := tt.content(stateDir)
+			writeFile(t, file, content, tt.mode)
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			var stdout bytes.Buffer
+			stderr := &cancelOnWrite{cancel: cancel}
+
+			err := run(ctx, []string{"--state-dir", stateDir}, &stdout, stderr)
+			if !errors.Is(err, tt.want) {
+				t.Fatalf("run() error = %v, want %v", err, tt.want)
+			}
+			if strings.Contains(stderr.String(), "listening") {
+				t.Fatalf("run() reported listening with an unusable registry: %q", stderr.String())
+			}
+			requireUnchangedFile(t, file, content, tt.mode)
+			if _, err := os.Lstat(filepath.Join(stateDir, "scoprad.sock")); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("socket left behind after a refused start (Lstat error = %v)", err)
+			}
+			daemon, err := localipc.Listen(stateDir, "test-version")
+			if err != nil {
+				t.Fatalf("Listen() after a refused start error = %v, want the lock released", err)
+			}
+			_ = daemon.Close()
+		})
+	}
+}
+
+func TestRunStartsWithMissingOrValidWorkspaceRegistry(t *testing.T) {
+	requireLinux(t)
+	tests := []struct {
+		name    string
+		content string // empty means no registry file
+	}{
+		{name: "no registry file"},
+		// Workspaces are revalidated before use, so a recorded workspace that
+		// no longer exists must not stop Mio from starting.
+		{name: "registry naming a missing workspace", content: registryWithWorkspace("/nonexistent/scopra-workspace")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stateDir := makeStateDir(t)
+			file := filepath.Join(stateDir, "workspaces.json")
+			if tt.content != "" {
+				writeFile(t, file, tt.content, 0o600)
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			var stdout bytes.Buffer
+			stderr := &cancelOnWrite{cancel: cancel}
+
+			if err := run(ctx, []string{"--state-dir", stateDir}, &stdout, stderr); err != nil {
+				t.Fatalf("run() error = %v; stderr = %q", err, stderr.String())
+			}
+			if !strings.Contains(stderr.String(), "listening") {
+				t.Fatalf("daemon startup did not report listener startup: %q", stderr.String())
+			}
+			if tt.content != "" {
+				requireUnchangedFile(t, file, tt.content, 0o600)
+			} else if _, err := os.Lstat(file); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("run() created a registry file (Lstat error = %v)", err)
+			}
+		})
+	}
+}
+
+func TestWorkspaceValidatorProtectsStateDirectory(t *testing.T) {
+	requireLinux(t)
+	stateDir := makeStateDir(t)
+
+	validator, err := newWorkspaceValidator(stateDir)
+	if err != nil {
+		t.Fatalf("newWorkspaceValidator() error = %v", err)
+	}
+	// The parent directory contains Mio's socket, lock, and registry.
+	if _, err := validator.Inspect(filepath.Dir(stateDir)); !errors.Is(err, workspace.ErrProtectedPath) {
+		t.Fatalf("Inspect(parent of the state directory) error = %v, want ErrProtectedPath", err)
+	}
+}
+
+func requireLinux(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS != "linux" {
+		t.Skip("peer credential support is Linux-only in this increment")
+	}
+}
+
+// makeStateDir returns a new owner-only state directory with symlinks resolved.
+func makeStateDir(t *testing.T) string {
+	t.Helper()
+	stateDir := filepath.Join(t.TempDir(), "run")
+	if err := os.Mkdir(stateDir, 0o700); err != nil {
+		t.Fatalf("Mkdir(state dir) error = %v", err)
+	}
+	resolved, err := filepath.EvalSymlinks(stateDir)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(state dir) error = %v", err)
+	}
+	return resolved
+}
+
+func registryWithWorkspace(path string) string {
+	return `{"version":1,"workspaces":[{"id":"0123456789abcdef0123456789abcdef","path":"` + path +
+		`","fingerprint":{"device":1,"inode":2}}]}`
+}
+
+func writeFile(t *testing.T, path, content string, mode os.FileMode) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), mode); err != nil {
+		t.Fatalf("WriteFile(%q) error = %v", path, err)
+	}
+	if err := os.Chmod(path, mode); err != nil {
+		t.Fatalf("Chmod(%q) error = %v", path, err)
+	}
+}
+
+func requireUnchangedFile(t *testing.T, path, content string, mode os.FileMode) {
+	t.Helper()
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatalf("Lstat(%q) error = %v", path, err)
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm() != mode {
+		t.Fatalf("%s mode = %v, want a regular file with mode %v", path, info.Mode(), mode)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%q) error = %v", path, err)
+	}
+	if string(data) != content {
+		t.Fatalf("%s changed to %q, want %q", path, data, content)
 	}
 }

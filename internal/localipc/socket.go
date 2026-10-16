@@ -199,6 +199,10 @@ func Listen(stateDir, daemonVersion string) (*Daemon, error) {
 	}, nil
 }
 
+// StateDir returns the state directory that the daemon serves and holds
+// locked. Skeleton for the Step 8 tests: not implemented yet.
+func (d *Daemon) StateDir() string { return "" }
+
 // Serve accepts bounded, one-request status connections until ctx is canceled
 // or the listener is closed. The socket is removed on return only if its inode
 // is still the one created by Listen.

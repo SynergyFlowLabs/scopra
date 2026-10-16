@@ -188,6 +188,18 @@ func TestSecurity_AddRejectsWorkspaceContainingRegistry(t *testing.T) {
 	requireDirEntries(t, dir)
 }
 
+func TestSecurity_AddRejectsWorkspaceInsideRegistry(t *testing.T) {
+	dir := makeRegistryDir(t)
+	inside := makeDir(t, dir, "project")
+	// Mio keeps other state beside the registry, so no workspace may live there.
+	registry := mustOpen(t, dir, newValidator(t))
+
+	if _, err := registry.Add(inside); !errors.Is(err, workspace.ErrProtectedPath) {
+		t.Fatalf("Add(directory inside the registry directory) error = %v, want ErrProtectedPath", err)
+	}
+	requireDirEntries(t, dir, "project")
+}
+
 func TestAddEnforcesMaximumWorkspaces(t *testing.T) {
 	registry := mustOpen(t, makeRegistryDir(t), newValidator(t))
 	registry.maxWorkspaces = 2
@@ -350,6 +362,39 @@ func TestSecurity_OpenRejectsCorruptRegistry(t *testing.T) {
 			}
 			if got := string(readFile(t, file)); got != test.content {
 				t.Fatal("Open() modified a corrupt registry file")
+			}
+		})
+	}
+}
+
+func TestSecurity_OpenRejectsRecordOverlappingRegistry(t *testing.T) {
+	const id = "0123456789abcdef0123456789abcdef"
+	tests := []struct {
+		name string
+		path func(dir string) string
+	}{
+		// For example, a state directory moved into a registered workspace.
+		{name: "workspace contains the registry", path: filepath.Dir},
+		{name: "workspace is the registry directory", path: func(dir string) string { return dir }},
+		{name: "workspace inside the registry directory", path: func(dir string) string {
+			return filepath.Join(dir, "project")
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dir, err := filepath.EvalSymlinks(makeRegistryDir(t))
+			if err != nil {
+				t.Fatalf("EvalSymlinks(registry dir) error = %v", err)
+			}
+			file := filepath.Join(dir, "workspaces.json")
+			content := registryJSON(recordJSON(id, test.path(dir)))
+			writeFile(t, file, content)
+
+			if _, err := Open(dir, newValidator(t)); !errors.Is(err, ErrCorruptRegistry) {
+				t.Fatalf("Open() error = %v, want ErrCorruptRegistry", err)
+			}
+			if got := string(readFile(t, file)); got != content {
+				t.Fatal("Open() modified the registry file")
 			}
 		})
 	}
