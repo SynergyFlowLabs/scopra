@@ -10,4 +10,8 @@ Use `000-template.md`. Accepted initial decisions:
 - `006-local-workspace-commands.md` — `workspace.add`, `workspace.list`, and `workspace.remove` over IPC v1 with typed error replies and ID-cursor paging that fits each page in one frame; same-UID authorization for registration only, on the local socket only.
 - `007-execution-request-v1.md` — the strict `execution.request` payload: exact keys, no nulls, transmitted text preserved exactly, `shell` false only, a workspace-relative working directory, explicit workspace access, network `none` only, sanity-bounded limits, and a request window of at most one hour. The canonical form and action hash remain a follow-up. Amended 2026-10-16 so that the executable, working directory, and reason also reject the line and paragraph separators U+2028 and U+2029.
 
+Proposed, awaiting confirmation:
+
+- `008-canonical-execution-request.md` — the canonical form of a whole version 1 execution request (RFC 8785 JCS, computed from the decoded value) and its action hash: lowercase hex SHA-256 over the label `scopra/execution.request/v1` and a newline, then the canonical bytes. Mio always recomputes the hash. Includes two normative test vectors.
+
 Required follow-up ADRs cover device identity, relay transport/reconnect, containment backend, canonical execution requests, audit integrity, MCP authorization, output/redaction, token revocation, and update signing.

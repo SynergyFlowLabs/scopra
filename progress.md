@@ -2,8 +2,8 @@
 
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
-**Current increment:** Reject line and paragraph separators in execution request text (Step 16)
-**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
+**Current increment:** Canonical execution request and action hash (Step 17)
+**Status:** Proposed. The ADR-008 draft and the checklist below await the maintainer's confirmation, and no code has been written. CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -1108,3 +1108,38 @@ Non-goals:
   - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64.
   - The tree is unchanged.
 - Pushes to `arena/c7a368c1-scopra`: test checkpoint `f5bebbb` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.
+
+### 2026-10-16 — Step 17 (proposed): Canonical execution request and action hash
+
+- Selection: after Step 16 the default was to draft the canonical form and action hash as a proposal before writing any code, as was done for ADR-007. The maintainer replied "continue". Implementation starts only after confirmation; a "continue" accepts the proposal.
+- Research:
+  - The PRD's Approvals section and the plan's Milestone 3 approval tasks ("Freeze request and compute action hash", and "recompute locally, and consume atomically").
+  - The threat model, and the risk register's "Canonical action hash, nonce, expiry, one-time use, local recomputation, and atomic consumption".
+  - ADR-002's note that a separate canonical action representation is needed.
+  - The ADR index's "canonical execution requests" follow-up.
+- Test vectors: computed with an independent implementation (Python's `json` module with sorted keys, compact separators, and `ensure_ascii=False`, which equals JCS for this value domain). Vector 1's hash was checked again with `sha256sum` over the 28-byte label and the 619 canonical bytes.
+- Decisions proposed in ADR-008 that most need a maintainer's view:
+  - the hash covers the whole request, including the reason, the timestamps, and the IDs, so any change needs a new approval;
+  - the canonical form is RFC 8785 JCS, computed from the decoded value rather than the transmitted bytes;
+  - the hash is SHA-256 over the label `scopra/execution.request/v1` and a newline, then the canonical bytes, in lowercase hexadecimal;
+  - Mio always recomputes the hash and never trusts a transmitted one;
+  - the approval record's format is left to a later ADR.
+
+#### Acceptance checklist (proposed, not yet agreed)
+
+- [ ] ADR-008 is accepted, with any changes the maintainer asks for, and indexed as accepted. The protocol docs describe it.
+- [ ] `ExecutionRequest.CanonicalJSON()` returns the JCS bytes of a valid request, or an error wrapping `ErrInvalidExecutionRequest`. It reproduces both test vectors byte for byte.
+- [ ] `ExecutionRequest.ActionHash()` returns the labelled SHA-256 in lowercase hexadecimal and reproduces both test vectors.
+- [ ] Property tests:
+  - the canonical form decodes to an equal request, and canonicalizing it again gives the same bytes;
+  - changing any one of the 23 leaf fields changes the hash;
+  - payloads that differ only in whitespace, escaping, or key order share the hash;
+  - the fuzz test also checks the canonical round trip for every accepted payload.
+- [ ] No new dependency, and no daemon, CLI, or wire change.
+
+Non-goals:
+- Approval records and signatures.
+- Consumption and use counts.
+- Policy versions.
+- Display rendering.
+- Other message types.

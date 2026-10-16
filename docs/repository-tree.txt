@@ -115,6 +115,7 @@
 ./docs/decisions/005-workspace-registry-storage.md
 ./docs/decisions/006-local-workspace-commands.md
 ./docs/decisions/007-execution-request-v1.md
+./docs/decisions/008-canonical-execution-request.md
 ./docs/decisions/README.md
 ./docs/operations
 ./docs/operations/runbooks.md
