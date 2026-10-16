@@ -13,6 +13,7 @@ import (
 	"github.com/SynergyFlowLabs/scopra/internal/buildinfo"
 	"github.com/SynergyFlowLabs/scopra/internal/localipc"
 	"github.com/SynergyFlowLabs/scopra/internal/workspace"
+	"github.com/SynergyFlowLabs/scopra/internal/workspace/registry"
 )
 
 func main() {
@@ -70,6 +71,12 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("start Scopra Mio: %w", err)
 	}
+	// The daemon now holds the state-directory lock, which makes Mio the
+	// registry's only writer (ADR-005). Workspace commands do not exist yet, so
+	// the registry is only checked here; Mio refuses to serve if it is unusable.
+	if _, err := openWorkspaceRegistry(daemon.StateDir()); err != nil {
+		return errors.Join(fmt.Errorf("start Scopra Mio: %w", err), daemon.Close())
+	}
 	if _, err := fmt.Fprintln(stderr, "scoprad: listening"); err != nil {
 		_ = daemon.Close()
 		return fmt.Errorf("report daemon startup: %w", err)
@@ -77,10 +84,27 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	return daemon.Serve(ctx)
 }
 
-// newWorkspaceValidator returns the workspace validator that Mio uses.
-// Skeleton for the Step 8 tests: it does not protect stateDir yet.
+// newWorkspaceValidator returns the ADR-004 workspace validator that Mio uses.
+// Besides the filesystem root and the user's home directories, it protects
+// Mio's state directory, so that no workspace can contain Mio's socket, lock,
+// or registry.
 func newWorkspaceValidator(stateDir string) (*workspace.Validator, error) {
-	return workspace.NewValidator()
+	return workspace.NewValidator(stateDir)
+}
+
+// openWorkspaceRegistry loads the workspace registry from Mio's state
+// directory, which the caller must hold locked. Recorded workspaces are
+// revalidated before use, not here, so a missing workspace does not stop Mio.
+func openWorkspaceRegistry(stateDir string) (*registry.Registry, error) {
+	validator, err := newWorkspaceValidator(stateDir)
+	if err != nil {
+		return nil, fmt.Errorf("prepare workspace validation: %w", err)
+	}
+	workspaces, err := registry.Open(stateDir, validator)
+	if err != nil {
+		return nil, fmt.Errorf("open workspace registry: %w", err)
+	}
+	return workspaces, nil
 }
 
 func failUsage(writer io.Writer, format string, values ...any) error {

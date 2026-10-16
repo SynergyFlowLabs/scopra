@@ -382,12 +382,17 @@ func TestSecurity_OpenRejectsRecordOverlappingRegistry(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			dir, err := filepath.EvalSymlinks(makeRegistryDir(t))
+			canonical, err := filepath.EvalSymlinks(makeRegistryDir(t))
 			if err != nil {
 				t.Fatalf("EvalSymlinks(registry dir) error = %v", err)
 			}
-			file := filepath.Join(dir, "workspaces.json")
-			content := registryJSON(recordJSON(id, test.path(dir)))
+			// Records hold canonical paths. Opening through a symlinked
+			// ancestor makes the check compare them with the canonical directory.
+			link := filepath.Join(t.TempDir(), "link")
+			symlink(t, filepath.Dir(canonical), link)
+			dir := filepath.Join(link, filepath.Base(canonical))
+			file := filepath.Join(canonical, "workspaces.json")
+			content := registryJSON(recordJSON(id, test.path(canonical)))
 			writeFile(t, file, content)
 
 			if _, err := Open(dir, newValidator(t)); !errors.Is(err, ErrCorruptRegistry) {

@@ -85,9 +85,11 @@ type storedFingerprint struct {
 
 // Open loads the registry stored in dir: an absolute path to an existing
 // directory owned by the effective user with no group or other access. A
-// missing registry file means no registrations, and Open never writes. The
-// caller must own dir exclusively; Scopra Mio passes its state directory while
-// it holds the state-directory lock.
+// missing registry file means no registrations, and Open never writes. Content
+// that Add could not have written in dir, including a workspace that contains
+// or lies inside dir, is rejected with ErrCorruptRegistry. The caller must own
+// dir exclusively; Scopra Mio passes its state directory while it holds the
+// state-directory lock.
 func Open(dir string, validator *workspace.Validator) (*Registry, error) {
 	if validator == nil {
 		return nil, errors.New("registry: a workspace validator is required")
@@ -114,6 +116,12 @@ func Open(dir string, validator *workspace.Validator) (*Registry, error) {
 			return nil, err
 		}
 	}
+	for _, record := range records {
+		if overlaps(record.Path, canonical) {
+			return nil, fmt.Errorf("%w: workspace %q overlaps the registry directory",
+				ErrCorruptRegistry, record.Path)
+		}
+	}
 	return &Registry{
 		dir:           canonical,
 		validator:     validator,
@@ -124,16 +132,17 @@ func Open(dir string, validator *workspace.Validator) (*Registry, error) {
 
 // Add validates the workspace at path and registers it under a new ID. It
 // rejects a directory that is already registered, even under another path; a
-// workspace overlapping a registered one; and a workspace containing the
-// registry itself. If the registry file was replaced but its directory could
-// not be synced, Add returns the error and the registration stays in effect.
+// workspace overlapping a registered one; and a workspace that contains or lies
+// inside the registry directory, where Mio keeps its other state. If the
+// registry file was replaced but its directory could not be synced, Add
+// returns the error and the registration stays in effect.
 func (r *Registry) Add(path string) (Record, error) {
 	inspected, err := r.validator.Inspect(path)
 	if err != nil {
 		return Record{}, err
 	}
-	if contains(inspected.Path, r.dir) {
-		return Record{}, fmt.Errorf("%w: %q contains the workspace registry",
+	if overlaps(inspected.Path, r.dir) {
+		return Record{}, fmt.Errorf("%w: %q overlaps the workspace registry directory",
 			workspace.ErrProtectedPath, inspected.Path)
 	}
 

@@ -116,7 +116,7 @@ If any mandatory stage is unavailable or invalid, deny the request. Never add un
 
 ### Scopra Mio daemon and Scopra Mariner CLI
 
-**Initial increments implemented:** foreground `scoprad` with a persistent per-user state directory (`$XDG_STATE_HOME/scopra`, by default `~/.local/state/scopra`) and an exclusive state-directory lock (single daemon per state directory), `scopra status`, a minimal read-only `scopra doctor` (platform, state-directory, and Mio status checks), local version reporting, context-driven shutdown, and strict same-UID Unix-socket status IPC are in place. Workspace CRUD, service installation, broader doctor checks (such as containment readiness), execution, and the broader CLI remain pending; the checklist items below describe those larger milestones and are intentionally unchecked.
+**Initial increments implemented:** foreground `scoprad` with a persistent per-user state directory (`$XDG_STATE_HOME/scopra`, by default `~/.local/state/scopra`) and an exclusive state-directory lock (single daemon per state directory), `scopra status`, a minimal read-only `scopra doctor` (platform, state-directory, and Mio status checks), local version reporting, context-driven shutdown, strict same-UID Unix-socket status IPC, and a startup check of the workspace registry are in place. Workspace CRUD, service installation, broader doctor checks (such as containment readiness), execution, and the broader CLI remain pending; the checklist items below describe those larger milestones and are intentionally unchecked.
 
 - [ ] Implement Scopra Mio (`scoprad`), foreground mode, Linux service, state directory, lock, shutdown, health, logging, and versioning.
 - [ ] Implement Scopra Mariner commands, including `scopra doctor`, daemon status, workspace CRUD, local execution, status, logs, cancellation, JSON output, and TTY output.
@@ -124,7 +124,7 @@ If any mandatory stage is unavailable or invalid, deny the request. Never add un
 
 ### Workspace and containment
 
-**Initial increment implemented:** `internal/workspace` canonicalizes and fingerprints workspace roots, rejects the filesystem root and any directory that is or contains a home directory or another protected directory, and revalidates recorded workspaces (ADR-004). `internal/workspace/registry` stores registrations atomically, with no duplicate or overlapping workspaces (ADR-005). Neither is wired into Mio or exposed through IPC or the CLI yet. The checklist items below stay unchecked until workspace registration and execution-time revalidation exist.
+**Initial increment implemented:** `internal/workspace` canonicalizes and fingerprints workspace roots, rejects the filesystem root and any directory that is or contains a home directory or another protected directory, and revalidates recorded workspaces (ADR-004). `internal/workspace/registry` stores registrations atomically, with no duplicate or overlapping workspaces (ADR-005). Mio opens the registry at startup and refuses to serve if it is unusable; registration is not exposed through IPC or the CLI yet. The checklist items below stay unchecked until workspace registration and execution-time revalidation exist.
 
 - [ ] Canonicalize workspace and record repository fingerprint.
 - [ ] Reject root and complete home directory.

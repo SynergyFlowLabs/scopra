@@ -50,6 +50,7 @@ var (
 // a state directory at a time.
 type Daemon struct {
 	listener      *net.UnixListener
+	stateDir      string
 	socketPath    string
 	socketInfo    os.FileInfo
 	daemonVersion string
@@ -192,6 +193,7 @@ func Listen(stateDir, daemonVersion string) (*Daemon, error) {
 	started = true
 	return &Daemon{
 		listener:      listener,
+		stateDir:      stateDir,
 		socketPath:    socketPath,
 		socketInfo:    socketInfo,
 		daemonVersion: daemonVersion,
@@ -199,9 +201,16 @@ func Listen(stateDir, daemonVersion string) (*Daemon, error) {
 	}, nil
 }
 
-// StateDir returns the state directory that the daemon serves and holds
-// locked. Skeleton for the Step 8 tests: not implemented yet.
-func (d *Daemon) StateDir() string { return "" }
+// StateDir returns the absolute state directory that the daemon serves and
+// holds locked. The lock lasts until Close or, once Serve has started, until
+// Serve returns, so a caller may keep single-writer state in this directory
+// in the meantime.
+func (d *Daemon) StateDir() string {
+	if d == nil {
+		return ""
+	}
+	return d.stateDir
+}
 
 // Serve accepts bounded, one-request status connections until ctx is canceled
 // or the listener is closed. The socket is removed on return only if its inode
