@@ -118,13 +118,16 @@ func Open(dir string, validator *workspace.Validator) (*Registry, error) {
 }
 
 // Check validates the registry stored in dir exactly as Open does and returns
-// the number of registrations. It needs no validator and never writes, so a
-// diagnostic such as scopra doctor may call it while Mio owns dir: Mio
+// the registrations, sorted by path. It needs no validator and never writes,
+// so a diagnostic such as scopra doctor may call it while Mio owns dir: Mio
 // replaces the file atomically. A missing directory is reported as
-// os.ErrNotExist.
+// os.ErrNotExist. Check does not revalidate the recorded workspaces.
 func Check(dir string) ([]Record, error) {
-	_, _, err := load(dir)
-	return nil, err // skeleton: registrations are not returned yet
+	_, records, err := load(dir)
+	if err != nil {
+		return nil, err
+	}
+	return records, nil
 }
 
 // load reads and validates the registry stored in dir without writing, and

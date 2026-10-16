@@ -17,6 +17,7 @@ import (
 
 	"github.com/SynergyFlowLabs/scopra/internal/buildinfo"
 	"github.com/SynergyFlowLabs/scopra/internal/localipc"
+	"github.com/SynergyFlowLabs/scopra/internal/workspace"
 	"github.com/SynergyFlowLabs/scopra/internal/workspace/registry"
 )
 
@@ -28,6 +29,7 @@ const (
 	checkNamePlatform          = "platform"
 	checkNameStateDirectory    = "state-directory"
 	checkNameWorkspaceRegistry = "workspace-registry"
+	checkNameWorkspaces        = "workspaces"
 	checkNameDaemon            = "daemon"
 )
 
@@ -47,8 +49,12 @@ var errDoctorChecksFailed = errors.New("scopra doctor found failing checks")
 // notCheckedAreas names readiness areas that doctor deliberately does not
 // assess because Scopra does not implement them yet.
 var notCheckedAreas = []string{
-	"enrollment", "relay", "workspace revalidation", "policy", "containment", "execution",
+	"enrollment", "relay", "policy", "containment", "execution",
 }
+
+// maxStaleWorkspacesShown bounds how many stale registrations the workspaces
+// check names; the rest are only counted.
+const maxStaleWorkspacesShown = 5
 
 type doctorCheck struct {
 	Name   string      `json:"name"`
@@ -123,18 +129,25 @@ func diagnose(ctx context.Context, stateDir string, platform platformInfo) docto
 	platformCheck := diagnosePlatform(platform)
 	stateDirCheck := skippedCheck(checkNameStateDirectory, checkNamePlatform)
 	registryCheck := skippedCheck(checkNameWorkspaceRegistry, checkNamePlatform)
+	workspacesCheck := skippedCheck(checkNameWorkspaces, checkNamePlatform)
 	daemonCheck := skippedCheck(checkNameDaemon, checkNamePlatform)
 	if platformCheck.Status != checkFail {
 		report.StateDir, stateDirCheck = diagnoseStateDir(stateDir)
 		registryCheck = skippedCheck(checkNameWorkspaceRegistry, checkNameStateDirectory)
+		workspacesCheck = skippedCheck(checkNameWorkspaces, checkNameStateDirectory)
 		daemonCheck = skippedCheck(checkNameDaemon, checkNameStateDirectory)
 		if stateDirCheck.Status != checkFail {
-			registryCheck = diagnoseWorkspaceRegistry(report.StateDir)
+			var records []registry.Record
+			registryCheck, records = diagnoseWorkspaceRegistry(report.StateDir)
+			workspacesCheck = skippedCheck(checkNameWorkspaces, checkNameWorkspaceRegistry)
+			if registryCheck.Status != checkFail {
+				workspacesCheck = diagnoseWorkspaces(report.StateDir, records)
+			}
 			daemonCheck = diagnoseDaemon(ctx, report.StateDir)
 		}
 	}
 
-	report.Checks = []doctorCheck{platformCheck, stateDirCheck, registryCheck, daemonCheck}
+	report.Checks = []doctorCheck{platformCheck, stateDirCheck, registryCheck, workspacesCheck, daemonCheck}
 	report.Result = overallResult(report.Checks)
 	return report
 }
@@ -211,29 +224,36 @@ func diagnoseStateDir(stateDir string) (string, doctorCheck) {
 }
 
 // diagnoseWorkspaceRegistry validates Mio's workspace registry without
-// changing it. It does not revalidate the registered workspaces.
-func diagnoseWorkspaceRegistry(stateDir string) doctorCheck {
-	file := filepath.Join(stateDir, registry.FileName)
-	const removal = " Removing the file unregisters every workspace but changes no directory."
+// changing it, and returns the registrations so that diagnoseWorkspaces
+// revalidates what this check read. A failing check returns none.
+func diagnoseWorkspaceRegistry(stateDir string) (doctorCheck, []registry.Record) {
 	records, err := registry.Check(stateDir)
-	count := len(records)
 	switch {
 	case errors.Is(err, os.ErrNotExist):
 		return doctorCheck{
 			Name:   checkNameWorkspaceRegistry,
 			Status: checkPass,
 			Detail: "no workspaces are registered; the state directory does not exist yet",
-		}
-	case err == nil && count == 0:
-		return doctorCheck{Name: checkNameWorkspaceRegistry, Status: checkPass, Detail: "no workspaces are registered"}
-	case err == nil && count == 1:
-		return doctorCheck{Name: checkNameWorkspaceRegistry, Status: checkPass, Detail: "1 workspace is registered"}
+		}, nil
+	case err == nil && len(records) == 0:
+		return doctorCheck{Name: checkNameWorkspaceRegistry, Status: checkPass, Detail: "no workspaces are registered"}, nil
+	case err == nil && len(records) == 1:
+		return doctorCheck{Name: checkNameWorkspaceRegistry, Status: checkPass, Detail: "1 workspace is registered"}, records
 	case err == nil:
 		return doctorCheck{
 			Name:   checkNameWorkspaceRegistry,
 			Status: checkPass,
-			Detail: fmt.Sprintf("%d workspaces are registered", count),
-		}
+			Detail: fmt.Sprintf("%d workspaces are registered", len(records)),
+		}, records
+	default:
+		return registryFailure(filepath.Join(stateDir, registry.FileName), err), nil
+	}
+}
+
+// registryFailure describes a registry that scoprad would refuse to load.
+func registryFailure(file string, err error) doctorCheck {
+	const removal = " Removing the file unregisters every workspace but changes no directory."
+	switch {
 	case errors.Is(err, registry.ErrInsecureRegistry):
 		return doctorCheck{
 			Name:   checkNameWorkspaceRegistry,
@@ -255,6 +275,76 @@ func diagnoseWorkspaceRegistry(stateDir string) doctorCheck {
 			Detail: "cannot read the workspace registry: " + err.Error(),
 			Hint:   "scoprad will not start until " + file + " can be read; check its permissions." + removal,
 		}
+	}
+}
+
+// diagnoseWorkspaces revalidates each registration under ADR-004 with the
+// validator configuration that Mio uses, so a workspace that was deleted,
+// replaced, or moved is reported before anything tries to use it. Like
+// Revalidate it only inspects metadata: no registry or workspace changes.
+func diagnoseWorkspaces(stateDir string, records []registry.Record) doctorCheck {
+	if len(records) == 0 {
+		return doctorCheck{Name: checkNameWorkspaces, Status: checkPass, Detail: "no workspaces are registered"}
+	}
+	validator, err := workspace.NewValidator(stateDir)
+	if err != nil {
+		return doctorCheck{
+			Name:   checkNameWorkspaces,
+			Status: checkFail,
+			Detail: "cannot prepare workspace validation: " + err.Error(),
+			Hint:   "scoprad prepares the same validation at startup and will not start either; set HOME to your absolute home directory.",
+		}
+	}
+	var stale []string
+	for _, record := range records {
+		if err := validator.Revalidate(record.Workspace); err != nil {
+			stale = append(stale, record.ID+" "+record.Path+" ("+staleReason(err)+")")
+		}
+	}
+	switch {
+	case len(stale) == 0 && len(records) == 1:
+		return doctorCheck{Name: checkNameWorkspaces, Status: checkPass, Detail: "the registered workspace still qualifies"}
+	case len(stale) == 0:
+		return doctorCheck{
+			Name:   checkNameWorkspaces,
+			Status: checkPass,
+			Detail: fmt.Sprintf("all %d registered workspaces still qualify", len(records)),
+		}
+	}
+	verb := "qualify"
+	if len(stale) == 1 {
+		verb = "qualifies"
+	}
+	listed := stale[:min(len(stale), maxStaleWorkspacesShown)]
+	detail := fmt.Sprintf("%d of %d registered workspaces no longer %s: %s",
+		len(stale), len(records), verb, strings.Join(listed, "; "))
+	if more := len(stale) - len(listed); more > 0 {
+		detail += fmt.Sprintf("; and %d more", more)
+	}
+	return doctorCheck{
+		Name:   checkNameWorkspaces,
+		Status: checkWarn,
+		Detail: detail,
+		Hint: "Scopra revalidates a workspace before using it, so these would be refused. Restore each directory, " +
+			"or run `scopra workspace remove ID`, which does not change the directory.",
+	}
+}
+
+// staleReason summarizes why a registration no longer qualifies.
+func staleReason(err error) string {
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		return "missing"
+	case errors.Is(err, workspace.ErrChanged):
+		return "changed since it was registered"
+	case errors.Is(err, workspace.ErrNotDirectory):
+		return "not a directory"
+	case errors.Is(err, workspace.ErrNotOwned):
+		return "not owned by you"
+	case errors.Is(err, workspace.ErrProtectedPath):
+		return "is or contains a protected location"
+	default:
+		return err.Error()
 	}
 }
 

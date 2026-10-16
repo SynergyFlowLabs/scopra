@@ -3,7 +3,7 @@
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
 **Current increment:** Doctor revalidates registered workspaces (Step 12)
-**Status:** In progress on `arena/c7a368c1-scopra`: acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
+**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -24,7 +24,7 @@ This file is the running engineering log. Each increment records scope, verifica
 ## Roadmap
 
 1. **Protocol foundation** — envelope v1 structural validation is implemented and locally verified. Typed execution requests/results, canonical approval binding, cryptographic verification, replay storage, and compatibility/version guarantees remain pending.
-2. **Local daemon and CLI** — the initial foreground Mio status service with a persistent per-user state directory and an exclusive state-directory lock, Mariner `scopra status`, a minimal read-only `scopra doctor` (platform, state-directory, workspace-registry, and daemon checks), and `scopra workspace add/list/remove` are implemented. Workspace validation (ADR-004) and registry storage (ADR-005) exist; Mio checks its registry at startup and serves add, list, and remove over local IPC (ADR-006). Broader doctor checks, execution, service installation, and expanded CLI/IPC authorization remain pending.
+2. **Local daemon and CLI** — the initial foreground Mio status service with a persistent per-user state directory and an exclusive state-directory lock, Mariner `scopra status`, a minimal read-only `scopra doctor` (platform, state-directory, workspace-registry, registered-workspace revalidation, and daemon checks), and `scopra workspace add/list/remove` are implemented. Workspace validation (ADR-004) and registry storage (ADR-005) exist; Mio checks its registry at startup and serves add, list, and remove over local IPC (ADR-006). Broader doctor checks, execution, service installation, and expanded CLI/IPC authorization remain pending.
 3. **Policy and containment boundary** — implement default-deny policy and rootless containment before enabling execution; no native fallback.
 4. **Structured execution and audit** — limits, cancellation, bounded output, and attributable events with adversarial tests.
 5. **Enrollment, relay, approvals, and integrations** — proceed only after local foundations and security invariants are testable.
@@ -702,15 +702,15 @@ Non-goals: revalidating registered workspaces; repairing or removing the file; r
 
 #### Acceptance checklist (agreed before implementation)
 
-- [ ] `registry.Check(dir)` returns the registrations, sorted by path, from the same read-only validation as before.
-- [ ] `scopra doctor` runs a `workspaces` check after `workspace-registry` and before `daemon`. It revalidates each registration under ADR-004 with the validator configuration that Mio uses, which protects the state directory:
+- [x] `registry.Check(dir)` returns the registrations, sorted by path, from the same read-only validation as before.
+- [x] `scopra doctor` runs a `workspaces` check after `workspace-registry` and before `daemon`. It revalidates each registration under ADR-004 with the validator configuration that Mio uses, which protects the state directory:
   - `pass` when none are registered or all still qualify;
   - `warn` naming up to five stale registrations, each with its ID, its path, and a short reason (missing, not a directory, not owned by you, is or contains a protected location, or changed since it was registered), plus a count of any others. The hint says to restore the directory or to run `scopra workspace remove ID`, which does not change the directory;
   - `fail` when validation cannot be prepared, because `scoprad` would not start either;
   - `skip` when the platform, state-directory, or workspace-registry check failed.
-- [ ] Doctor stays read-only: it never changes the registry file, the workspaces, or their contents, and a warning does not change the exit status (`0`).
-- [ ] `notChecked` no longer lists `workspace revalidation`. The JSON schema stays at version 1, and text output escapes control characters in the new detail.
-- [ ] The CLI README, the plan, and this log are updated. The wire protocol, Mio, and the ADRs are unchanged.
+- [x] Doctor stays read-only: it never changes the registry file, the workspaces, or their contents, and a warning does not change the exit status (`0`).
+- [x] `notChecked` no longer lists `workspace revalidation`. The JSON schema stays at version 1, and text output escapes control characters in the new detail.
+- [x] The CLI README, the plan, and this log are updated. The wire protocol, Mio, and the ADRs are unchanged.
 
 Non-goals: revalidation status in `scopra workspace list`, which needs a wire change; removing stale registrations automatically; execution-time revalidation; changing the daemon check's hint; and containment.
 
@@ -727,3 +727,64 @@ Non-goals: revalidation status in `scopra workspace list`, which needs a wire ch
 3. **Declarations-only skeleton.** `Check` returned `([]Record, error)` without any records, and doctor compiled against it by counting them. Runtime red:
    - registry: only `TestCheckReturnsRegistrationsWithoutWriting` failed (`Check() = [], <nil>`);
    - CLI: the same 16 tests failed.
+
+#### Implementation and verification record
+
+- `internal/workspace/registry`: `Check` returns the records that `load` validated, already sorted by path, instead of their count. It still never writes and does not revalidate the workspaces.
+- `cmd/scopra/doctor.go`:
+  - `diagnoseWorkspaceRegistry` returns the records along with its result, so the new check revalidates exactly what the registry check read, with no second read. Its failure cases moved unchanged into `registryFailure`.
+  - `diagnoseWorkspaces` builds the validator the way `scoprad` does (`workspace.NewValidator(stateDir)`) and calls ADR-004's `Revalidate` for each record. `staleReason` maps the ADR-004 errors to short reasons and falls back to the error text. At most `maxStaleWorkspacesShown` (5) entries are listed; any others are counted.
+  - `diagnose` places the check between `workspace-registry` and `daemon`. The check is skipped after a platform, state-directory, or registry failure, and the daemon check still runs.
+  - `notCheckedAreas` drops `workspace revalidation`.
+- Revalidation inspects only metadata (`EvalSymlinks` and `Lstat`) and opens no workspace, so doctor stays read-only.
+- Documentation:
+  - The CLI README gains a doctor table row, the skip rules, a `warn` example, and an updated JSON example. It notes that the check is point-in-time and that ADR-004's inode-reuse limitation applies.
+  - The README status line, the architecture overview, and the plan are updated.
+  - The wire protocol, Mio, and the ADRs are unchanged.
+- Test fix during implementation: the replaced-directory case first deleted the directory and then created a new one at the same path. The filesystem reused the freed inode number, so the fingerprint legitimately matched; this is the limitation ADR-004 already records. The replacement is now created before the original is removed, so it cannot reuse that inode.
+- Tests added during implementation:
+  - a case for a workspace that now contains the home directory (`HOME` moved inside it), with the reason "is or contains a protected location";
+  - exact `workspaces` details for the no-registrations pass and for each skip (after a registry, state-directory, or platform failure). Before this step no test pinned any skip detail.
+- Green: all tests pass under the race detector with no skips.
+- Mutation testing: 25 deliberate, compile-safe mutations. 23 were caught by real test failures:
+  - `Check` dropping its records;
+  - the check running after a registry failure;
+  - the registry check handing on no records, for one registration or for several;
+  - revalidation errors ignored;
+  - the ID omitted from stale entries;
+  - a listing bound of 7, or no bound at all;
+  - no "and N more";
+  - inverted verb agreement;
+  - each of the missing, changed, not-a-directory, and protected reasons removed;
+  - stale reported as `pass`;
+  - the hint losing `scopra workspace remove ID`;
+  - `notChecked` keeping revalidation;
+  - "all 1" for a single registration;
+  - a validator built when nothing is registered;
+  - each of the three skip details naming the wrong prerequisite;
+  - an empty protected path, which makes validation fail. This tested a different fault from the one intended, so M23b repeats it properly.
+- Two mutations survived, both as expected:
+  - **M14**, removing the "not owned by you" reason: only root could hand a directory to another owner in a test.
+  - **M23b**, building the validator without the state directory: equivalent in outcome. Registry loading already rejects any record that is or contains the state directory, so the `workspaces` check is skipped first. A record whose path later resolved there through a new symlink would still be flagged, as changed; only the reason shown would differ. The protection stays so that doctor matches Mio's configuration.
+- Smoke test with built binaries, using a fresh home directory and the default state directory:
+  - Two workspaces were registered through `scopra workspace add`; doctor passed with "all 2 registered workspaces still qualify", and the not-checked line no longer lists revalidation.
+  - One directory was deleted and the other replaced through a rename. With Mio running, doctor reported `warn` naming both IDs and paths with "missing" and "changed since it was registered", printed result `warn`, and exited 0; `--json` agreed.
+  - The registry file's SHA-256 was unchanged, and the deleted directory was not recreated. `scopra workspace list` still showed both registrations, as expected (a non-goal).
+  - With Mio stopped, the warning remained and `daemon: fail` made doctor exit 1.
+  - After both registrations were removed with `scopra workspace remove`, as the hint suggests, the directories were kept and doctor passed.
+- Security review: doctor never writes; revalidation is metadata-only and safe alongside a running Mio. Stale paths are escaped in text output (tested with an escape sequence and a newline) and JSON-escaped in `--json` output. Listing at most five entries bounds the detail for a full registry. The warning names only the user's own registrations, which the same user can already list. No high-confidence exploitable issue was found.
+- Local verification passed:
+  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `go test -race -count=1 -timeout 60s ./...` and ten repeated race runs of the CLI and registry packages;
+  - every package with `CGO_ENABLED=0`;
+  - `git diff --check`;
+  - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64.
+  - No files were added, so `docs/repository-tree.txt` is unchanged.
+- Coverage: CLI 90.0% (up from 89.9%), registry 93.4%, local IPC 82.3%, daemon 63.3%, workspace 93.1%, build info 100%, protocol 89.4%.
+- Environment: the sandbox persisted from Step 11, so no recovery or toolchain rebuild was needed. The baseline passed before any change.
+- Follow-ups, not part of this increment:
+  - When the registry check fails, the daemon check's generic hint could point to the registry instead.
+  - Revalidation status in `scopra workspace list`, which needs a wire change.
+  - Removal by path.
+  - Containment and execution. They need rootless Podman, which is not available here, and a decision about which container image runs commands. CI is still blocked by an organization setting.
+- Pushes to `arena/c7a368c1-scopra`: test checkpoint `559a6d6` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.

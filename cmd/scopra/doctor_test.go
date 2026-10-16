@@ -155,6 +155,13 @@ func TestRunDoctorChecksWorkspaceRegistry(t *testing.T) {
 			requireCheckFailure(t, err) // Mio is not running
 			assertChecks(t, report, "platform=pass", "state-directory=pass",
 				"workspace-registry="+test.wantStatus, "workspaces="+test.wantWorkspaces, "daemon=fail")
+			wantWorkspacesDetail := map[string]string{
+				"pass": "no workspaces are registered",
+				"skip": "not run because the workspace-registry check failed",
+			}[test.wantWorkspaces]
+			if detail := findCheck(t, report, "workspaces").Detail; wantWorkspacesDetail != "" && detail != wantWorkspacesDetail {
+				t.Fatalf("workspaces detail = %q, want %q", detail, wantWorkspacesDetail)
+			}
 			check := findCheck(t, report, "workspace-registry")
 			if !strings.Contains(check.Detail, test.wantDetail) {
 				t.Fatalf("workspace-registry detail = %q, want it to contain %q", check.Detail, test.wantDetail)
@@ -226,9 +233,15 @@ func TestRunDoctorRevalidatesRegisteredWorkspaces(t *testing.T) {
 		{name: "deleted directory", count: 2, breakDirs: removeDirs(1), wantStatus: "warn",
 			wantDetail: []string{"1 of 2 registered workspaces no longer qualifies: ", " (missing)"}, wantStale: 1},
 		{name: "replaced directory", count: 2, breakDirs: func(t *testing.T, records []registry.Record) {
-			removeDirs(1)(t, records)
-			if err := os.Mkdir(records[0].Path, 0o700); err != nil {
+			// The replacement exists before the original is removed, so it
+			// cannot reuse the original's inode number (see ADR-004).
+			replacement := records[0].Path + ".new"
+			if err := os.Mkdir(replacement, 0o700); err != nil {
 				t.Fatalf("Mkdir(replacement) error = %v", err)
+			}
+			removeDirs(1)(t, records)
+			if err := os.Rename(replacement, records[0].Path); err != nil {
+				t.Fatalf("Rename(replacement) error = %v", err)
 			}
 		}, wantStatus: "warn", wantDetail: []string{"1 of 2 registered workspaces no longer qualifies: ", " (changed since it was registered)"}, wantStale: 1},
 		{name: "file in place of the directory", count: 1, breakDirs: func(t *testing.T, records []registry.Record) {
@@ -237,6 +250,9 @@ func TestRunDoctorRevalidatesRegisteredWorkspaces(t *testing.T) {
 				t.Fatalf("WriteFile(replacement) error = %v", err)
 			}
 		}, wantStatus: "warn", wantDetail: []string{"1 of 1 registered workspaces no longer qualifies: ", " (not a directory)"}, wantStale: 1},
+		{name: "now contains the home directory", count: 1, breakDirs: func(t *testing.T, records []registry.Record) {
+			t.Setenv("HOME", filepath.Join(records[0].Path, "home"))
+		}, wantStatus: "warn", wantDetail: []string{" (is or contains a protected location)"}, wantStale: 1},
 		{name: "two of three missing", count: 3, breakDirs: removeDirs(2), wantStatus: "warn",
 			wantDetail: []string{"2 of 3 registered workspaces no longer qualify: ", " (missing); "}, wantStale: 2},
 		{name: "more stale than are listed", count: 7, breakDirs: removeDirs(7), wantStatus: "warn",
@@ -343,6 +359,9 @@ func TestSecurity_DoctorReportsInsecureStateDirectoryWithoutRepairingIt(t *testi
 	report, err := runDoctorJSON(t, "--state-dir", stateDir)
 	requireCheckFailure(t, err)
 	assertChecks(t, report, "platform=pass", "state-directory=fail", "workspace-registry=skip", "workspaces=skip", "daemon=skip")
+	if detail := findCheck(t, report, "workspaces").Detail; detail != "not run because the state-directory check failed" {
+		t.Fatalf("workspaces detail = %q, want it skipped after the state-directory check", detail)
+	}
 	info, statErr := os.Stat(stateDir)
 	if statErr != nil {
 		t.Fatalf("Stat(state dir) error = %v", statErr)
@@ -593,6 +612,9 @@ func TestDiagnoseFailsClosedOnUnsupportedPlatform(t *testing.T) {
 	}
 	assertReportInvariants(t, decoded)
 	assertChecks(t, decoded, "platform=fail", "state-directory=skip", "workspace-registry=skip", "workspaces=skip", "daemon=skip")
+	if detail := findCheck(t, decoded, "workspaces").Detail; detail != "not run because the platform check failed" {
+		t.Fatalf("workspaces detail = %q, want it skipped after the platform check", detail)
+	}
 	if decoded.Result != "fail" {
 		t.Fatalf("doctor result = %q, want fail", decoded.Result)
 	}
