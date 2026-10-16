@@ -92,6 +92,10 @@ func runStatus(ctx context.Context, args []string, stdout, stderr io.Writer) err
 	return err
 }
 
+// exitCode will report err and return the exit status.
+// Skeleton for the Step 10 tests: not implemented yet.
+func exitCode(err error, stderr io.Writer) int { return -1 }
+
 func failUsage(writer io.Writer, format string, values ...any) error {
 	message := fmt.Sprintf(format, values...)
 	_, _ = fmt.Fprintf(writer, "scopra: %s\n", message)

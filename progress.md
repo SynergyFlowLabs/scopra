@@ -2,8 +2,8 @@
 
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
-**Current increment:** Workspace commands over local IPC (Step 9)
-**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
+**Current increment:** `scopra workspace` CLI (Step 10)
+**Status:** In progress on `arena/c7a368c1-scopra`: acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -520,3 +520,46 @@ Non-goals: the `scopra workspace` CLI; approvals or any other authorization of a
   - cleanup of stale temporary files;
   - a decision on approvals and user presence before any command that authorizes an action.
 - Pushes to `arena/c7a368c1-scopra`: test checkpoint `f93a06f` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.
+
+### 2026-10-16 — Step 10: `scopra workspace` CLI
+
+- Selection: at the end of Step 9 the maintainer accepted the proposed defaults by replying "continue":
+  - `add PATH`, where the CLI makes a relative path absolute and Mio never resolves relative paths;
+  - `list` in plain text, with a versioned `--json` like doctor's;
+  - `remove ID` without a confirmation prompt, because only the registration is removed;
+  - exit codes 0, 1, and 2, with Mio's messages escaped before printing.
+  `--json` is offered on all three subcommands so that scripts can capture the ID from `add`.
+- Findings from the code:
+  - `main` prints every error unescaped, but ADR-006 requires clients to escape Mio's messages, which can carry control characters from paths. Error reporting moves into a testable function that escapes all error text, reusing doctor's `terminalSafe`.
+  - `filepath.Abs` cleans paths lexically, so from a symlinked working directory `../sibling` would name a different directory than the kernel resolves for every other program. The CLI only prefixes the working directory, and Mio's `EvalSymlinks` resolves `..` physically.
+  - Go's `flag` package stops at the first positional argument, so flags must come before `PATH` or `ID`.
+
+#### Acceptance checklist (agreed before implementation)
+
+- [ ] `scopra workspace add [--state-dir PATH] [--json] PATH` registers a directory through Mio. A relative PATH gets the working directory prefixed without lexical cleaning, and the CLI never resolves paths itself. Text output names the new ID and the canonical path; `--json` writes `{"schemaVersion":1,"workspace":{"id":...,"path":...}}`.
+- [ ] `scopra workspace list [--state-dir PATH] [--json]` prints every registration sorted by path, one `ID  path` line each, or a message when there are none. `--json` writes `{"schemaVersion":1,"workspaces":[...]}`, with an empty array when there are none.
+- [ ] `scopra workspace remove [--state-dir PATH] [--json] ID` removes a registration without a prompt and says that the directory was not changed. `--json` writes the removed record.
+- [ ] Exit status:
+  - `0` on success;
+  - `1` when Mio is unavailable or rejects the request, with the error naming Mio's code;
+  - `2` for usage errors, detected before Mio is contacted: a missing or extra argument, an unknown subcommand, a malformed ID, or a path that is not valid UTF-8 or would be longer than 4095 bytes;
+  - `130` when interrupted.
+  Every error message, and every path in text output, has control characters escaped.
+- [ ] `scopra status` and `scopra doctor` behave as before, except that their error text is now escaped too. The README, usage text, plan, architecture overview, and this log are updated, and the wire protocol and Mio are unchanged.
+
+Non-goals: removal by path; confirmation prompts; flags after positional arguments; a doctor check for the registry; revalidation status in listings; shell completion; any change to the IPC protocol or to Mio; and richer output, such as tables or colour.
+
+#### Test-first record
+
+- New tests in `cmd/scopra/workspace_test.go`. The Linux ones run against a real registry over the real socket.
+  - The exact text formats for `add`, `list` (including the empty message), and `remove`, and that removal leaves the directory in place.
+  - The exact JSON for all three subcommands, including `[]` for an empty list.
+  - Physical resolution of `../sibling` and `.` from a working directory reached through a symlink. Lexical cleaning would name a directory that does not exist.
+  - Mio's codes reaching the user with exit status 1: `unresolvable_path`, `protected_path`, and `not_found`. Mio being unavailable also gives exit status 1.
+  - 13 usage errors that must be detected before Mio is contacted, without being reported as an unknown command.
+  - Help for `scopra`, `scopra workspace`, and `scopra workspace add`.
+  - Escaping of control characters in `add` and `list` output and in Mio's error text.
+  - `exitCode` for success, help, usage errors, interruption, and an escaped failure.
+- The usage-error table checks that `workspace` is not reported as an unknown command. Today's CLI already returns a usage error for any unknown command, so without that check the table would pass before any implementation.
+- First red: the test package failed to build on exactly `exitCode`; the workspace commands are reached through `run`.
+- With a declarations-only `exitCode` skeleton, all 9 new tests failed at runtime (22 subtests between them). The package's 21 existing tests passed.
