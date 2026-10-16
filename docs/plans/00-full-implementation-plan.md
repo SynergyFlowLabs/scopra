@@ -111,7 +111,7 @@ If any mandatory stage is unavailable or invalid, deny the request. Never add un
 
 ### Scopra Messenger Protocol
 
-**Initial increments implemented:** envelope v1 structural validation (ADR-002); strict decoding and validation of the `execution.request` v1 payload (ADR-007); and the canonical request (RFC 8785) and action hash that approvals bind to (ADR-008). Results, output chunks, errors, execution states, and approval records remain pending, so the checklist items below stay unchecked.
+**Initial increments implemented:** envelope v1 structural validation (ADR-002); strict decoding and validation of the `execution.request` v1 payload (ADR-007); the canonical request (RFC 8785) and action hash that approvals bind to (ADR-008); and the terminal `execution.result`, with its states and error codes (ADR-009, increment 1). `execution.started`, output chunks, `execution.cancel`, and approval records remain pending, so the checklist items below stay unchecked.
 
 - [ ] Define protocol versions, IDs, canonical request, results, output chunks, errors, and execution states.
 - [ ] Add validation and compatibility tests.

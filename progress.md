@@ -3,7 +3,7 @@
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
 **Current increment:** Execution results (Step 18, the first increment of ADR-009)
-**Status:** In progress on `arena/c7a368c1-scopra`: ADR-009 and the acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
+**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -23,7 +23,7 @@ This file is the running engineering log. Each increment records scope, verifica
 
 ## Roadmap
 
-1. **Protocol foundation** — envelope v1 structural validation, strict execution request v1 decoding (ADR-007), and the canonical request and action hash (ADR-008) are implemented and locally verified. Execution results, output chunks, errors and states, approval records, cryptographic verification, replay storage, and compatibility/version guarantees remain pending.
+1. **Protocol foundation** — envelope v1 structural validation, strict execution request v1 decoding (ADR-007), the canonical request and action hash (ADR-008), and execution results with their states and error codes (ADR-009, increment 1) are implemented and locally verified. `execution.started`, output chunks, `execution.cancel`, approval records, cryptographic verification, replay storage, and compatibility/version guarantees remain pending.
 2. **Local daemon and CLI** — the initial foreground Mio status service with a persistent per-user state directory and an exclusive state-directory lock, Mariner `scopra status`, a minimal read-only `scopra doctor` (platform, state-directory, workspace-registry, registered-workspace revalidation, and daemon checks), and `scopra workspace add/list/remove` are implemented. Workspace validation (ADR-004) and registry storage (ADR-005) exist; Mio checks its registry at startup and serves add, list, and remove over local IPC (ADR-006). Broader doctor checks, execution, service installation, and expanded CLI/IPC authorization remain pending.
 3. **Policy and containment boundary** — implement default-deny policy and rootless containment before enabling execution; no native fallback.
 4. **Structured execution and audit** — limits, cancellation, bounded output, and attributable events with adversarial tests.
@@ -1235,11 +1235,11 @@ Non-goals:
 
 #### Acceptance checklist (agreed before implementation)
 
-- [ ] ADR-009 is accepted, with any changes the maintainer asks for, and indexed as accepted. The protocol docs describe it.
-- [ ] ADR-007's strict-document checks (size, UTF-8, a single object, escapes, duplicate keys, `null`, and exact key sets) are generalized for any payload, with no change in behaviour: every existing execution request test still passes unchanged.
-- [ ] `DecodeExecutionResult(payload)` strictly decodes `execution.result`: all seven states with exact key sets, every field rule, and errors that name the field. `ExecutionResult.Validate()` checks typed values.
-- [ ] `ExecutionResult.ValidateAgainst(request)` checks that the execution ID and action hash match the request, and that the output total is within the request's `limits.outputBytes`. `ExecutionResult.CanonicalJSON()` encodes a valid result with the ADR-008 writer, and the encoding decodes back to the same result.
-- [ ] Tests:
+- [x] ADR-009 is accepted, with any changes the maintainer asks for, and indexed as accepted. The protocol docs describe it.
+- [x] ADR-007's strict-document checks (size, UTF-8, a single object, escapes, duplicate keys, `null`, and exact key sets) are generalized for any payload, with no change in behaviour: every existing execution request test still passes unchanged.
+- [x] `DecodeExecutionResult(payload)` strictly decodes `execution.result`: all seven states with exact key sets, every field rule, and errors that name the field. `ExecutionResult.Validate()` checks typed values.
+- [x] `ExecutionResult.ValidateAgainst(request)` checks that the execution ID and action hash match the request, and that the output total is within the request's `limits.outputBytes`. `ExecutionResult.CanonicalJSON()` encodes a valid result with the ADR-008 writer, and the encoding decodes back to the same result.
+- [x] Tests:
   - every state's example decodes;
   - table-driven rejections cover every field rule at both sides of its bounds, and wrong key sets for each state;
   - unknown well-formed error codes are accepted, and malformed codes rejected;
@@ -1274,3 +1274,64 @@ Non-goals:
    - `FuzzDecodeExecutionResult`.
 3. **Build failure.** The new types were undefined.
 4. **Declarations-only skeleton.** It has the final types, state and error-code constants, and the new error value. Decoding and encoding fail, and both validators do nothing. Runtime red: 7 tests failed across 160 subtests. The fuzz seeds passed, as expected, because rejecting everything satisfies the fuzz property.
+
+#### Implementation and verification record
+
+- **Refactor, with no change in behaviour:** ADR-007's strict-document checks moved from `execution_request.go` into `packages/protocol/strict_json.go`. They are now methods on `payloadKind`, which carries the error value every failure wraps (`requestPayload` and `resultPayload`). Messages are byte for byte the same.
+  - The moved methods are `checkDocument`, `scanValue`, `objectFields`, `fieldError`, and the new shared `decodeFields`. `validStringEscapes`, `hexEscape`, and `joinFieldPath` moved unchanged.
+  - The test files were untouched at the time, and every existing request, envelope, and canonical test passed unchanged. The diff of `execution_request.go` contains only renamed call sites and removed code.
+- **`packages/protocol/execution_result.go`:**
+  - `DecodeExecutionResult` decodes `state` first, selects that state's exact key set from `resultKeys`, and then decodes the fields:
+    - times must round-trip through `2006-01-02T15:04:05.000Z` exactly;
+    - the exit code goes through `uint64`, so any sign, including `-0`, is rejected, and anything above 255 fails before conversion;
+    - `output` and `error` are objects with exact keys.
+  - `Validate` checks every field rule, plus three more:
+    - fields that the state does not use must be zero;
+    - output counts must be consistent with chunks of 1 to 65536 bytes (`chunks ≤ bytes ≤ chunks × 65536`), which follows from ADR-009's chunk rules;
+    - error codes must match `[a-z][a-z_]*` within 32 bytes, with a known code accepted in any error state, because the ADR does not tie codes to states for receivers.
+  - `ValidateAgainst(request)` validates both sides, then compares the execution ID, the action hash (ADR-008, recomputed), and the output total against `limits.outputBytes`.
+  - `CanonicalJSON` encodes exactly the state's keys with ADR-008's writer.
+- Tests added during implementation, all of which pass:
+  - a typed `failed` result with exit code 256, which isolates `Validate`'s bound from the decoder's;
+  - `startedAt` with a comma decimal separator (`01,250Z`). Go's `time.Parse` accepts it silently, so only the round-trip check rejects it. A scratch program confirmed this.
+  - wrong JSON types for `executionId`, `actionHash`, `startedAt`, `endedAt`, `error.code`, and `error.message`, which cover the remaining reachable decoding branches.
+- Green: all tests pass under the race detector with no skips.
+- **Mutation testing incident:** the first mutation run was invalid. I started two harness batches in parallel, in the same tool call, and both edited and restored files in the same working tree. Builds mixed mutations from both batches, so the verdicts were wrong; one batch even reported a mutation as surviving that the tests catch.
+  - Every file was checked afterwards for each mutation's replacement text: none was left behind, including from earlier harnesses.
+  - All mutations were then rerun in one sequential batch. Harness batches must never run concurrently.
+- **Clean mutation run:** 42 deliberate mutations, 41 caught after the comma row was added:
+  - the key sets of two states;
+  - action-hash length and case;
+  - an unknown state;
+  - sub-millisecond times, the time round trip, and the end before the start;
+  - the exit code rules of each state;
+  - fields set for states that do not use them;
+  - the output count bound and both consistency bounds, including the chunk size;
+  - three error-code rules and the message length;
+  - each `ValidateAgainst` comparison, and the validation of both sides;
+  - three canonical-encoding faults;
+  - `Validate` skipped, a partial result returned, or a field decoded from the wrong key;
+  - seven faults in the refactored strict-document code, including result errors wrapping the request error.
+- One mutation survived, as expected. S12 loosened the decoder's exit-code bound above 255; it is equivalent, because `Validate` rejects any out-of-range code for both states that carry one.
+- Fuzzing found no failures:
+  - `FuzzDecodeExecutionResult` ran for 60, 20, and 45 seconds (1.24 million inputs in the 20-second session). Its corpus held 68 accepted results across four states, each passing the canonical round trip.
+  - `FuzzDecodeExecutionRequest` ran for 45 seconds after the refactor.
+- Coverage: protocol 95.9% (up from 94.6%). `decodeResultFields` is at 97.8%; the remaining branch cannot be reached once `checkDocument` has passed.
+- Documentation: the protocol package README, `docs/architecture/protocol.md`, the plan's Messenger section, the README status line, the roadmap above, and the ADR index (ADR-009 accepted).
+- Security review:
+  - Results carry metadata and byte counts only, never output.
+  - Errors quote untrusted keys, and error messages follow ADR-007's text rules.
+  - `ValidateAgainst` lets Caloris reject a result that names another request.
+  - Decoding is bounded and linear.
+  - No high-confidence exploitable issue was found.
+- Local verification passed:
+  - `make bootstrap`, `make lint`, `make test`, and `make security-test` (now including the two result `TestSecurity_` tests);
+  - `go test -race -count=1 -timeout 120s ./...` and ten repeated race runs of the protocol package;
+  - every package with `CGO_ENABLED=0`;
+  - `git diff --cached --check`;
+  - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64.
+  - The tree is regenerated for `strict_json.go`.
+- Follow-ups:
+  - increment 2: `execution.started` and `execution.output`, the two new envelope message types, and envelope helpers for the daemon-to-cloud types;
+  - increment 3: `execution.cancel`.
+- Pushes to `arena/c7a368c1-scopra`: the proposal `b89978c`, test checkpoint `7d736ed` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.

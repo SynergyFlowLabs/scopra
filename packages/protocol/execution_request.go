@@ -1,8 +1,6 @@
 package protocol
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"path"
@@ -126,7 +124,7 @@ type Limits struct {
 // partially valid request is returned. Decoding does not authenticate the
 // envelope, check replay state, or authorize anything.
 func DecodeExecutionRequest(payload []byte) (ExecutionRequest, error) {
-	if err := checkRequestDocument(payload); err != nil {
+	if err := requestPayload.checkDocument(payload); err != nil {
 		return ExecutionRequest{}, err
 	}
 	request, err := decodeRequestFields(payload)
@@ -162,42 +160,42 @@ func (r ExecutionRequest) Validate() error {
 		{"sessionId", r.SessionID},
 	} {
 		if !validIdentifier(identifier.value) {
-			return invalidField(identifier.field, "must be 1 to 128 bytes of A-Z, a-z, 0-9, '-', '_', '.', or ':'")
+			return requestPayload.fieldError(identifier.field, "must be 1 to 128 bytes of A-Z, a-z, 0-9, '-', '_', '.', or ':'")
 		}
 	}
 	switch {
 	case !validRegistrationID(r.Resources.WorkspaceID):
-		return invalidField("resources.workspaceId", "must be 32 lowercase hexadecimal characters")
+		return requestPayload.fieldError("resources.workspaceId", "must be 32 lowercase hexadecimal characters")
 	case !validExecutable(r.Command.Executable):
-		return invalidField("command.executable",
+		return requestPayload.fieldError("command.executable",
 			"must be a bare name, a clean absolute path, or ./ and a clean relative path, with no control, format, or line or paragraph separator characters")
 	case !validArguments(r.Command.Arguments):
-		return invalidField("command.arguments", fmt.Sprintf(
+		return requestPayload.fieldError("command.arguments", fmt.Sprintf(
 			"must hold at most %d strings of valid UTF-8 without NUL, each at most %d bytes", MaxCommandArguments, MaxCommandArgumentBytes))
 	case r.Command.Shell:
-		return invalidField("command.shell", "must be false in version 1")
+		return requestPayload.fieldError("command.shell", "must be false in version 1")
 	case !validWorkingDirectory(r.Command.WorkingDirectory):
-		return invalidField("command.workingDirectory",
+		return requestPayload.fieldError("command.workingDirectory",
 			"must be . or a clean relative path with no .. component and no control, format, or line or paragraph separator characters")
 	case r.WorkspaceAccess != WorkspaceReadOnly && r.WorkspaceAccess != WorkspaceReadWrite:
-		return invalidField("workspaceAccess", `must be "read-only" or "read-write"`)
+		return requestPayload.fieldError("workspaceAccess", `must be "read-only" or "read-write"`)
 	case r.Network != NetworkNone:
-		return invalidField("network", `must be "none" in version 1`)
+		return requestPayload.fieldError("network", `must be "none" in version 1`)
 	}
 	if err := r.Limits.validate(); err != nil {
 		return err
 	}
 	switch {
 	case !validText(r.Reason, MaxReasonBytes):
-		return invalidField("reason", "must be 1 to 1024 bytes of valid UTF-8 with no control, format, or line or paragraph separator characters")
+		return requestPayload.fieldError("reason", "must be 1 to 1024 bytes of valid UTF-8 with no control, format, or line or paragraph separator characters")
 	case !validRequestTime(r.CreatedAt):
-		return invalidField("createdAt", "must be a UTC time with second precision between years 0 and 9999")
+		return requestPayload.fieldError("createdAt", "must be a UTC time with second precision between years 0 and 9999")
 	case !validRequestTime(r.ExpiresAt):
-		return invalidField("expiresAt", "must be a UTC time with second precision between years 0 and 9999")
+		return requestPayload.fieldError("expiresAt", "must be a UTC time with second precision between years 0 and 9999")
 	case !r.ExpiresAt.After(r.CreatedAt) || r.ExpiresAt.Sub(r.CreatedAt) > MaxExecutionRequestLifetime:
-		return invalidField("expiresAt", "must be after createdAt and at most 1h later")
+		return requestPayload.fieldError("expiresAt", "must be after createdAt and at most 1h later")
 	case !validNonce(r.Nonce):
-		return invalidField("nonce", "must be unpadded base64url encoding 16 to 128 bytes")
+		return requestPayload.fieldError("nonce", "must be unpadded base64url encoding 16 to 128 bytes")
 	}
 	return nil
 }
@@ -233,183 +231,40 @@ func (l Limits) validate() error {
 		{"limits.outputBytes", l.OutputBytes, 1, MaxOutputBytes},
 	} {
 		if limit.value < limit.min || limit.value > limit.max {
-			return invalidField(limit.field, fmt.Sprintf("must be %d to %d", limit.min, limit.max))
+			return requestPayload.fieldError(limit.field, fmt.Sprintf("must be %d to %d", limit.min, limit.max))
 		}
 	}
 	return nil
-}
-
-// checkRequestDocument enforces the document rules: the size bound, exactly
-// one JSON object, valid UTF-8, \u escapes that decode to a Unicode scalar
-// value other than NUL, no duplicate keys, and no null. The JSON decoder would
-// otherwise replace bad escapes with U+FFFD, keep the last duplicate, and
-// treat null as a zero value.
-func checkRequestDocument(payload []byte) error {
-	if len(payload) > MaxPayloadBytes {
-		return fmt.Errorf("%w: %w", ErrInvalidExecutionRequest, ErrPayloadTooLarge)
-	}
-	if !utf8.Valid(payload) {
-		return invalidField("payload", "is not valid UTF-8")
-	}
-	if !json.Valid(payload) || firstNonSpace(payload) != '{' {
-		return invalidField("payload", "must be a single JSON object")
-	}
-	if !validStringEscapes(payload) {
-		return invalidField("payload", "contains a \\u escape that is NUL or not a Unicode scalar value")
-	}
-	decoder := json.NewDecoder(bytes.NewReader(payload))
-	decoder.UseNumber()
-	return scanRequestValue(decoder, "", 0)
-}
-
-// scanRequestValue walks one JSON value, rejecting null and duplicate keys.
-// fieldPath names the value for errors; it is quoted because unknown keys are
-// untrusted text.
-func scanRequestValue(decoder *json.Decoder, fieldPath string, depth int) error {
-	if depth > maxJSONDepth {
-		return invalidField("payload", "nesting exceeds the limit")
-	}
-	token, err := decoder.Token()
-	if err != nil {
-		return invalidField("payload", "is malformed JSON")
-	}
-	if token == nil {
-		return fmt.Errorf("%w: %q: must not be null", ErrInvalidExecutionRequest, fieldPath)
-	}
-	delimiter, ok := token.(json.Delim)
-	if !ok {
-		return nil
-	}
-	switch delimiter {
-	case '{':
-		seen := make(map[string]struct{})
-		for decoder.More() {
-			keyToken, err := decoder.Token()
-			key, ok := keyToken.(string)
-			if err != nil || !ok {
-				return invalidField("payload", "is malformed JSON")
-			}
-			child := joinFieldPath(fieldPath, key)
-			if _, duplicate := seen[key]; duplicate {
-				return fmt.Errorf("%w: %w: %q", ErrInvalidExecutionRequest, ErrDuplicateJSONKey, child)
-			}
-			seen[key] = struct{}{}
-			if err := scanRequestValue(decoder, child, depth+1); err != nil {
-				return err
-			}
-		}
-	case '[':
-		for decoder.More() {
-			if err := scanRequestValue(decoder, fieldPath, depth+1); err != nil {
-				return err
-			}
-		}
-	default:
-		return invalidField("payload", "is malformed JSON")
-	}
-	if _, err := decoder.Token(); err != nil {
-		return invalidField("payload", "is malformed JSON")
-	}
-	return nil
-}
-
-// validStringEscapes reports whether every \u escape in the valid JSON
-// document payload decodes to a Unicode scalar value other than NUL: a high
-// surrogate must be followed by a low one, and a low one must not stand alone.
-func validStringEscapes(payload []byte) bool {
-	inString := false
-	for i := 0; i < len(payload); i++ {
-		switch char := payload[i]; {
-		case !inString:
-			inString = char == '"'
-		case char == '"':
-			inString = false
-		case char == '\\':
-			if i+1 >= len(payload) {
-				return false
-			}
-			i++
-			if payload[i] != 'u' {
-				continue
-			}
-			code, ok := hexEscape(payload, i+1)
-			if !ok {
-				return false
-			}
-			i += 4
-			switch {
-			case code == 0, code >= 0xDC00 && code <= 0xDFFF:
-				return false
-			case code >= 0xD800 && code <= 0xDBFF:
-				if i+2 >= len(payload) || payload[i+1] != '\\' || payload[i+2] != 'u' {
-					return false
-				}
-				low, ok := hexEscape(payload, i+3)
-				if !ok || low < 0xDC00 || low > 0xDFFF {
-					return false
-				}
-				i += 6
-			}
-		}
-	}
-	return true
-}
-
-// hexEscape decodes the four hexadecimal digits at payload[start:].
-func hexEscape(payload []byte, start int) (rune, bool) {
-	if start < 0 || start+4 > len(payload) {
-		return 0, false
-	}
-	var code rune
-	for _, char := range payload[start : start+4] {
-		var digit byte
-		switch {
-		case char >= '0' && char <= '9':
-			digit = char - '0'
-		case char >= 'a' && char <= 'f':
-			digit = char - 'a' + 10
-		case char >= 'A' && char <= 'F':
-			digit = char - 'A' + 10
-		default:
-			return 0, false
-		}
-		code = code<<4 | rune(digit)
-	}
-	return code, true
 }
 
 // decodeRequestFields decodes each field into its typed target after
 // checking that every object has exactly its listed keys.
 func decodeRequestFields(payload []byte) (ExecutionRequest, error) {
-	top, err := objectFields(payload, "", "executionId", "principals", "resources", "grantId", "sessionId",
+	top, err := requestPayload.objectFields(payload, "", "executionId", "principals", "resources", "grantId", "sessionId",
 		"command", "workspaceAccess", "network", "limits", "reason", "createdAt", "expiresAt", "nonce")
 	if err != nil {
 		return ExecutionRequest{}, err
 	}
-	principals, err := objectFields(top["principals"], "principals", "userId", "agentId", "clientId")
+	principals, err := requestPayload.objectFields(top["principals"], "principals", "userId", "agentId", "clientId")
 	if err != nil {
 		return ExecutionRequest{}, err
 	}
-	resources, err := objectFields(top["resources"], "resources", "machineId", "workspaceId")
+	resources, err := requestPayload.objectFields(top["resources"], "resources", "machineId", "workspaceId")
 	if err != nil {
 		return ExecutionRequest{}, err
 	}
-	command, err := objectFields(top["command"], "command", "executable", "arguments", "shell", "workingDirectory")
+	command, err := requestPayload.objectFields(top["command"], "command", "executable", "arguments", "shell", "workingDirectory")
 	if err != nil {
 		return ExecutionRequest{}, err
 	}
-	limits, err := objectFields(top["limits"], "limits", "timeoutSeconds", "cpuMillicores", "memoryBytes", "pids", "outputBytes")
+	limits, err := requestPayload.objectFields(top["limits"], "limits", "timeoutSeconds", "cpuMillicores", "memoryBytes", "pids", "outputBytes")
 	if err != nil {
 		return ExecutionRequest{}, err
 	}
 
 	var request ExecutionRequest
 	var createdAt, expiresAt string
-	for _, field := range []struct {
-		raw    json.RawMessage
-		path   string
-		target any
-	}{
+	if err := requestPayload.decodeFields([]payloadField{
 		{top["executionId"], "executionId", &request.ExecutionID},
 		{principals["userId"], "principals.userId", &request.Principals.UserID},
 		{principals["agentId"], "principals.agentId", &request.Principals.AgentID},
@@ -433,43 +288,17 @@ func decodeRequestFields(payload []byte) (ExecutionRequest, error) {
 		{top["createdAt"], "createdAt", &createdAt},
 		{top["expiresAt"], "expiresAt", &expiresAt},
 		{top["nonce"], "nonce", &request.Nonce},
-	} {
-		if err := json.Unmarshal(field.raw, field.target); err != nil {
-			return ExecutionRequest{}, invalidField(field.path, "has the wrong type")
-		}
+	}); err != nil {
+		return ExecutionRequest{}, err
 	}
 	var ok bool
 	if request.CreatedAt, ok = parseRequestTime(createdAt); !ok {
-		return ExecutionRequest{}, invalidField("createdAt", "must be RFC 3339 in UTC with second precision (YYYY-MM-DDTHH:MM:SSZ)")
+		return ExecutionRequest{}, requestPayload.fieldError("createdAt", "must be RFC 3339 in UTC with second precision (YYYY-MM-DDTHH:MM:SSZ)")
 	}
 	if request.ExpiresAt, ok = parseRequestTime(expiresAt); !ok {
-		return ExecutionRequest{}, invalidField("expiresAt", "must be RFC 3339 in UTC with second precision (YYYY-MM-DDTHH:MM:SSZ)")
+		return ExecutionRequest{}, requestPayload.fieldError("expiresAt", "must be RFC 3339 in UTC with second precision (YYYY-MM-DDTHH:MM:SSZ)")
 	}
 	return request, nil
-}
-
-// objectFields decodes the object at fieldPath and requires exactly keys.
-func objectFields(raw []byte, fieldPath string, keys ...string) (map[string]json.RawMessage, error) {
-	var object map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &object); err != nil || object == nil {
-		return nil, invalidField(fieldPath, "must be an object")
-	}
-	for _, key := range keys {
-		if _, ok := object[key]; !ok {
-			return nil, invalidField(joinFieldPath(fieldPath, key), "is required")
-		}
-	}
-	if len(object) != len(keys) {
-		var unknown []string
-		for key := range object {
-			if !slices.Contains(keys, key) {
-				unknown = append(unknown, key)
-			}
-		}
-		slices.Sort(unknown)
-		return nil, fmt.Errorf("%w: unknown field %q", ErrInvalidExecutionRequest, joinFieldPath(fieldPath, unknown[0]))
-	}
-	return object, nil
 }
 
 func parseRequestTime(value string) (time.Time, bool) {
@@ -554,18 +383,4 @@ func validText(text string, maxBytes int) bool {
 		}
 	}
 	return true
-}
-
-func joinFieldPath(parent, key string) string {
-	if parent == "" {
-		return key
-	}
-	return parent + "." + key
-}
-
-func invalidField(field, problem string) error {
-	if field == "" {
-		field = "payload"
-	}
-	return fmt.Errorf("%w: %s: %s", ErrInvalidExecutionRequest, field, problem)
 }

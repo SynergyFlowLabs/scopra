@@ -117,12 +117,19 @@ func TestSecurity_DecodeExecutionResultEnforcesFieldRules(t *testing.T) {
 		{state: StateFailed, set: map[string]any{"state": "Failed"}, field: "state"},
 		{state: StateFailed, set: map[string]any{"state": ""}, field: "state"},
 		{state: StateFailed, set: map[string]any{"state": 1}, field: "state"},
+		{state: StateFailed, set: map[string]any{"executionId": 1}, field: "executionId"},
+		{state: StateFailed, set: map[string]any{"actionHash": true}, field: "actionHash"},
+		{state: StateFailed, set: map[string]any{"startedAt": 1760616001}, field: "startedAt"},
+		{state: StateFailed, set: map[string]any{"endedAt": []any{}}, field: "endedAt"},
+		{state: StateRejected, set: map[string]any{"error.code": 1}, field: "error.code"},
+		{state: StateRejected, set: map[string]any{"error.message": []any{"x"}}, field: "error.message"},
 
 		{state: StateFailed, set: map[string]any{"endedAt": "2026-10-16T12:00:01.250Z"}, accept: true},
 		{state: StateFailed, set: map[string]any{"endedAt": "2026-10-16T12:00:01.249Z"}, field: "endedAt"},
 		{state: StateFailed, set: map[string]any{"startedAt": "2026-10-16T12:00:01Z"}, field: "startedAt"},
 		{state: StateFailed, set: map[string]any{"startedAt": "2026-10-16T12:00:01.25Z"}, field: "startedAt"},
 		{state: StateFailed, set: map[string]any{"startedAt": "2026-10-16T12:00:01.2500Z"}, field: "startedAt"},
+		{state: StateFailed, set: map[string]any{"startedAt": "2026-10-16T12:00:01,250Z"}, field: "startedAt"},
 		{state: StateFailed, set: map[string]any{"startedAt": "2026-10-16T12:00:01.250+00:00"}, field: "startedAt"},
 		{state: StateFailed, set: map[string]any{"startedAt": "2026-10-16T12:00:01.250z"}, field: "startedAt"},
 		{state: StateFailed, set: map[string]any{"startedAt": ""}, field: "startedAt"},
@@ -356,6 +363,7 @@ func TestExecutionResult_ValidateChecksTypedValues(t *testing.T) {
 			r.StartedAt = time.Date(10000, time.January, 1, 0, 0, 0, 0, time.UTC)
 			r.EndedAt = r.StartedAt
 		}, field: "startedAt"},
+		{name: "exit code above 255", state: StateFailed, change: func(r *ExecutionResult) { r.ExitCode = 256 }, field: "exitCode"},
 		{name: "exit code for a killed command", state: StateTimedOut, change: func(r *ExecutionResult) { r.ExitCode = 137 }, field: "exitCode"},
 		{name: "times for an errored command", state: StateErrored, change: func(r *ExecutionResult) { r.StartedAt = time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC) }, field: "startedAt"},
 		{name: "output for a rejection", state: StateRejected, change: func(r *ExecutionResult) { r.Output.Chunks = 1 }, field: "output"},

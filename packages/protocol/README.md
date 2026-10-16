@@ -33,4 +33,23 @@ The form is computed from the typed value, never from transmitted bytes, and it 
 
 **Important:** the action hash identifies an action and authenticates nothing. A receiver must compute it from the request it decoded and verified, never trust a transmitted one, and get approval integrity from a signed approval record, which is not implemented yet.
 
-Run the package tests with `go test -race ./packages/protocol`. Fuzz the decoder and the canonical form with `go test -run '^$' -fuzz FuzzDecodeExecutionRequest ./packages/protocol` and `go test -run '^$' -fuzz FuzzCanonicalFieldValues ./packages/protocol`.
+## Implemented: execution results
+
+`DecodeExecutionResult(payload)` strictly decodes an `execution.result` payload (ADR-009). The state comes first, because it selects the exact key set:
+
+- `succeeded` and `failed` carry times, an exit code (0, or 1 to 255), and an output summary;
+- `timed_out`, `cancelled`, and `out_of_memory` carry times and an output summary;
+- `errored` carries an error and an output summary;
+- `rejected` carries only an error.
+
+Every other rule is ADR-007's, through the same strict-document checks, and every error wraps `ErrInvalidExecutionResult`.
+
+- Times are RFC 3339 in UTC with exactly three fractional digits.
+- Output summaries count bytes and chunks, never output itself. Their counts must be consistent with chunks of 1 to 65536 bytes.
+- Error codes match `[a-z][a-z_]*`. Unknown well-formed codes are accepted, so that codes can be added.
+
+`ExecutionResult.Validate()` checks typed values, including that the fields a state does not use are zero. `ValidateAgainst(request)` ties a result to its request: the same execution ID, the request's action hash, and output within its `limits.outputBytes`. `CanonicalJSON()` encodes a valid result with ADR-008's writer, for Mio to send.
+
+`execution.started`, `execution.output`, and `execution.cancel` are not implemented yet.
+
+Run the package tests with `go test -race ./packages/protocol`. Fuzz the decoders and the canonical forms with `go test -run '^$' -fuzz FuzzDecodeExecutionRequest ./packages/protocol`, `go test -run '^$' -fuzz FuzzCanonicalFieldValues ./packages/protocol`, and `go test -run '^$' -fuzz FuzzDecodeExecutionResult ./packages/protocol`.
