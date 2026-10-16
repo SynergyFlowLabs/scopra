@@ -32,6 +32,8 @@ const (
 )
 
 const (
+	// FileName is the name of the registry file in the registry directory.
+	FileName = fileName
 	// MaxPathBytes is the longest workspace path the registry stores: Linux
 	// PATH_MAX without its terminating NUL. Longer paths cannot be resolved,
 	// so Add never produces them.
@@ -103,33 +105,9 @@ func Open(dir string, validator *workspace.Validator) (*Registry, error) {
 	if validator == nil {
 		return nil, errors.New("registry: a workspace validator is required")
 	}
-	if !filepath.IsAbs(dir) {
-		return nil, fmt.Errorf("%w: registry directory %q", workspace.ErrInvalidPath, dir)
-	}
-	dir = filepath.Clean(dir)
-	if err := checkDirectory(dir); err != nil {
-		return nil, err
-	}
-	canonical, err := filepath.EvalSymlinks(dir)
-	if err != nil {
-		return nil, fmt.Errorf("resolve registry directory: %w", err)
-	}
-
-	data, found, err := readRegistryFile(filepath.Join(canonical, fileName))
+	canonical, records, err := load(dir)
 	if err != nil {
 		return nil, err
-	}
-	var records []Record
-	if found {
-		if records, err = decode(data); err != nil {
-			return nil, err
-		}
-	}
-	for _, record := range records {
-		if overlaps(record.Path, canonical) {
-			return nil, fmt.Errorf("%w: workspace %q overlaps the registry directory",
-				ErrCorruptRegistry, record.Path)
-		}
 	}
 	return &Registry{
 		dir:           canonical,
@@ -139,9 +117,52 @@ func Open(dir string, validator *workspace.Validator) (*Registry, error) {
 	}, nil
 }
 
-// Check will validate the registry in dir without writing.
-// Skeleton for the Step 11 tests: not implemented yet.
-func Check(dir string) (int, error) { return 0, errors.New("registry: Check is not implemented yet") }
+// Check validates the registry stored in dir exactly as Open does and returns
+// the number of registrations. It needs no validator and never writes, so a
+// diagnostic such as scopra doctor may call it while Mio owns dir: Mio
+// replaces the file atomically. A missing directory is reported as
+// os.ErrNotExist.
+func Check(dir string) (int, error) {
+	_, records, err := load(dir)
+	if err != nil {
+		return 0, err
+	}
+	return len(records), nil
+}
+
+// load reads and validates the registry stored in dir without writing, and
+// returns the canonical directory and the records.
+func load(dir string) (string, []Record, error) {
+	if !filepath.IsAbs(dir) {
+		return "", nil, fmt.Errorf("%w: registry directory %q", workspace.ErrInvalidPath, dir)
+	}
+	dir = filepath.Clean(dir)
+	if err := checkDirectory(dir); err != nil {
+		return "", nil, err
+	}
+	canonical, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return "", nil, fmt.Errorf("resolve registry directory: %w", err)
+	}
+
+	data, found, err := readRegistryFile(filepath.Join(canonical, fileName))
+	if err != nil {
+		return "", nil, err
+	}
+	var records []Record
+	if found {
+		if records, err = decode(data); err != nil {
+			return "", nil, err
+		}
+	}
+	for _, record := range records {
+		if overlaps(record.Path, canonical) {
+			return "", nil, fmt.Errorf("%w: workspace %q overlaps the registry directory",
+				ErrCorruptRegistry, record.Path)
+		}
+	}
+	return canonical, records, nil
+}
 
 // Add validates the workspace at path and registers it under a new ID. It
 // rejects a directory that is already registered, even under another path; a

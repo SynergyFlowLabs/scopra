@@ -61,6 +61,6 @@ The PRD requires registering and removing existing directories as workspaces, an
 
 **Consequences and limits:**
 
-- A bad registry now stops Mio entirely, not just registration. `scopra status` and `scopra doctor` then report only that Mio is not running, while `scoprad` prints the reason; doctor does not inspect the registry yet. This choice is the simplest fail-closed behaviour while only a manual edit can produce a bad file, and it should be revisited when workspace commands can report a degraded state.
+- A bad registry now stops Mio entirely, not just registration. `scopra status` then reports only that Mio is not running, while `scoprad` prints the reason. `scopra doctor`'s `workspace-registry` check reports the reason too, through `registry.Check`, which validates the file exactly as `Open` does but never writes and may run while Mio owns the directory. This choice is the simplest fail-closed behaviour while only a manual edit can produce a bad file, and it should be revisited when workspace commands can report a degraded state.
 - Mio needs a home directory, from `$HOME` or the account database, so that the validator can protect it. This applies even with `--state-dir`.
 - Mio binds its socket before it opens the registry, so a client that connects during a refused start sees the connection closed instead of "not running". No request is served in that window.

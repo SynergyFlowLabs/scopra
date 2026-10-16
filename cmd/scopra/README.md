@@ -26,10 +26,11 @@ By default both binaries use `$XDG_STATE_HOME/scopra`, or `~/.local/state/scopra
 | Check | Passes when | Otherwise |
 |---|---|---|
 | `platform` | The OS supports authenticated local IPC (Linux). | `fail`; Mio fails closed, and the later checks are `skip`. |
-| `state-directory` | The resolved directory exists and is owned by the current user with mode `0700`. It has no symlinked or unsafely writable ancestors, leaves room for the socket path, and any existing `scoprad.lock` is an owner-only regular file. | `warn` if it does not exist yet. `fail` if it cannot be resolved, is insecure, or is too long; `daemon` is then skipped. |
+| `state-directory` | The resolved directory exists and is owned by the current user with mode `0700`. It has no symlinked or unsafely writable ancestors, leaves room for the socket path, and any existing `scoprad.lock` is an owner-only regular file. | `warn` if it does not exist yet. `fail` if it cannot be resolved, is insecure, or is too long; `workspace-registry` and `daemon` are then skipped. |
+| `workspace-registry` | Mio's `workspaces.json` is missing, or is an owner-only regular file with valid content, as `scoprad` requires at startup. The detail gives the number of registrations. | `fail`, with a hint naming the file, when it is unsafe, invalid, or unreadable: `scoprad` will not start until it is fixed or removed, and removing it unregisters every workspace without changing any directory. |
 | `daemon` | Mio's local IPC endpoint answers the existing authenticated `status` request. | `fail`, with a hint, when Mio is not running, its socket is unsafe, or its response is invalid. |
 
-Doctor never creates or repairs the state directory, removes stale sockets, starts Mio, or contacts a socket with unsafe ownership or permissions. It never opens or locks Mio's lock file, so it cannot make a concurrent `scoprad` start fail. It sends only the existing `status` request. A passing result means only that the local platform, state directory, and Mio IPC endpoint look healthy. Enrollment, relay, workspaces, policy, containment, and execution are not checked because they are not implemented. A pass does not mean Scopra can authorize or execute commands.
+Doctor never creates or repairs the state directory, removes stale sockets, starts Mio, or contacts a socket with unsafe ownership or permissions. It never opens or locks Mio's lock file, so it cannot make a concurrent `scoprad` start fail. It reads the workspace registry without changing it, which is safe while Mio runs because Mio replaces the file atomically. It sends only the existing `status` request. A passing result means only that the local platform, state directory, workspace registry, and Mio IPC endpoint look healthy. Enrollment, relay, workspace revalidation (whether registered directories still qualify), policy, containment, and execution are not checked because they are not implemented. A pass does not mean Scopra can authorize or execute commands.
 
 The human-readable report goes to stdout, with control characters in paths and error text escaped. `--json` writes a single JSON object on one line to stdout. Here it is pretty-printed for a machine where Mio has never started:
 
@@ -52,13 +53,18 @@ The human-readable report goes to stdout, with control characters in paths and e
       "hint": "scoprad creates it with owner-only permissions when it starts."
     },
     {
+      "name": "workspace-registry",
+      "status": "pass",
+      "detail": "no workspaces are registered; the state directory does not exist yet"
+    },
+    {
       "name": "daemon",
       "status": "fail",
       "detail": "Scopra Mio is not running (its socket is missing or refuses connections)",
       "hint": "Start Mio in the foreground with `scoprad` (pass the same --state-dir, if any)."
     }
   ],
-  "notChecked": ["enrollment", "relay", "workspaces", "policy", "containment", "execution"]
+  "notChecked": ["enrollment", "relay", "workspace revalidation", "policy", "containment", "execution"]
 }
 ```
 

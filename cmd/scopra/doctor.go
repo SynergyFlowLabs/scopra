@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/SynergyFlowLabs/scopra/internal/buildinfo"
 	"github.com/SynergyFlowLabs/scopra/internal/localipc"
+	"github.com/SynergyFlowLabs/scopra/internal/workspace/registry"
 )
 
 // doctorSchemaVersion identifies the layout of `scopra doctor --json` output.
@@ -23,9 +25,10 @@ import (
 const doctorSchemaVersion = 1
 
 const (
-	checkNamePlatform       = "platform"
-	checkNameStateDirectory = "state-directory"
-	checkNameDaemon         = "daemon"
+	checkNamePlatform          = "platform"
+	checkNameStateDirectory    = "state-directory"
+	checkNameWorkspaceRegistry = "workspace-registry"
+	checkNameDaemon            = "daemon"
 )
 
 type checkStatus string
@@ -44,7 +47,7 @@ var errDoctorChecksFailed = errors.New("scopra doctor found failing checks")
 // notCheckedAreas names readiness areas that doctor deliberately does not
 // assess because Scopra does not implement them yet.
 var notCheckedAreas = []string{
-	"enrollment", "relay", "workspaces", "policy", "containment", "execution",
+	"enrollment", "relay", "workspace revalidation", "policy", "containment", "execution",
 }
 
 type doctorCheck struct {
@@ -119,16 +122,19 @@ func diagnose(ctx context.Context, stateDir string, platform platformInfo) docto
 
 	platformCheck := diagnosePlatform(platform)
 	stateDirCheck := skippedCheck(checkNameStateDirectory, checkNamePlatform)
+	registryCheck := skippedCheck(checkNameWorkspaceRegistry, checkNamePlatform)
 	daemonCheck := skippedCheck(checkNameDaemon, checkNamePlatform)
 	if platformCheck.Status != checkFail {
 		report.StateDir, stateDirCheck = diagnoseStateDir(stateDir)
+		registryCheck = skippedCheck(checkNameWorkspaceRegistry, checkNameStateDirectory)
 		daemonCheck = skippedCheck(checkNameDaemon, checkNameStateDirectory)
 		if stateDirCheck.Status != checkFail {
+			registryCheck = diagnoseWorkspaceRegistry(report.StateDir)
 			daemonCheck = diagnoseDaemon(ctx, report.StateDir)
 		}
 	}
 
-	report.Checks = []doctorCheck{platformCheck, stateDirCheck, daemonCheck}
+	report.Checks = []doctorCheck{platformCheck, stateDirCheck, registryCheck, daemonCheck}
 	report.Result = overallResult(report.Checks)
 	return report
 }
@@ -200,6 +206,53 @@ func diagnoseStateDir(stateDir string) (string, doctorCheck) {
 			Status: checkFail,
 			Detail: err.Error(),
 			Hint:   "Inspect the directory or choose another --state-dir.",
+		}
+	}
+}
+
+// diagnoseWorkspaceRegistry validates Mio's workspace registry without
+// changing it. It does not revalidate the registered workspaces.
+func diagnoseWorkspaceRegistry(stateDir string) doctorCheck {
+	file := filepath.Join(stateDir, registry.FileName)
+	const removal = " Removing the file unregisters every workspace but changes no directory."
+	count, err := registry.Check(stateDir)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		return doctorCheck{
+			Name:   checkNameWorkspaceRegistry,
+			Status: checkPass,
+			Detail: "no workspaces are registered; the state directory does not exist yet",
+		}
+	case err == nil && count == 0:
+		return doctorCheck{Name: checkNameWorkspaceRegistry, Status: checkPass, Detail: "no workspaces are registered"}
+	case err == nil && count == 1:
+		return doctorCheck{Name: checkNameWorkspaceRegistry, Status: checkPass, Detail: "1 workspace is registered"}
+	case err == nil:
+		return doctorCheck{
+			Name:   checkNameWorkspaceRegistry,
+			Status: checkPass,
+			Detail: fmt.Sprintf("%d workspaces are registered", count),
+		}
+	case errors.Is(err, registry.ErrInsecureRegistry):
+		return doctorCheck{
+			Name:   checkNameWorkspaceRegistry,
+			Status: checkFail,
+			Detail: err.Error(),
+			Hint:   "scoprad will not start until " + file + " is a regular file owned by you with mode 0600." + removal,
+		}
+	case errors.Is(err, registry.ErrCorruptRegistry):
+		return doctorCheck{
+			Name:   checkNameWorkspaceRegistry,
+			Status: checkFail,
+			Detail: err.Error(),
+			Hint:   "scoprad will not start until " + file + " is valid; restore it from a backup if you have one." + removal,
+		}
+	default:
+		return doctorCheck{
+			Name:   checkNameWorkspaceRegistry,
+			Status: checkFail,
+			Detail: "cannot read the workspace registry: " + err.Error(),
+			Hint:   "scoprad will not start until " + file + " can be read; check its permissions." + removal,
 		}
 	}
 }
