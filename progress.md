@@ -2,8 +2,8 @@
 
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
-**Current increment:** Remove a workspace by path (Step 14)
-**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
+**Current increment:** Execution request v1 decoding (Step 15)
+**Status:** Proposed. The ADR-007 draft and the checklist below await the maintainer's confirmation, and no code has been written. CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -948,3 +948,38 @@ Non-goals:
   - Revalidation status in `scopra workspace list`, which needs a wire change.
   - Containment and execution. They need rootless Podman, which is not available here, and a decision about which container image runs commands.
 - Pushes to `arena/c7a368c1-scopra`: test checkpoint `5095ae3` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.
+
+### 2026-10-16 — Step 15 (proposed): Execution request v1 decoding
+
+- Selection: after Step 14 the maintainer was told that, without a choice, the plan and API docs would be checked for the execution request shape and option (b) proposed before any code was written. The reply was "Continue", so this entry and the ADR-007 draft are that proposal. Implementation starts only after confirmation; a "continue" accepts the proposal.
+- Research:
+  - `docs/architecture/protocol.md` lists the request's contents.
+  - The PRD supplies the remaining requirements (Execution, Environment and network, Grants, Security Invariants, and principle 3), and the plan's Milestone 1 Messenger tasks ask for "protocol versions, IDs, canonical request, results, output chunks, errors, and execution states".
+  - ADR-002 reserves `execution.request` and leaves payload validation to the receiver.
+  - The ADR index already lists "canonical execution requests" as a required follow-up.
+  - No Podman is needed: this is pure validation.
+- Decisions proposed in ADR-007 that most need a maintainer's view:
+  - `shell` must be `false`;
+  - `workspaceId` is Mio's local registration ID;
+  - the executable is a bare name, a clean absolute path, or `./relative`;
+  - `workspaceAccess` and `network` replace named profiles for now, with `network` accepting only `none`;
+  - the limit ranges are protocol sanity bounds, with policy setting the real maxima;
+  - the request window is at most 1 hour, with UTC second-precision timestamps;
+  - environment variables, standard input, artifacts, output policy, and the canonical form or action hash are absent from version 1.
+
+#### Acceptance checklist (proposed, not yet agreed)
+
+- [ ] ADR-007 is accepted, with any changes the maintainer asks for, and indexed as accepted. `docs/architecture/protocol.md` and the protocol package README describe it.
+- [ ] `protocol.DecodeExecutionRequest(payload)` returns a typed `ExecutionRequest` that follows ADR-007's shape and field rules. Its strict decoding covers size, trailing data, duplicate keys, `null`, invalid UTF-8, invalid `\u` escapes, exact key sets, and integer-only limits. Every error names the field, and no partially valid request is returned.
+- [ ] `Envelope.ExecutionRequest()` decodes only envelopes of type `execution.request`. `ExecutionRequest.ValidateAt(now)` enforces the request window: at most 30 seconds of future skew, strict expiry, and a lifetime of at most 1 hour.
+- [ ] Tests:
+  - a valid request decodes to the expected values;
+  - table-driven rejections cover every field rule and every strictness rule, at both sides of each bound;
+  - a fuzz test shows that decoding never panics, and that every accepted request satisfies the field rules again.
+- [ ] The package stays dependency-free. No daemon, CLI, or wire change outside the payload contract.
+
+Non-goals:
+- The canonical form and action hash.
+- Execution results, output chunks, errors, and execution states.
+- Mio accepting remote requests.
+- Policy, approval, and containment.
