@@ -68,22 +68,9 @@ func runWorkspaceAdd(ctx context.Context, args []string, stdout, stderr io.Write
 	if len(options.args) != 1 {
 		return failUsage(stderr, "workspace add takes exactly one PATH, after any flags")
 	}
-	path := options.args[0]
-	if path == "" || !utf8.ValidString(path) {
-		return failUsage(stderr, "workspace path %q must be non-empty and valid UTF-8", path)
-	}
-	if !filepath.IsAbs(path) {
-		// Mio never resolves relative paths. Prefix the working directory
-		// without cleaning, so that Mio resolves ".." after any symlinks, as
-		// the kernel would for this process.
-		workingDir, err := os.Getwd()
-		if err != nil {
-			return fmt.Errorf("make the workspace path absolute: %w", err)
-		}
-		path = workingDir + string(filepath.Separator) + path
-	}
-	if len(path) > registry.MaxPathBytes {
-		return failUsage(stderr, "workspace path is longer than %d bytes", registry.MaxPathBytes)
+	path, err := absoluteWorkspacePath(options.args[0], stderr)
+	if err != nil {
+		return err
 	}
 
 	added, err := localipc.AddWorkspace(ctx, options.stateDir, path)
@@ -130,13 +117,26 @@ func runWorkspaceRemove(ctx context.Context, args []string, stdout, stderr io.Wr
 	if err != nil {
 		return err
 	}
-	if len(options.args) != 1 {
-		return failUsage(stderr, "workspace remove takes exactly one ID, after any flags")
-	}
-	id := options.args[0]
-	if !localipc.ValidWorkspaceID(id) {
-		return failUsage(stderr,
-			"invalid workspace ID %q: expected 32 lowercase hexadecimal characters, as shown by scopra workspace list", id)
+	var id string
+	switch {
+	case options.pathSet && len(options.args) != 0:
+		return failUsage(stderr, "workspace remove takes an ID or --path PATH, not both")
+	case options.pathSet:
+		path, err := absoluteWorkspacePath(options.path, stderr)
+		if err != nil {
+			return err
+		}
+		if id, err = workspaceIDForPath(ctx, options.stateDir, path); err != nil {
+			return fmt.Errorf("remove workspace: %w", err)
+		}
+	case len(options.args) != 1:
+		return failUsage(stderr, "workspace remove takes exactly one ID, after any flags, or --path PATH")
+	default:
+		id = options.args[0]
+		if !localipc.ValidWorkspaceID(id) {
+			return failUsage(stderr,
+				"invalid workspace ID %q: expected 32 lowercase hexadecimal characters, as shown by scopra workspace list", id)
+		}
 	}
 
 	removed, err := localipc.RemoveWorkspace(ctx, options.stateDir, id)
@@ -151,10 +151,73 @@ func runWorkspaceRemove(ctx context.Context, args []string, stdout, stderr io.Wr
 	return err
 }
 
+// absoluteWorkspacePath checks a workspace PATH argument and makes it
+// absolute. Mio never resolves relative paths, so the working directory is
+// prefixed without cleaning: ".." must be resolved after any symlinks, as the
+// kernel would for this process.
+func absoluteWorkspacePath(path string, stderr io.Writer) (string, error) {
+	if path == "" || !utf8.ValidString(path) {
+		return "", failUsage(stderr, "workspace path %q must be non-empty and valid UTF-8", path)
+	}
+	if !filepath.IsAbs(path) {
+		workingDir, err := os.Getwd()
+		if err != nil {
+			return "", fmt.Errorf("make the workspace path absolute: %w", err)
+		}
+		path = workingDir + string(filepath.Separator) + path
+	}
+	if len(path) > registry.MaxPathBytes {
+		return "", failUsage(stderr, "workspace path is longer than %d bytes", registry.MaxPathBytes)
+	}
+	return path, nil
+}
+
+// workspaceIDForPath finds the registration that path selects, using the
+// existing list request. path selects a registration whose path equals it
+// exactly, which still works after the directory is gone, or the one it now
+// resolves to through symlinks. If the two disagree, it refuses to guess.
+func workspaceIDForPath(ctx context.Context, stateDir, path string) (string, error) {
+	workspaces, err := localipc.ListWorkspaces(ctx, stateDir)
+	if err != nil {
+		return "", err
+	}
+	exact, exactFound := findWorkspace(workspaces, path)
+	var resolved localipc.Workspace
+	resolvedFound := false
+	if canonical, err := filepath.EvalSymlinks(path); err == nil {
+		resolved, resolvedFound = findWorkspace(workspaces, canonical)
+	}
+	switch {
+	case exactFound && resolvedFound && exact.ID != resolved.ID:
+		return "", fmt.Errorf("%w: %q is registered as workspace %s but now resolves to workspace %s (%q); remove it by ID",
+			errAmbiguousWorkspacePath, path, exact.ID, resolved.ID, resolved.Path)
+	case exactFound:
+		return exact.ID, nil
+	case resolvedFound:
+		return resolved.ID, nil
+	default:
+		return "", fmt.Errorf("%w: %q; if its directory is gone, give the path exactly as scopra workspace list shows it, "+
+			"or remove it by ID", errWorkspacePathNotRegistered, path)
+	}
+}
+
+func findWorkspace(workspaces []localipc.Workspace, path string) (localipc.Workspace, bool) {
+	for _, registered := range workspaces {
+		if registered.Path == path {
+			return registered, true
+		}
+	}
+	return localipc.Workspace{}, false
+}
+
 type workspaceOptions struct {
 	stateDir   string
 	jsonOutput bool
-	args       []string
+	// path holds `remove --path`, and pathSet whether it was given; the
+	// other subcommands reject the flag.
+	path    string
+	pathSet bool
+	args    []string
 }
 
 // parseWorkspaceFlags parses the flags that every workspace subcommand takes.
@@ -165,10 +228,18 @@ func parseWorkspaceFlags(name string, args []string, stderr io.Writer) (workspac
 	flags.Usage = func() { printUsage(stderr) }
 	stateDir := flags.String("state-dir", "", "Mio state directory")
 	jsonOutput := flags.Bool("json", false, "write the result as JSON")
+	var options workspaceOptions
+	if name == "remove" {
+		flags.Func("path", "remove the registration for this directory instead of an ID", func(value string) error {
+			options.path, options.pathSet = value, true
+			return nil
+		})
+	}
 	if err := flags.Parse(args); err != nil {
 		return workspaceOptions{}, &usageError{err: err}
 	}
-	return workspaceOptions{stateDir: *stateDir, jsonOutput: *jsonOutput, args: flags.Args()}, nil
+	options.stateDir, options.jsonOutput, options.args = *stateDir, *jsonOutput, flags.Args()
+	return options, nil
 }
 
 // writeJSON writes value as a single line of JSON.

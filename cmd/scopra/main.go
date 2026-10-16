@@ -117,7 +117,8 @@ commands:
   doctor [--state-dir PATH] [--json]               run read-only local diagnostics
   workspace add [--state-dir PATH] [--json] PATH   register a workspace directory with Mio
   workspace list [--state-dir PATH] [--json]       list registered workspaces
-  workspace remove [--state-dir PATH] [--json] ID  remove a registration; the directory is not changed
+  workspace remove [--state-dir PATH] [--json] (ID | --path PATH)
+                                                   remove a registration; the directory is not changed
   version                                          print the scopra version
 
 Flags go before PATH or ID.

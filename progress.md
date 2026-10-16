@@ -3,7 +3,7 @@
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
 **Current increment:** Remove a workspace by path (Step 14)
-**Status:** In progress on `arena/c7a368c1-scopra`: acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
+**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -851,19 +851,19 @@ Non-goals:
 
 #### Acceptance checklist (agreed before implementation)
 
-- [ ] `scopra workspace remove --path PATH` unregisters the workspace registered for PATH and changes no directory. Its output, `--json` document (`schemaVersion` 1), and exit codes match removal by ID. A relative PATH is made absolute exactly as `add` does it.
-- [ ] PATH matches a registration in two ways:
+- [x] `scopra workspace remove --path PATH` unregisters the workspace registered for PATH and changes no directory. Its output, `--json` document (`schemaVersion` 1), and exit codes match removal by ID. A relative PATH is made absolute exactly as `add` does it.
+- [x] PATH matches a registration in two ways:
   - it equals the registered path exactly, which still works after the directory is gone;
   - or it now resolves to the registered path. Resolution is read-only and follows symlinks; `..` is never cleaned lexically.
 
   If the two rules pick different registrations, the command refuses and asks for removal by ID, and nothing is removed.
-- [ ] When nothing matches, the command exits `1` with an escaped error that names PATH and suggests the path as `scopra workspace list` shows it or removal by ID; nothing is removed. These are usage errors (exit `2`), detected before Mio is contacted:
+- [x] When nothing matches, the command exits `1` with an escaped error that names PATH and suggests the path as `scopra workspace list` shows it or removal by ID; nothing is removed. These are usage errors (exit `2`), detected before Mio is contacted:
   - both an ID and `--path`, or neither;
   - an empty `--path`, or a missing value;
   - invalid UTF-8, or a path over 4095 bytes;
   - `--path` on `add` or `list`.
-- [ ] Removal by ID is unchanged, and Mio being unavailable is reported as for the other commands.
-- [ ] The CLI README, the usage text, and this log are updated. The wire protocol, Mio, and the ADRs are unchanged.
+- [x] Removal by ID is unchanged, and Mio being unavailable is reported as for the other commands.
+- [x] The CLI README, the usage text, and this log are updated. The wire protocol, Mio, and the ADRs are unchanged.
 
 Non-goals:
 - Lexical normalization of PATH for directories that no longer exist (trailing slashes, `.`, `..`). Cleaning could choose a different registration than the kernel's resolution would.
@@ -894,3 +894,57 @@ Non-goals:
    - `TestRunWorkspaceHelp`.
 
    The new usage-error rows already passed, because an unknown flag is also a usage error. They guard the implementation against accepting bad input.
+
+#### Implementation and verification record
+
+- `cmd/scopra/workspace.go`:
+  - `parseWorkspaceFlags` defines `--path` only for `remove`, and records whether it was given, so `--path ""` is rejected rather than ignored.
+  - `absoluteWorkspacePath`, extracted unchanged from `add`, checks UTF-8 and length and prefixes the working directory without cleaning; `add` and `remove --path` share it.
+  - `workspaceIDForPath` lists the registrations through the existing client. It looks for an exact match, then resolves PATH with `filepath.EvalSymlinks`, which is read-only and never cleaned first, and looks for a match on the result.
+    - If the exact match and the resolved match disagree, it fails with `errAmbiguousWorkspacePath`, naming both IDs.
+    - If neither matches, it fails with `errWorkspacePathNotRegistered`.
+    - Otherwise the ID goes to the existing `RemoveWorkspace` call, so output, JSON, and Mio's own errors are exactly those of removal by ID.
+  - A registration removed and re-added between the list and the removal gets a new random ID, so the removal then fails with `not_found` rather than removing anything else.
+- `cmd/scopra/main.go`: the usage line reads `workspace remove [--state-dir PATH] [--json] (ID | --path PATH)`.
+- Documentation: the CLI README describes `remove --path`, its two matching rules, the refusal, the missing-directory caveat, and the exit codes. The wire protocol, Mio, and the ADRs are unchanged.
+- Green: all tests pass under the race detector with no skips.
+- Mutation testing: 16 deliberate, compile-safe mutations, all caught by real test failures:
+  - either matching rule disabled;
+  - the ambiguity not refused;
+  - PATH cleaned before matching;
+  - `--path` defined for every subcommand;
+  - an ID together with `--path` allowed;
+  - an empty path accepted;
+  - the length limit skipped;
+  - relative paths left relative;
+  - either error value not wrapped;
+  - the ambiguity error without the IDs;
+  - `--path` never recorded;
+  - a list error swallowed;
+  - the wrong registration removed;
+  - a missing match falling back to the first registration.
+- Smoke test with built binaries and a running `scoprad`, with five registered directories:
+  - removal by exact path, by relative path, and (with `--json`) by the listed path of a deleted directory all succeeded;
+  - a registered directory replaced by a symlink to another workspace was refused with exit `1`, naming both IDs, and removed nothing;
+  - an unregistered path exited `1` with the suggestion;
+  - an ID together with `--path` exited `2`;
+  - the two remaining registrations stayed, the removed workspaces' directories were kept, and `scoprad` stopped cleanly.
+- Security review:
+  - `remove --path` changes only Mio's registrations, through the same same-UID channel and existing request as removal by ID.
+  - Resolving PATH is read-only.
+  - Refusing on disagreement prevents a replaced directory or a symlink from redirecting a removal to another workspace.
+  - Errors quote PATH with `%q` and are escaped again on the terminal.
+  - No high-confidence exploitable issue was found.
+- Local verification passed:
+  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `go test -race -count=1 -timeout 60s ./...` and ten repeated race runs of the CLI package;
+  - every package with `CGO_ENABLED=0`;
+  - `git diff --check`;
+  - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64.
+  - The tree is unchanged.
+- Coverage: CLI 91.6% (up from 90.2%); the other packages are unchanged.
+- Follow-ups, not part of this increment:
+  - Doctor's `workspaces` hint could mention `--path`.
+  - Revalidation status in `scopra workspace list`, which needs a wire change.
+  - Containment and execution. They need rootless Podman, which is not available here, and a decision about which container image runs commands.
+- Pushes to `arena/c7a368c1-scopra`: test checkpoint `5095ae3` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.

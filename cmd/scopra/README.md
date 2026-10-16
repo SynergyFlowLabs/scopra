@@ -100,6 +100,11 @@ Exit status: `0` when no check fails, `1` when any check fails (after the report
   The output shows the new ID and the canonical path that was registered.
 - `list` prints one `ID  path` line per registration, sorted by path, or `No workspaces are registered.`
 - `remove ID` removes the registration with that ID, as shown by `add` or `list`. It never changes the directory itself and does not ask for confirmation.
+- `remove --path PATH` removes a registration by path instead. A relative `PATH` is made absolute as for `add`. The CLI lists the registrations and removes the one that `PATH` selects by ID, reusing the existing requests. `PATH` selects a registration in either of two ways:
+  - it equals the registered path exactly, which still works after the directory is gone;
+  - it now resolves to the registered path through symlinks.
+
+  If the two ways select different registrations, for example because a registered directory was replaced by a symlink to another workspace, nothing is removed and you are asked to remove by ID. Paths of directories that no longer exist are never normalized: write them exactly as `list` shows them, without a trailing slash, `.`, or `..`.
 
 Text output escapes control characters in paths and in Mio's messages. `--json` writes a single JSON object on one line. `add` and `remove` write the affected registration, and `list` writes every registration, with an empty array when there are none:
 
@@ -113,8 +118,8 @@ Text output escapes control characters in paths and in Mio's messages. `--json` 
 Exit status:
 
 - `0` on success.
-- `1` when Mio is unavailable or refuses the request. The error names Mio's code, such as `protected_path`, `overlap`, or `not_found` (see ADR-006).
-- `2` for usage errors, which are detected before Mio is contacted. These include a malformed ID and a path that is not valid UTF-8 or would be longer than 4095 bytes.
+- `1` when Mio is unavailable or refuses the request, or when `remove --path` matches no registration or two. Mio's errors name its code, such as `protected_path`, `overlap`, or `not_found` (see ADR-006).
+- `2` for usage errors, which are detected before Mio is contacted. These include a malformed ID, both an ID and `--path`, and a path that is empty, is not valid UTF-8, or would be longer than 4095 bytes.
 - `130` when interrupted.
 
 Registering a workspace authorizes nothing by itself; nothing in Scopra executes commands yet. Any process running as you can use these commands, just as it can edit your files.
