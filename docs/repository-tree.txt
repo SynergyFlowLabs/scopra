@@ -192,6 +192,8 @@
 ./packages/protocol/envelope_test.go
 ./packages/protocol/execution_request.go
 ./packages/protocol/execution_request_test.go
+./packages/protocol/execution_result.go
+./packages/protocol/execution_result_test.go
 ./packages/sdk-typescript
 ./packages/sdk-typescript/README.md
 ./packages/test-fixtures

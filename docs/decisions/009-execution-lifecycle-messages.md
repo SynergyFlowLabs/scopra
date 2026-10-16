@@ -1,6 +1,6 @@
 # ADR-009: Execution States, Results, Output, Errors, and Cancellation
 
-**Status:** Proposed (awaiting the maintainer's confirmation; no code implements it yet)
+**Status:** Accepted (proposed, then accepted as written by the maintainer)
 **Date:** 2026-10-16
 
 ## Context

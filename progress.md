@@ -3,7 +3,7 @@
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
 **Current increment:** Execution results (Step 18, the first increment of ADR-009)
-**Status:** Proposed. The ADR-009 draft and the checklist below await the maintainer's confirmation, and no code has been written. CI is out of scope for now at the maintainer's request
+**Status:** In progress on `arena/c7a368c1-scopra`: ADR-009 and the acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -1211,7 +1211,7 @@ Non-goals:
   - Mio consuming requests, which needs the relay and verification first.
 - Pushes to `arena/c7a368c1-scopra`: the proposal `9bd038f`, test checkpoint `2e0ba82` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.
 
-### 2026-10-16 — Step 18 (proposed): Execution results (ADR-009, increment 1 of 3)
+### 2026-10-16 — Step 18: Execution results (ADR-009, increment 1 of 3)
 
 - Selection: after Step 17 the default was to draft ADR-009, covering execution states, results, output chunks, errors, and cancellation, as a proposal before any code. This finishes the plan's Messenger task "results, output chunks, errors, and execution states". The maintainer replied "continue". Implementation starts only after confirmation; a "continue" accepts the proposal.
 - Research:
@@ -1231,7 +1231,9 @@ Non-goals:
   - retries and acknowledgements left to the relay ADR.
 - Implementation is proposed in three increments: results first, then `execution.started` and `execution.output`, then `execution.cancel`.
 
-#### Acceptance checklist (proposed, not yet agreed)
+- Confirmation: the maintainer replied "continue", accepting ADR-009 and the checklist below as written.
+
+#### Acceptance checklist (agreed before implementation)
 
 - [ ] ADR-009 is accepted, with any changes the maintainer asks for, and indexed as accepted. The protocol docs describe it.
 - [ ] ADR-007's strict-document checks (size, UTF-8, a single object, escapes, duplicate keys, `null`, and exact key sets) are generalized for any payload, with no change in behaviour: every existing execution request test still passes unchanged.
@@ -1251,3 +1253,24 @@ Non-goals:
 - Retries and acknowledgements.
 - Mio producing results.
 - Output storage and redaction.
+
+#### Test-first record
+
+1. **Independent reference:** the canonical forms of the `failed` and `rejected` examples were rendered with Python's `json` module, with sorted keys, compact separators, and `ensure_ascii=False`.
+2. **Tests written first** (`packages/protocol/execution_result_test.go`):
+   - one example per state, the `failed` example being ADR-009's own, each decoding to exact typed values;
+   - canonical bytes for two states matching the Python rendering, and for all seven a round trip, stability, and equality with the independent RFC 8785 reference;
+   - `TestSecurity_DecodeExecutionResultEnforcesFieldRules` with 60 rows at both sides of each bound. Besides the field bounds, they cover:
+     - output consistency (chunks never more than bytes, bytes never more than chunks × 64 KiB, and no bytes without chunks);
+     - the exit code rules for each state, including `-0` and `1.0`;
+     - unknown well-formed error codes, and a known code used with another state, both accepted;
+     - malformed error codes;
+   - exact key sets: each state without each of its keys ("is required"), and with each key that belongs only to other states; missing, unknown, and wrongly typed `output` and `error` objects;
+   - `TestSecurity_DecodeExecutionResultRejectsAmbiguousJSON`: 14 strictness cases that must wrap `ErrInvalidExecutionResult` and never `ErrInvalidExecutionRequest`, including a duplicate `state`;
+   - `ValidateAgainst`:
+     - every example matches the ADR-007 example request;
+     - it fails for another execution ID, another action hash, a changed request, output over `limits.outputBytes`, an invalid result, and an invalid request (`ErrInvalidExecutionRequest`);
+   - `Validate` on typed values: non-UTC times, sub-millisecond times, a year beyond 9999, and fields set for states that do not use them;
+   - `FuzzDecodeExecutionResult`.
+3. **Build failure.** The new types were undefined.
+4. **Declarations-only skeleton.** It has the final types, state and error-code constants, and the new error value. Decoding and encoding fail, and both validators do nothing. Runtime red: 7 tests failed across 160 subtests. The fuzz seeds passed, as expected, because rejecting everything satisfies the fuzz property.
