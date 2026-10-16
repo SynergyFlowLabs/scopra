@@ -163,6 +163,9 @@
 ./internal/workspace
 ./internal/workspace/platform_linux.go
 ./internal/workspace/platform_other.go
+./internal/workspace/registry
+./internal/workspace/registry/registry.go
+./internal/workspace/registry/registry_linux_test.go
 ./internal/workspace/workspace.go
 ./internal/workspace/workspace_linux_test.go
 ./package.json
