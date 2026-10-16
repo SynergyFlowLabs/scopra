@@ -162,6 +162,20 @@ func TestRunDoctorChecksWorkspaceRegistry(t *testing.T) {
 			if detail := findCheck(t, report, "workspaces").Detail; wantWorkspacesDetail != "" && detail != wantWorkspacesDetail {
 				t.Fatalf("workspaces detail = %q, want %q", detail, wantWorkspacesDetail)
 			}
+			// scoprad refuses to start with a bad registry, so the hint for a
+			// stopped Mio must send the user to the registry first.
+			daemon := findCheck(t, report, "daemon")
+			if test.wantStatus == "fail" {
+				const blocked = "scoprad will not start until the problem reported by the workspace-registry check is fixed; "
+				if !strings.HasPrefix(daemon.Hint, blocked) || !strings.Contains(daemon.Hint, "then start Mio in the foreground with `scoprad`") {
+					t.Fatalf("daemon hint = %q, want it to point at the registry before starting scoprad", daemon.Hint)
+				}
+			} else if daemon.Hint != "Start Mio in the foreground with `scoprad` (pass the same --state-dir, if any)." {
+				t.Fatalf("daemon hint = %q, want the plain start hint", daemon.Hint)
+			}
+			if daemon.Detail != "Scopra Mio is not running (its socket is missing or refuses connections)" {
+				t.Fatalf("daemon detail = %q, want it unchanged", daemon.Detail)
+			}
 			check := findCheck(t, report, "workspace-registry")
 			if !strings.Contains(check.Detail, test.wantDetail) {
 				t.Fatalf("workspace-registry detail = %q, want it to contain %q", check.Detail, test.wantDetail)
@@ -413,6 +427,20 @@ func TestSecurity_DoctorRefusesInsecureSocketWithoutConnecting(t *testing.T) {
 	if connection, err := listener.AcceptUnix(); err == nil {
 		_ = connection.Close()
 		t.Fatal("doctor connected to a socket with unsafe permissions")
+	}
+}
+
+func TestRunDoctorKeepsUnsafeSocketHintWithBadRegistry(t *testing.T) {
+	stateDir := makePrivateStateDir(t)
+	writeRegistryFile(t, filepath.Join(stateDir, "workspaces.json"), `{"version":2,"workspaces":[]}`, 0o600)
+	listenUnixSocket(t, filepath.Join(stateDir, "scoprad.sock"), 0o666)
+
+	report, err := runDoctorJSON(t, "--state-dir", stateDir)
+	requireCheckFailure(t, err)
+	assertChecks(t, report, "platform=pass", "state-directory=pass", "workspace-registry=fail", "workspaces=skip", "daemon=fail")
+	const want = "scoprad will not replace it. Confirm that no trusted Mio uses it, remove it, then start scoprad."
+	if hint := findCheck(t, report, "daemon").Hint; hint != want {
+		t.Fatalf("daemon hint = %q, want the unchanged unsafe-socket hint %q", hint, want)
 	}
 }
 

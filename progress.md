@@ -2,8 +2,8 @@
 
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
-**Current increment:** Doctor revalidates registered workspaces (Step 12)
-**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
+**Current increment:** Doctor's daemon hint points at a bad registry (Step 13)
+**Status:** In progress on `arena/c7a368c1-scopra`: acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -788,3 +788,27 @@ Non-goals: revalidation status in `scopra workspace list`, which needs a wire ch
   - Removal by path.
   - Containment and execution. They need rootless Podman, which is not available here, and a decision about which container image runs commands. CI is still blocked by an organization setting.
 - Pushes to `arena/c7a368c1-scopra`: test checkpoint `559a6d6` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.
+
+### 2026-10-16 — Step 13: Doctor's daemon hint points at a bad registry
+
+- Selection: after Step 12 the maintainer was told that silence on the Podman and image questions would mean option (a), then (b). The reply was "Continue", so this is (a).
+- Problem: `scoprad` refuses to start when the workspace registry is unusable (Step 8). Doctor then reports `workspace-registry: fail` and `daemon: fail` ("Scopra Mio is not running"). The daemon hint still says to start Mio with `scoprad`, which would only fail again for the same reason.
+
+#### Acceptance checklist (agreed before implementation)
+
+- [ ] When the `workspace-registry` check fails and Mio is not running, the `daemon` check's hint says that `scoprad` will not start until the problem reported by the `workspace-registry` check is fixed, and only then says how to start it. The status (`fail`) and detail are unchanged.
+- [ ] Every other daemon result keeps its current hint. This includes an unsafe socket alongside a bad registry, and the not-running hint when the registry check passes.
+- [ ] Doctor stays read-only, the JSON schema stays at version 1, and text output still escapes control characters.
+- [ ] The CLI README's daemon row and this log are updated. The wire protocol, Mio, and the ADRs are unchanged.
+
+Non-goals:
+- Pointing the hint at the `workspaces` check when workspace validation cannot be prepared. That failure cannot be produced in tests here, and that check's own hint already says that `scoprad` will not start.
+- Changing any other hint.
+- Removal by path, which is the next step.
+
+#### Test-first record
+
+1. **Tests written first.**
+   - `TestRunDoctorChecksWorkspaceRegistry` asserts the daemon hint for each registry outcome. For an invalid or unsafe registry it must begin "scoprad will not start until the problem reported by the workspace-registry check is fixed; " and then say how to start Mio. Otherwise it must be the plain start hint. The daemon detail must stay unchanged in every row.
+   - The new `TestRunDoctorKeepsUnsafeSocketHintWithBadRegistry` pins the unsafe-socket hint, word for word, alongside an invalid registry.
+2. **Runtime red.** The tests compiled against the existing code, so no skeleton was needed. Two subtests failed for the intended reason, still getting the plain start hint: `TestRunDoctorChecksWorkspaceRegistry/unsupported_version` and `/group-readable_file`. The unsafe-socket test already passed, as intended. It guards behaviour that must not change, so an implementation that rewrote every daemon hint would fail it.
