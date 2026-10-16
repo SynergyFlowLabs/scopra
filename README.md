@@ -4,7 +4,7 @@ Scopra is the controlled execution layer for AI agents. It connects agents to ap
 
 ## Status
 
-Early implementation: Scopra Messenger v1 envelope validation. Execution and production behavior are not implemented.
+Early implementation: Scopra Messenger v1 envelope validation and a read-only Mio status service over local IPC. Workspace management, authorization, and execution are not implemented.
 
 ## Start Here
 

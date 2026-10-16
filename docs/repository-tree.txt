@@ -79,8 +79,12 @@
 ./cmd
 ./cmd/scopra
 ./cmd/scopra/README.md
+./cmd/scopra/main.go
+./cmd/scopra/main_test.go
 ./cmd/scoprad
 ./cmd/scoprad/README.md
+./cmd/scoprad/main.go
+./cmd/scoprad/main_test.go
 ./deploy
 ./deploy/docker
 ./deploy/docker/README.md
@@ -102,6 +106,7 @@
 ./docs/decisions/000-template.md
 ./docs/decisions/001-go-module-layout.md
 ./docs/decisions/002-messenger-envelope-v1.md
+./docs/decisions/003-local-status-ipc.md
 ./docs/decisions/README.md
 ./docs/operations
 ./docs/operations/runbooks.md
@@ -122,6 +127,9 @@
 ./internal/approvals/README.md
 ./internal/audit
 ./internal/audit/README.md
+./internal/buildinfo
+./internal/buildinfo/version.go
+./internal/buildinfo/version_test.go
 ./internal/containment
 ./internal/containment/README.md
 ./internal/execution
@@ -130,6 +138,13 @@
 ./internal/grants/README.md
 ./internal/identity
 ./internal/identity/README.md
+./internal/localipc
+./internal/localipc/frame.go
+./internal/localipc/ipc_test.go
+./internal/localipc/messages.go
+./internal/localipc/security_linux.go
+./internal/localipc/security_other.go
+./internal/localipc/socket.go
 ./internal/policy
 ./internal/policy/README.md
 ./internal/redaction
