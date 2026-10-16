@@ -17,6 +17,20 @@ The Go package at `packages/protocol` provides a bounded JSON envelope decoder a
 - Field rules cover identifiers, Mio registration IDs, the three executable forms, arguments, `shell` (`false` only), a clean workspace-relative working directory, `workspaceAccess`, `network` (`none` only), sanity-bounded limits, the reason, UTC second-precision timestamps, and the nonce. The executable, working directory, and reason contain no control, format, or line or paragraph separator characters. Every error wraps `ErrInvalidExecutionRequest` and names the field; quoted names keep untrusted keys printable. No partially valid request is returned.
 - `ExecutionRequest.Validate()` applies the same field rules to a typed request built in memory. `ExecutionRequest.ValidateAt(now)` also enforces the request window: at most 30 seconds of future skew, strict expiry, and a lifetime of at most one hour.
 
-**Important:** decoding proves structure only. It does not authenticate, check replay state, authorize, evaluate policy, or permit execution, and the canonical form and action hash for approval binding are not defined yet. Approval displays must escape control, format, and line or paragraph separator characters in arguments, which may contain any character except NUL.
+**Important:** decoding proves structure only. It does not authenticate, check replay state, authorize, evaluate policy, or permit execution. Approval displays must escape control, format, and line or paragraph separator characters in arguments, which may contain any character except NUL.
 
-Run the package tests with `go test -race ./packages/protocol`, and fuzz the decoder with `go test -run '^$' -fuzz FuzzDecodeExecutionRequest ./packages/protocol`.
+## Implemented: canonical form and action hash
+
+`ExecutionRequest.CanonicalJSON()` returns the canonical form of a valid request (ADR-008). It is the request's ADR-007 wire object serialized with the JSON Canonicalization Scheme (RFC 8785):
+
+- members sorted by key, and no whitespace;
+- minimal string escaping, with other characters written as literal UTF-8;
+- integers in plain decimal.
+
+The form is computed from the typed value, never from transmitted bytes, and it decodes back to the same request.
+
+`ExecutionRequest.ActionHash()` returns the lowercase hexadecimal SHA-256 of the label `scopra/execution.request/v1`, a newline, and the canonical form. Both methods fail with `ErrInvalidExecutionRequest` for an invalid request, and both reproduce ADR-008's normative test vectors.
+
+**Important:** the action hash identifies an action and authenticates nothing. A receiver must compute it from the request it decoded and verified, never trust a transmitted one, and get approval integrity from a signed approval record, which is not implemented yet.
+
+Run the package tests with `go test -race ./packages/protocol`. Fuzz the decoder and the canonical form with `go test -run '^$' -fuzz FuzzDecodeExecutionRequest ./packages/protocol` and `go test -run '^$' -fuzz FuzzCanonicalFieldValues ./packages/protocol`.

@@ -3,7 +3,7 @@
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
 **Current increment:** Canonical execution request and action hash (Step 17)
-**Status:** In progress on `arena/c7a368c1-scopra`: ADR-008 and the acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
+**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -23,7 +23,7 @@ This file is the running engineering log. Each increment records scope, verifica
 
 ## Roadmap
 
-1. **Protocol foundation** — envelope v1 structural validation and strict execution request v1 decoding (ADR-007) are implemented and locally verified. Execution results, output chunks, errors and states, the canonical request and action hash for approval binding, cryptographic verification, replay storage, and compatibility/version guarantees remain pending.
+1. **Protocol foundation** — envelope v1 structural validation, strict execution request v1 decoding (ADR-007), and the canonical request and action hash (ADR-008) are implemented and locally verified. Execution results, output chunks, errors and states, approval records, cryptographic verification, replay storage, and compatibility/version guarantees remain pending.
 2. **Local daemon and CLI** — the initial foreground Mio status service with a persistent per-user state directory and an exclusive state-directory lock, Mariner `scopra status`, a minimal read-only `scopra doctor` (platform, state-directory, workspace-registry, registered-workspace revalidation, and daemon checks), and `scopra workspace add/list/remove` are implemented. Workspace validation (ADR-004) and registry storage (ADR-005) exist; Mio checks its registry at startup and serves add, list, and remove over local IPC (ADR-006). Broader doctor checks, execution, service installation, and expanded CLI/IPC authorization remain pending.
 3. **Policy and containment boundary** — implement default-deny policy and rootless containment before enabling execution; no native fallback.
 4. **Structured execution and audit** — limits, cancellation, bounded output, and attributable events with adversarial tests.
@@ -1129,15 +1129,15 @@ Non-goals:
 
 #### Acceptance checklist (agreed before implementation)
 
-- [ ] ADR-008 is accepted, with any changes the maintainer asks for, and indexed as accepted. The protocol docs describe it.
-- [ ] `ExecutionRequest.CanonicalJSON()` returns the JCS bytes of a valid request, or an error wrapping `ErrInvalidExecutionRequest`. It reproduces both test vectors byte for byte.
-- [ ] `ExecutionRequest.ActionHash()` returns the labelled SHA-256 in lowercase hexadecimal and reproduces both test vectors.
-- [ ] Property tests:
+- [x] ADR-008 is accepted, with any changes the maintainer asks for, and indexed as accepted. The protocol docs describe it.
+- [x] `ExecutionRequest.CanonicalJSON()` returns the JCS bytes of a valid request, or an error wrapping `ErrInvalidExecutionRequest`. It reproduces both test vectors byte for byte.
+- [x] `ExecutionRequest.ActionHash()` returns the labelled SHA-256 in lowercase hexadecimal and reproduces both test vectors.
+- [x] Property tests:
   - the canonical form decodes to an equal request, and canonicalizing it again gives the same bytes;
   - changing any one of the 23 leaf fields changes the hash;
   - payloads that differ only in whitespace, escaping, or key order share the hash;
   - the fuzz test also checks the canonical round trip for every accepted payload.
-- [ ] No new dependency, and no daemon, CLI, or wire change.
+- [x] No new dependency, and no daemon, CLI, or wire change.
 
 Non-goals:
 - Approval records and signatures.
@@ -1158,3 +1158,55 @@ Non-goals:
    - `FuzzCanonicalExecutionRequest` checks every accepted payload against an independent RFC 8785 reference built from the generically decoded payload, then the round trip, stability, and the labelled hash.
 2. **Build failure.** `CanonicalJSON` and `ActionHash` were undefined.
 3. **Declarations-only skeleton.** Both methods fail. Runtime red: 7 tests failed across 12 subtests. `TestExecutionRequest_CanonicalJSONRejectsInvalidRequests` passed, as expected, because rejecting everything satisfies it.
+
+#### Implementation and verification record
+
+- `packages/protocol/canonical.go`, with no new dependency:
+  - `CanonicalJSON` validates first, then builds each object from key/value members and sorts them by key at runtime. The code lists fields in ADR-007's order, which keeps it readable and still yields RFC 8785 order. Keys are ASCII, so byte order equals UTF-16 order.
+  - `appendCanonicalString` escapes `"` and `\`, uses the five short forms, writes `\u00xx` with lowercase digits below U+0020, and copies every other byte literally. Bytes of multibyte characters are all at least 0x80.
+  - Integers use `strconv.AppendUint` in base 10, booleans use `strconv.AppendBool`, and timestamps use ADR-007's layout.
+  - `ActionHash` computes SHA-256 over the label `scopra/execution.request/v1` and a newline, then the canonical bytes, and returns lowercase hexadecimal.
+- Both normative vectors, which were computed by the independent Python implementation, matched on the first green run.
+- Fuzz restructuring during implementation:
+  - The corpus of the generic canonical fuzz target held only 13 accepted requests out of 390 inputs, because coverage guidance favours rejection paths.
+  - It was replaced by `FuzzCanonicalFieldValues`, which places fuzzed arguments, executable, working directory, reason, and timeout into a valid request. Of its 432 corpus inputs, 310 were valid requests, 213 held non-ASCII text, and 235 had arguments needing escapes.
+  - `FuzzDecodeExecutionRequest` now also runs `checkCanonicalForm` on every payload it accepts.
+- Field changes: of the 23 leaf fields, 21 have another valid value and are each covered by the hash-change test. `shell` and `network` have a single valid value in version 1, so no two valid requests differ in them, and the vectors pin their encoding.
+- Green: all tests pass under the race detector with no skips.
+- Mutation testing: 26 deliberate, compile-safe mutations, all caught by real test failures:
+  - member sorting omitted or reversed;
+  - the quote or backslash not escaped;
+  - each of the five short forms replaced;
+  - uppercase hexadecimal;
+  - the control threshold off by one;
+  - DEL or non-ASCII bytes escaped;
+  - the label without its newline, or no label;
+  - `Validate` skipped, or a canonical error ignored;
+  - no argument separator;
+  - the reason, executable, or workspace access replaced, or a member taken from the wrong field;
+  - another time format, hexadecimal integers, an inverted boolean, or whitespace after commas.
+- Fuzzing found no failures. The counted sessions cover more than 8 million inputs:
+  - the generic canonical target, 30 seconds (2.18 million inputs);
+  - the structured target, 45 seconds (1.27 million) and 60 seconds (1.62 million);
+  - the decoder target with canonical checks, 60 seconds (3.22 million).
+  - Two earlier sessions were not counted.
+- Coverage: protocol 94.6% (up from 93.9%), with every function in `canonical.go` at 100%.
+- Documentation: the protocol package README, `docs/architecture/protocol.md`, the plan's Messenger section, the README status line, the roadmap above, and the ADR index (ADR-008 accepted).
+- Security review:
+  - The action hash is computed only from validated, decoded values, so a sender cannot pair an approved hash with a different request.
+  - JCS escaping is exact, so the TypeScript side can reproduce the same bytes with a standard library.
+  - The label separates hash domains.
+  - Nothing authenticates or authorizes yet: approval records, signatures, and atomic consumption remain future work.
+  - No high-confidence exploitable issue was found.
+- Local verification passed:
+  - `make bootstrap`, `make lint`, `make test`, and `make security-test` (now including two canonical `TestSecurity_` tests);
+  - `go test -race -count=1 -timeout 120s ./...` and ten repeated race runs of the protocol package;
+  - every package with `CGO_ENABLED=0`;
+  - `git diff --cached --check`;
+  - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64.
+  - The tree is current.
+- Follow-ups, not part of this increment:
+  - approval records and their signatures, policy versions, and atomic consumption (a later ADR);
+  - execution results, output chunks, errors, and states;
+  - Mio consuming requests, which needs the relay and verification first.
+- Pushes to `arena/c7a368c1-scopra`: the proposal `9bd038f`, test checkpoint `2e0ba82` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.

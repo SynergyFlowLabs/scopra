@@ -261,18 +261,34 @@ func checkCanonicalForm(t *testing.T, payload []byte, request ExecutionRequest) 
 	}
 }
 
-func FuzzCanonicalExecutionRequest(f *testing.F) {
-	f.Add([]byte(adrExampleRequest))
-	f.Add([]byte(strings.Replace(adrExampleRequest, `"./..."`, `"\u00e9\ud83d\ude00\t\u001f\u007f\u2028<&>"`, 1)))
-	f.Add([]byte(strings.Replace(adrExampleRequest, `["test", "./..."]`, `[]`, 1)))
-	f.Add([]byte(strings.Replace(adrExampleRequest, `"go"`, `"./gradlew"`, 1)))
+// FuzzCanonicalFieldValues places fuzzed text and numbers into an otherwise
+// valid request, so that most inputs are valid requests with arbitrary
+// content. checkCanonicalForm then compares the canonical form with the
+// RFC 8785 reference and checks the round trip and the hash.
+func FuzzCanonicalFieldValues(f *testing.F) {
+	f.Add("test", "./...", "go", ".", "Run the unit tests after the fix", uint64(600))
+	f.Add("tab\there", "\u2028\x7f<&>\"\\", "./gradlew", "src/app", "Tests für Ümlaute 😀", uint64(1))
+	f.Add("", "\x01\x1f", "/usr/bin/go", "a/b/c", "x", uint64(86400))
 
-	f.Fuzz(func(t *testing.T, payload []byte) {
-		request, err := DecodeExecutionRequest(payload)
-		if err != nil {
+	f.Fuzz(func(t *testing.T, first, second, executable, workingDirectory, reason string, timeoutSeconds uint64) {
+		request := adrExampleDecoded()
+		request.Command.Arguments = []string{first, second}
+		request.Command.Executable = executable
+		request.Command.WorkingDirectory = workingDirectory
+		request.Reason = reason
+		request.Limits.TimeoutSeconds = timeoutSeconds
+		if request.Validate() != nil {
 			return
 		}
-		checkCanonicalForm(t, payload, request)
+		payload := encodeTestRequest(t, request)
+		decoded, err := DecodeExecutionRequest(payload)
+		if err != nil {
+			t.Fatalf("DecodeExecutionRequest() of a valid request error = %v; payload %q", err, payload)
+		}
+		if !reflect.DeepEqual(decoded, request) {
+			t.Fatalf("DecodeExecutionRequest() = %+v, want %+v", decoded, request)
+		}
+		checkCanonicalForm(t, payload, decoded)
 	})
 }
 

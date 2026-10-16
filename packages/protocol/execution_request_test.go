@@ -508,6 +508,7 @@ func FuzzDecodeExecutionRequest(f *testing.F) {
 		if err != nil || !reflect.DeepEqual(again, request) {
 			t.Fatalf("round trip = %+v, %v; want %+v", again, err, request)
 		}
+		checkCanonicalForm(t, payload, request)
 	})
 }
 
