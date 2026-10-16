@@ -2,8 +2,8 @@
 
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
-**Current increment:** Doctor's daemon hint points at a bad registry (Step 13)
-**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
+**Current increment:** Remove a workspace by path (Step 14)
+**Status:** In progress on `arena/c7a368c1-scopra`: acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -843,3 +843,54 @@ Non-goals:
   - The tree is unchanged.
 - Coverage: CLI 90.2% (up from 90.0%); the other packages are unchanged.
 - Pushes to `arena/c7a368c1-scopra`: test checkpoint `3120f08` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.
+
+### 2026-10-16 — Step 14: Remove a workspace by path
+
+- Selection: option (b) from the Step 12 summary, announced as the step after (a) if the maintainer did not choose otherwise. Today a registration can be removed only by its 32-character ID, which must first be copied from `scopra workspace list` or from doctor's `workspaces` warning.
+- Design: the CLI finds the registration through the existing `workspace.list` request and removes it with the existing `workspace.remove` request, so the wire protocol and Mio are unchanged. An explicit `--path` flag avoids guessing whether an argument is an ID or a path, since a relative directory may be named with 32 hexadecimal characters.
+
+#### Acceptance checklist (agreed before implementation)
+
+- [ ] `scopra workspace remove --path PATH` unregisters the workspace registered for PATH and changes no directory. Its output, `--json` document (`schemaVersion` 1), and exit codes match removal by ID. A relative PATH is made absolute exactly as `add` does it.
+- [ ] PATH matches a registration in two ways:
+  - it equals the registered path exactly, which still works after the directory is gone;
+  - or it now resolves to the registered path. Resolution is read-only and follows symlinks; `..` is never cleaned lexically.
+
+  If the two rules pick different registrations, the command refuses and asks for removal by ID, and nothing is removed.
+- [ ] When nothing matches, the command exits `1` with an escaped error that names PATH and suggests the path as `scopra workspace list` shows it or removal by ID; nothing is removed. These are usage errors (exit `2`), detected before Mio is contacted:
+  - both an ID and `--path`, or neither;
+  - an empty `--path`, or a missing value;
+  - invalid UTF-8, or a path over 4095 bytes;
+  - `--path` on `add` or `list`.
+- [ ] Removal by ID is unchanged, and Mio being unavailable is reported as for the other commands.
+- [ ] The CLI README, the usage text, and this log are updated. The wire protocol, Mio, and the ADRs are unchanged.
+
+Non-goals:
+- Lexical normalization of PATH for directories that no longer exist (trailing slashes, `.`, `..`). Cleaning could choose a different registration than the kernel's resolution would.
+- Path matching inside Mio, which would be a wire change.
+- Removing several workspaces at once.
+- Any change to `add` or `list`.
+
+#### Test-first record
+
+1. **Tests written first** (`cmd/scopra/workspace_test.go`, against a real in-process Mio):
+   - `TestRunWorkspaceRemoveByPath` removes one of two registrations by `--path`, given as:
+     - the exact path, a relative path, or a symlink;
+     - an existing directory with a trailing slash;
+     - the exact path of a directory that no longer exists;
+     - the exact path with `--json`.
+
+     Each case checks the exact output, that the other registration remains, and that the directory is untouched.
+   - `TestRunWorkspaceRemoveByPathRequiresOneMatch` covers four cases that must exit `1` with a specific error and leave both registrations in place:
+     - an unregistered directory;
+     - a missing directory written with a trailing slash, which pins the absence of lexical cleaning;
+     - a path with an escape sequence and a newline, which must be escaped;
+     - a registered path that now resolves, through a symlink, to the other workspace. The error must name both IDs.
+   - Eight new usage-error rows, a removal-by-path row in the unavailable-Mio test, and a usage text naming `(ID | --path PATH)`.
+2. **Build failure.** Five references to the undefined `errWorkspacePathNotRegistered` and `errAmbiguousWorkspacePath`.
+3. **Declarations-only skeleton** (the two error values). Runtime red, each failure for the intended reason ("flag provided but not defined: -path"):
+   - all 6 `TestRunWorkspaceRemoveByPath` subtests and all 4 `TestRunWorkspaceRemoveByPathRequiresOneMatch` subtests;
+   - `TestRunWorkspaceReportsUnavailableMio` (exit `2` instead of `1`);
+   - `TestRunWorkspaceHelp`.
+
+   The new usage-error rows already passed, because an unknown flag is also a usage error. They guard the implementation against accepting bad input.

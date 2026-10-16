@@ -108,6 +108,130 @@ func TestRunWorkspaceAddResolvesRelativePathsPhysically(t *testing.T) {
 	}
 }
 
+func TestRunWorkspaceRemoveByPath(t *testing.T) {
+	tests := []struct {
+		name string
+		// prepare changes the file system if needed and returns the --path
+		// argument that should select project.
+		prepare func(t *testing.T, base, project string) string
+		json    bool
+	}{
+		{name: "exact path", prepare: func(t *testing.T, base, project string) string { return project }},
+		{name: "relative path", prepare: func(t *testing.T, base, project string) string {
+			t.Chdir(base)
+			return "project"
+		}},
+		{name: "through a symlink", prepare: func(t *testing.T, base, project string) string {
+			link := filepath.Join(base, "link")
+			if err := os.Symlink(project, link); err != nil {
+				t.Fatalf("Symlink() error = %v", err)
+			}
+			return link
+		}},
+		{name: "existing directory with a trailing slash", prepare: func(t *testing.T, base, project string) string {
+			return project + "/"
+		}},
+		{name: "directory no longer exists", prepare: func(t *testing.T, base, project string) string {
+			if err := os.Remove(project); err != nil {
+				t.Fatalf("Remove(project) error = %v", err)
+			}
+			return project
+		}},
+		{name: "json output", prepare: func(t *testing.T, base, project string) string { return project }, json: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			stateDir := startWorkspaceDaemon(t)
+			base := makeWorkspaceDir(t, t.TempDir())
+			project := makeWorkspaceDir(t, base, "project")
+			other := makeWorkspaceDir(t, base, "other")
+			id := addWorkspace(t, stateDir, project)
+			otherID := addWorkspace(t, stateDir, other)
+			path := test.prepare(t, base, project)
+
+			args := []string{"workspace", "remove", "--state-dir", stateDir}
+			want := "Removed workspace " + id + " (" + project + "); the directory was not changed.\n"
+			if test.json {
+				args = append(args, "--json")
+				want = `{"schemaVersion":1,"workspace":{"id":"` + id + `","path":` + jsonQuote(project) + "}}\n"
+			}
+			stdout, stderr, err := runCLI(t, append(args, "--path", path)...)
+			if err != nil || stderr != "" || stdout != want {
+				t.Fatalf("workspace remove --path %q = %q, %v; stderr = %q; want %q", path, stdout, err, stderr, want)
+			}
+			requireRegistered(t, stateDir, otherID+"  "+other)
+			if test.name != "directory no longer exists" {
+				if info, err := os.Lstat(project); err != nil || !info.IsDir() {
+					t.Fatalf("workspace remove touched the directory (Lstat error = %v)", err)
+				}
+			}
+		})
+	}
+}
+
+func TestRunWorkspaceRemoveByPathRequiresOneMatch(t *testing.T) {
+	tests := []struct {
+		name        string
+		prepare     func(t *testing.T, base, a, b string) string
+		wantErr     error
+		wantMessage []string
+	}{
+		{name: "unregistered directory", prepare: func(t *testing.T, base, a, b string) string {
+			return makeWorkspaceDir(t, base, "unregistered")
+		}, wantErr: errWorkspacePathNotRegistered, wantMessage: []string{"unregistered", "as scopra workspace list shows it", "by ID"}},
+		{name: "missing directory with a trailing slash", prepare: func(t *testing.T, base, a, b string) string {
+			// No lexical cleaning: the path no longer resolves and differs
+			// from the registered one, so it matches nothing.
+			if err := os.Remove(a); err != nil {
+				t.Fatalf("Remove(a) error = %v", err)
+			}
+			return a + "/"
+		}, wantErr: errWorkspacePathNotRegistered},
+		{name: "control characters", prepare: func(t *testing.T, base, a, b string) string {
+			return filepath.Join(base, "x\x1b[2J\nforged")
+		}, wantErr: errWorkspacePathNotRegistered, wantMessage: []string{`x\x1b[2J\nforged`}},
+		{name: "registered path now resolves to another workspace", prepare: func(t *testing.T, base, a, b string) string {
+			if err := os.Remove(a); err != nil {
+				t.Fatalf("Remove(a) error = %v", err)
+			}
+			if err := os.Symlink(b, a); err != nil {
+				t.Fatalf("Symlink() error = %v", err)
+			}
+			return a
+		}, wantErr: errAmbiguousWorkspacePath, wantMessage: []string{"remove it by ID"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			stateDir := startWorkspaceDaemon(t)
+			base := makeWorkspaceDir(t, t.TempDir())
+			a := makeWorkspaceDir(t, base, "a")
+			b := makeWorkspaceDir(t, base, "b")
+			idA := addWorkspace(t, stateDir, a)
+			idB := addWorkspace(t, stateDir, b)
+			path := test.prepare(t, base, a, b)
+
+			stdout, _, err := runCLI(t, "workspace", "remove", "--state-dir", stateDir, "--path", path)
+			var stderr bytes.Buffer
+			if code := exitCode(err, &stderr); code != 1 || !errors.Is(err, test.wantErr) || stdout != "" {
+				t.Fatalf("workspace remove --path %q: exit code %d, error %v, stdout %q; want 1 and %v", path, code, err, stdout, test.wantErr)
+			}
+			message := stderr.String()
+			if errors.Is(test.wantErr, errAmbiguousWorkspacePath) {
+				test.wantMessage = append(test.wantMessage, idA, idB)
+			}
+			for _, want := range test.wantMessage {
+				if !strings.Contains(message, want) {
+					t.Fatalf("stderr = %q, want it to contain %q", message, want)
+				}
+			}
+			if strings.ContainsRune(message, '\x1b') || strings.Contains(message, "\nforged") {
+				t.Fatalf("stderr contains raw control characters: %q", message)
+			}
+			requireRegistered(t, stateDir, idA+"  "+a, idB+"  "+b)
+		})
+	}
+}
+
 func TestRunWorkspaceReportsMioErrors(t *testing.T) {
 	stateDir := startWorkspaceDaemon(t)
 	tests := []struct {
@@ -138,10 +262,15 @@ func TestRunWorkspaceReportsUnavailableMio(t *testing.T) {
 	requireLinux(t)
 	stateDir := makePrivateStateDir(t)
 
-	_, _, err := runCLI(t, "workspace", "list", "--state-dir", stateDir)
-	var stderr bytes.Buffer
-	if code := exitCode(err, &stderr); code != 1 || !errors.Is(err, localipc.ErrDaemonUnavailable) {
-		t.Fatalf("workspace list without Mio: exit code %d, error %v; want 1 and ErrDaemonUnavailable", code, err)
+	for _, args := range [][]string{
+		{"workspace", "list", "--state-dir", stateDir},
+		{"workspace", "remove", "--state-dir", stateDir, "--path", "/srv/a"},
+	} {
+		_, _, err := runCLI(t, args...)
+		var stderr bytes.Buffer
+		if code := exitCode(err, &stderr); code != 1 || !errors.Is(err, localipc.ErrDaemonUnavailable) {
+			t.Fatalf("run(%q) without Mio: exit code %d, error %v; want 1 and ErrDaemonUnavailable", args, code, err)
+		}
 	}
 }
 
@@ -166,6 +295,14 @@ func TestRunWorkspaceUsageErrors(t *testing.T) {
 		{name: "remove without an ID", args: []string{"workspace", "remove"}},
 		{name: "remove with a malformed ID", args: []string{"workspace", "remove", "not-an-id"}},
 		{name: "remove with an uppercase ID", args: []string{"workspace", "remove", strings.Repeat("A", 32)}},
+		{name: "remove with an ID and --path", args: []string{"workspace", "remove", "--path", "/srv/a", strings.Repeat("a", 32)}},
+		{name: "remove with an empty --path", args: []string{"workspace", "remove", "--path", ""}},
+		{name: "remove with --path but no value", args: []string{"workspace", "remove", "--path"}},
+		{name: "remove with --path in invalid UTF-8", args: []string{"workspace", "remove", "--path", "/srv/\xff"}},
+		{name: "remove with --path over 4095 bytes", args: []string{"workspace", "remove", "--path", "/" + strings.Repeat("a", registry.MaxPathBytes)}},
+		{name: "remove with a relative --path that becomes too long", args: []string{"workspace", "remove", "--path", strings.Repeat("a", registry.MaxPathBytes-1)}},
+		{name: "add with --path", args: []string{"workspace", "add", "--path", "/srv/a"}},
+		{name: "list with --path", args: []string{"workspace", "list", "--path", "/srv/a"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -187,7 +324,7 @@ func TestRunWorkspaceUsageErrors(t *testing.T) {
 func TestRunWorkspaceHelp(t *testing.T) {
 	for _, args := range [][]string{{"--help"}, {"workspace", "--help"}, {"workspace", "add", "--help"}} {
 		_, stderr, err := runCLI(t, args...)
-		if !errors.Is(err, flag.ErrHelp) || !strings.Contains(stderr, "workspace add") {
+		if !errors.Is(err, flag.ErrHelp) || !strings.Contains(stderr, "workspace add") || !strings.Contains(stderr, "(ID | --path PATH)") {
 			t.Fatalf("run(%q) = %v, stderr %q; want flag.ErrHelp and usage naming the workspace commands", args, err, stderr)
 		}
 	}
@@ -287,6 +424,31 @@ func runCLI(t *testing.T, args ...string) (string, string, error) {
 	var stdout, stderr bytes.Buffer
 	err := run(ctx, args, &stdout, &stderr)
 	return stdout.String(), stderr.String(), err
+}
+
+// addWorkspace registers path through the CLI and returns its ID.
+func addWorkspace(t *testing.T, stateDir, path string) string {
+	t.Helper()
+	stdout, stderr, err := runCLI(t, "workspace", "add", "--state-dir", stateDir, path)
+	match := registeredPattern.FindStringSubmatch(stdout)
+	if err != nil || stderr != "" || match == nil || match[2] != path {
+		t.Fatalf("workspace add %q = %q, %v; stderr = %q", path, stdout, err, stderr)
+	}
+	return match[1]
+}
+
+// requireRegistered fails unless `scopra workspace list` prints exactly the
+// given "ID  PATH" lines.
+func requireRegistered(t *testing.T, stateDir string, lines ...string) {
+	t.Helper()
+	want := "No workspaces are registered.\n"
+	if len(lines) > 0 {
+		want = strings.Join(lines, "\n") + "\n"
+	}
+	stdout, stderr, err := runCLI(t, "workspace", "list", "--state-dir", stateDir)
+	if err != nil || stderr != "" || stdout != want {
+		t.Fatalf("workspace list = %q, %v; stderr = %q; want %q", stdout, err, stderr, want)
+	}
 }
 
 // makeWorkspaceDir creates an owner-only directory and returns its canonical path.

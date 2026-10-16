@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -18,6 +19,15 @@ import (
 // workspaceSchemaVersion identifies the layout of `scopra workspace --json`
 // output. Incompatible changes require a new version; fields may be added.
 const workspaceSchemaVersion = 1
+
+var (
+	// errWorkspacePathNotRegistered reports that no registration matches the
+	// path given to `workspace remove --path`.
+	errWorkspacePathNotRegistered = errors.New("no registered workspace matches the path")
+	// errAmbiguousWorkspacePath reports that the path equals one registration
+	// but resolves to another.
+	errAmbiguousWorkspacePath = errors.New("the path matches two registered workspaces")
+)
 
 type workspaceRecordOutput struct {
 	SchemaVersion int                `json:"schemaVersion"`
