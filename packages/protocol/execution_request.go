@@ -170,7 +170,7 @@ func (r ExecutionRequest) Validate() error {
 		return invalidField("resources.workspaceId", "must be 32 lowercase hexadecimal characters")
 	case !validExecutable(r.Command.Executable):
 		return invalidField("command.executable",
-			"must be a bare name, a clean absolute path, or ./ and a clean relative path, with no control or format characters")
+			"must be a bare name, a clean absolute path, or ./ and a clean relative path, with no control, format, or line or paragraph separator characters")
 	case !validArguments(r.Command.Arguments):
 		return invalidField("command.arguments", fmt.Sprintf(
 			"must hold at most %d strings of valid UTF-8 without NUL, each at most %d bytes", MaxCommandArguments, MaxCommandArgumentBytes))
@@ -178,7 +178,7 @@ func (r ExecutionRequest) Validate() error {
 		return invalidField("command.shell", "must be false in version 1")
 	case !validWorkingDirectory(r.Command.WorkingDirectory):
 		return invalidField("command.workingDirectory",
-			"must be . or a clean relative path with no .. component and no control or format characters")
+			"must be . or a clean relative path with no .. component and no control, format, or line or paragraph separator characters")
 	case r.WorkspaceAccess != WorkspaceReadOnly && r.WorkspaceAccess != WorkspaceReadWrite:
 		return invalidField("workspaceAccess", `must be "read-only" or "read-write"`)
 	case r.Network != NetworkNone:
@@ -189,7 +189,7 @@ func (r ExecutionRequest) Validate() error {
 	}
 	switch {
 	case !validText(r.Reason, MaxReasonBytes):
-		return invalidField("reason", "must be 1 to 1024 bytes of valid UTF-8 with no control or format characters")
+		return invalidField("reason", "must be 1 to 1024 bytes of valid UTF-8 with no control, format, or line or paragraph separator characters")
 	case !validRequestTime(r.CreatedAt):
 		return invalidField("createdAt", "must be a UTC time with second precision between years 0 and 9999")
 	case !validRequestTime(r.ExpiresAt):
@@ -542,13 +542,14 @@ func validArguments(arguments []string) bool {
 }
 
 // validText reports whether text is 1 to maxBytes bytes of valid UTF-8 with
-// no control (Cc) or format (Cf) characters, which could spoof a display.
+// no control (Cc), format (Cf), line separator (Zl), or paragraph separator
+// (Zp) characters, any of which could spoof a display.
 func validText(text string, maxBytes int) bool {
 	if text == "" || len(text) > maxBytes || !utf8.ValidString(text) {
 		return false
 	}
 	for _, char := range text {
-		if unicode.IsControl(char) || unicode.Is(unicode.Cf, char) {
+		if unicode.In(char, unicode.Cc, unicode.Cf, unicode.Zl, unicode.Zp) {
 			return false
 		}
 	}

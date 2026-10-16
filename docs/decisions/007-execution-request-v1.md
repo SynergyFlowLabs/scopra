@@ -108,3 +108,7 @@ Rejecting silent Unicode replacement and requiring clean paths and explicit fiel
 - **Generic JSON with optional fields and defaults:** rejected, because defaults and missing-versus-empty ambiguity break exact approval binding.
 - **Accepting shell strings now:** rejected for version 1 by PRD principle 3. The explicit field avoids a silent future change.
 - **Cloud-side workspace IDs:** rejected for version 1. Registration is local (ADR-006), and Rupes must resolve the workspace from Mio's registry.
+
+## Amendment — 2026-10-16: line and paragraph separators
+
+`command.executable`, `command.workingDirectory`, and `reason` also reject the line separator U+2028 (category Zl) and the paragraph separator U+2029 (Zp). Neither is a control or format character, so the rule as first accepted let them through. Many renderers break lines at them, so they could fake a line in an approval display, as a newline could. `command.arguments` is unchanged: any character except NUL, so approval displays must escape control, format, and separator characters there. This tightens the contract before anything depends on it, as the Consequences section allows.

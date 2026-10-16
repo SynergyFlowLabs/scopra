@@ -3,7 +3,7 @@
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
 **Current increment:** Reject line and paragraph separators in execution request text (Step 16)
-**Status:** In progress on `arena/c7a368c1-scopra`: acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
+**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -1076,10 +1076,10 @@ Non-goals:
 
 #### Acceptance checklist (agreed before implementation)
 
-- [ ] ADR-007 gains a dated amendment: those three fields also reject Zl and Zp. Arguments are unchanged: any character except NUL, and displays must escape.
-- [ ] Field-rule tests reject U+2028 and U+2029 in each of the three fields, and still accept both in arguments.
-- [ ] `validText` rejects Zl and Zp, and the error messages name line and paragraph separators.
-- [ ] The protocol README is updated, and full verification passes.
+- [x] ADR-007 gains a dated amendment: those three fields also reject Zl and Zp. Arguments are unchanged: any character except NUL, and displays must escape.
+- [x] Field-rule tests reject U+2028 and U+2029 in each of the three fields, and still accept both in arguments.
+- [x] `validText` rejects Zl and Zp, and the error messages name line and paragraph separators.
+- [x] The protocol README is updated, and full verification passes.
 
 Non-goals:
 - Other spaces (Zs, such as U+00A0), which add no confusion beyond the ordinary space that is already allowed.
@@ -1091,3 +1091,20 @@ Non-goals:
 
 1. **Tests written first:** six field-rule rows reject `go\u2028`, `go\u2029`, `src\u2028`, `src\u2029`, and a reason holding either separator. The accepted-arguments row now includes both separators.
 2. **Expected failure.** The tests compiled with no skeleton needed. Exactly the six new rejection rows failed (`error = <nil>`), and the arguments row passed, because arguments are unchanged.
+
+#### Implementation and verification record
+
+- `validText` now rejects `unicode.In(char, unicode.Cc, unicode.Cf, unicode.Zl, unicode.Zp)`; for Cc this is the same set that `unicode.IsControl` covered. The three error messages name line and paragraph separators. `validArguments` is unchanged.
+- ADR-007 gained "Amendment — 2026-10-16: line and paragraph separators". The ADR index entry and the protocol README describe it, including the duty of approval displays to escape separators in arguments.
+- Green: all tests pass under the race detector with no skips.
+- Mutation testing: removing each of the four categories (Zl, Zp, Cc, Cf) was caught by `TestSecurity_DecodeExecutionRequestEnforcesFieldRules`.
+- A 30-second fuzz run found no failure.
+- Coverage: protocol 93.9%, unchanged.
+- Local verification passed:
+  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `go test -race -count=1 -timeout 120s ./...` and ten repeated race runs of the protocol package;
+  - every package with `CGO_ENABLED=0`;
+  - `git diff --cached --check`;
+  - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64.
+  - The tree is unchanged.
+- Pushes to `arena/c7a368c1-scopra`: test checkpoint `f5bebbb` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.
