@@ -318,6 +318,20 @@ a:hover { text-decoration: underline; }
   overflow-x: auto;
 }
 
+.terminal.install {
+  max-width: 40rem;
+  margin-bottom: 0.9rem;
+  border-color: var(--accent-dim);
+  padding: 1.1rem 1.3rem;
+  font-size: 0.95rem;
+}
+.install-note {
+  max-width: 40rem;
+  margin: 0 auto 2rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 .strip {
   display: flex;
   flex-wrap: wrap;
@@ -386,6 +400,7 @@ a:hover { text-decoration: underline; }
 .steps p { margin: 0.5rem 0 0; color: var(--muted); font-size: 0.92rem; }
 .steps pre {
   margin: 0;
+  white-space: pre;
   background: var(--code-bg);
   border: 1px solid var(--border);
   border-radius: 8px;

@@ -61,6 +61,12 @@ version, and the wire protocol is versioned separately (see ADR-002 and ADR-009)
 
 ### Changed
 
+- **The install command is the first thing on the site.** The landing page leads
+  with the one-liner and its requirements, and an "Install, every way" section
+  near the bottom spells out the variants: scripted, pinned version, custom
+  directory, no service, pinned image, verifying the archive by hand, and
+  building from source. The README gained the same reference as "Detailed
+  install commands".
 - **Releases are served by the documentation site.** `install.sh` reads
   `/releases/latest.txt` and downloads from `/releases/<tag>/` instead of
   `github.com/.../releases/download/...`. GitHub releases stay as a human-facing

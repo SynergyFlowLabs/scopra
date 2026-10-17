@@ -43,6 +43,7 @@
 </ul>
 <h3 id="changed">Changed</h3>
 <ul>
+<li><strong>The install command is the first thing on the site.</strong> The landing page leads with the one-liner and its requirements, and an &#34;Install, every way&#34; section near the bottom spells out the variants: scripted, pinned version, custom directory, no service, pinned image, verifying the archive by hand, and building from source. The README gained the same reference as &#34;Detailed install commands&#34;.</li>
 <li><strong>Releases are served by the documentation site.</strong> <code>install.sh</code> reads <code>/releases/latest.txt</code> and downloads from <code>/releases/&lt;tag&gt;/</code> instead of <code>github.com/.../releases/download/...</code>. GitHub releases stay as a human-facing mirror only; nothing in the install path calls the GitHub API.</li>
 <li><code>localipc.WorkspaceError</code> is now <code>localipc.ReplyError</code>, since the logs reply uses the same typed error. The wire format is unchanged.</li>
 <li><code>Daemon.EnableExecutions</code> now takes the executor and the run journal, and requires both.</li>

@@ -37,9 +37,12 @@ Scripted installs use the same path without the interface:
 $ curl -fsSL https://scopra-six.vercel.app/install.sh | sh -s -- --yes
 ```
 
-See [Installing Scopra](docs/operations/installation.md) for the flags, the
-requirements, the exact files an install writes, verification, and
-troubleshooting. Building from source is covered under [Quick start](#quick-start).
+Every variant — scripted installs, a pinned version, a custom directory, a pinned
+image, verifying the archive by hand — is in
+[Detailed install commands](#detailed-install-commands) below. The full
+reference is [Installing Scopra](docs/operations/installation.md): the flags,
+the requirements, the exact files an install writes, verification, and
+troubleshooting.
 
 ---
 
@@ -169,6 +172,61 @@ In another terminal:
 ```
 
 Both binaries default to `$XDG_STATE_HOME/scopra` (`~/.local/state/scopra`). Pass the same `--state-dir` to each command when overriding it. The state directory is created owner-only (`0700`).
+
+---
+
+## Detailed install commands
+
+The command at the top of this file is the short version. These are the same
+installer with the choices spelled out; every flag reaches `scopra install`
+unchanged.
+
+**Scripted, no interface** — for configuration management and CI, one line per
+step:
+
+```console
+$ curl -fsSL https://scopra-six.vercel.app/install.sh | sh -s -- --yes
+```
+
+**Pin a version** — [`/releases/latest.txt`](https://scopra-six.vercel.app/releases/latest.txt)
+names the current tag; setting `SCOPRA_VERSION` repeats an exact install:
+
+```console
+$ curl -fsSL https://scopra-six.vercel.app/install.sh | SCOPRA_VERSION=v0.1.0-alpha.1 sh
+```
+
+**Choose the directory and skip the service** — `--dir` defaults to
+`$XDG_BIN_HOME` when it is absolute, otherwise `~/.local/bin`; `--no-service`
+installs only the command line:
+
+```console
+$ curl -fsSL https://scopra-six.vercel.app/install.sh | sh -s -- --dir ~/.local/bin --no-service
+```
+
+**Pin the sandbox image** — Mio never pulls an image, so the digest must already
+be in local storage:
+
+```console
+$ curl -fsSL https://scopra-six.vercel.app/install.sh | sh -s -- --sandbox-image debian@sha256:<digest>
+```
+
+**Verify the download yourself** — same bytes, same check, without the bootstrap
+script (use `arm64` on ARM):
+
+```console
+$ version=$(curl -fsSL https://scopra-six.vercel.app/releases/latest.txt)
+$ base="https://scopra-six.vercel.app/releases/$version"
+$ curl -fsSLO "$base/scopra_linux_amd64.tar.gz" -O "$base/checksums.txt"
+$ grep " scopra_linux_amd64.tar.gz$" checksums.txt | sha256sum -c -
+$ tar xzf scopra_linux_amd64.tar.gz && ./scopra install
+```
+
+The checksum proves the archive is the one the release publishes; it does not
+prove who published it. A signature is planned, not implemented.
+
+macOS and Windows are refused before anything is downloaded, because Mio's
+containment needs Linux namespaces and cgroups. To build from source instead,
+see [Quick start](#quick-start).
 
 ---
 

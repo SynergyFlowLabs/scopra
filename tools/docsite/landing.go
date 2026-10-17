@@ -16,14 +16,13 @@ func renderLanding(options siteOptions) string {
     <p class="eyebrow">Pre-alpha · Linux · MIT</p>
     <h1>Controlled execution<br>for AI agents</h1>
     <p class="lede">Give agents enough access to complete the task — never unlimited access to the machine. Scopra runs commands in an approved workspace, inside a rootless container, with limits, and never stores what ran.</p>
+    <pre class="terminal install"><code>curl -fsSL https://scopra-six.vercel.app/install.sh | sh</code></pre>
+    <p class="install-note">Linux · rootless Podman 4.0+ · systemd user session — the script verifies the release's SHA-256, then opens an interactive installer. Nothing changes until you confirm.</p>
     <div class="actions">
-      <a class="button primary" href="/docs/overview.html">Read the docs</a>
+      <a class="button primary" href="/docs/operations/installation.html">Install guide</a>
+      <a class="button" href="/docs/overview.html">Read the docs</a>
       <a class="button" href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">GitHub</a>
     </div>
-    <pre class="terminal"><code>git clone https://github.com/SynergyFlowLabs/scopra
-cd scopra &amp;&amp; make bootstrap &amp;&amp; make test
-go build -o bin/scopra ./cmd/scopra
-go build -o bin/scoprad ./cmd/scoprad</code></pre>
   </div>
 </section>
 
@@ -142,7 +141,56 @@ go build -o bin/scoprad ./cmd/scoprad</code></pre>
   </div>
 </section>
 
-<section class="section alt">
+<section class="section alt" id="install">
+  <h2>Install, every way</h2>
+  <p class="lede">The one-liner above is the short version. These are the same installer with the choices spelled out; every flag reaches <code>scopra install</code> unchanged.</p>
+  <ol class="steps">
+    <li>
+      <h3>Interactive</h3>
+      <pre><code>curl -fsSL https://scopra-six.vercel.app/install.sh | sh</code></pre>
+      <p>The default: a live preflight, a directory field, an optional digest-pinned image, a systemd user-service question, progress, and a summary. It never runs <code>sudo</code> and never edits your shell profile.</p>
+    </li>
+    <li>
+      <h3>Scripted, no interface</h3>
+      <pre><code>curl -fsSL https://scopra-six.vercel.app/install.sh | sh -s -- --yes</code></pre>
+      <p>The same install with one line per step, for configuration management and CI. The flags are the answers, so nothing has to be typed.</p>
+    </li>
+    <li>
+      <h3>Pin a version</h3>
+      <pre><code>curl -fsSL https://scopra-six.vercel.app/install.sh | SCOPRA_VERSION=v0.1.0-alpha.1 sh</code></pre>
+      <p><a href="https://scopra-six.vercel.app/releases/latest.txt">/releases/latest.txt</a> names the current tag. Set <code>SCOPRA_VERSION</code> to repeat an exact install; every tag keeps its own directory of archives.</p>
+    </li>
+    <li>
+      <h3>Choose the directory, skip the service</h3>
+      <pre><code>curl -fsSL https://scopra-six.vercel.app/install.sh | sh -s -- --dir ~/.local/bin --no-service</code></pre>
+      <p><code>--dir</code> defaults to <code>$XDG_BIN_HOME</code> when it is absolute, otherwise <code>~/.local/bin</code>. <code>--no-service</code> installs only the command line; you start <code>scoprad</code> yourself.</p>
+    </li>
+    <li>
+      <h3>Pin the sandbox image</h3>
+      <pre><code>curl -fsSL https://scopra-six.vercel.app/install.sh | sh -s -- --sandbox-image debian@sha256:&lt;digest&gt;</code></pre>
+      <p>Mio never pulls an image, so the digest must already be in local storage. Without one, the binaries are installed and every run is refused with <code>containment_unavailable</code>.</p>
+    </li>
+    <li>
+      <h3>Verify the download yourself</h3>
+      <pre><code>version=$(curl -fsSL https://scopra-six.vercel.app/releases/latest.txt)
+base="https://scopra-six.vercel.app/releases/$version"
+curl -fsSLO "$base/scopra_linux_amd64.tar.gz" -O "$base/checksums.txt"
+grep " scopra_linux_amd64.tar.gz$" checksums.txt | sha256sum -c -
+tar xzf scopra_linux_amd64.tar.gz &amp;&amp; ./scopra install</code></pre>
+      <p>Same bytes, same check, without the bootstrap script. Use <code>arm64</code> on ARM. The checksum proves the archive is the published one; it does not prove who published it.</p>
+    </li>
+    <li>
+      <h3>Build from source</h3>
+      <pre><code>git clone https://github.com/SynergyFlowLabs/scopra
+cd scopra &amp;&amp; make bootstrap &amp;&amp; make test
+go build -o bin/scopra ./cmd/scopra
+go build -o bin/scoprad ./cmd/scoprad</code></pre>
+      <p>Go 1.26.9, one module, no external dependencies. The <a href="/docs/operations/installation.html">install guide</a> has the requirements, the exact files an install writes, and troubleshooting.</p>
+    </li>
+  </ol>
+</section>
+
+<section class="section">
   <h2>Start reading</h2>
   <div class="cards">
     <a class="card" href="/docs/overview.html"><strong>Overview</strong><span class="muted">What exists, what does not, and what is unverified</span></a>
