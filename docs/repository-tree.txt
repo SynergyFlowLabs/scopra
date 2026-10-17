@@ -147,6 +147,9 @@
 ./internal/execution/README.md
 ./internal/grants
 ./internal/grants/README.md
+./internal/hollow
+./internal/hollow/podman.go
+./internal/hollow/podman_test.go
 ./internal/identity
 ./internal/identity/README.md
 ./internal/localipc

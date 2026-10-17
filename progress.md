@@ -3,7 +3,7 @@
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
 **Current increment:** Hollow `podman run` argument builder (Step 22, increment 1 of ADR-010)
-**Status:** Proposed. The ADR-010 draft and the checklist below await the maintainer's confirmation, and no code has been written. CI is out of scope for now at the maintainer's request
+**Status:** In progress on `arena/c7a368c1-scopra`: ADR-010 and the acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -1597,7 +1597,7 @@ Non-goals:
   - The tree is regenerated for the 43 new files.
 - Pushes to `arena/c7a368c1-scopra`: test checkpoint `e028e5e` (red by design), then the commit that adds the fixtures and this record. CI was not checked, at the maintainer's request.
 
-### 2026-10-17 — Step 22 (proposed): Hollow `podman run` argument builder (ADR-010, increment 1 of 4)
+### 2026-10-17 — Step 22: Hollow `podman run` argument builder (ADR-010, increment 1 of 4)
 
 - Selection: after Step 21 the default was (a), proposing the rootless Podman sandbox as ADR-010 before any code. The maintainer replied "continue". Implementation starts only after confirmation; a "continue" accepts the proposal.
 - Research:
@@ -1620,7 +1620,9 @@ Non-goals:
   - the minimum is Podman 4.0, which excludes Ubuntu 22.04;
   - increments 3 and 4 need a host with rootless Podman.
 
-#### Acceptance checklist (proposed, not yet agreed)
+- Confirmation: the maintainer replied "continue", accepting ADR-010 and the checklist below as written.
+
+#### Acceptance checklist (agreed before implementation)
 
 - [ ] ADR-010 is accepted, with any changes the maintainer asks for, and indexed as accepted.
 - [ ] `internal/hollow` builds the exact `podman run` argument vector of ADR-010 from a validated request, a canonical workspace path, and a pinned image. Tests pin the complete vector for the ADR-007 example and for ADR-008's vector 2.
@@ -1645,3 +1647,27 @@ Non-goals:
 - Adversarial tests (increment 4).
 - Choosing the image.
 - A Mio setting for the image, which comes with the runner.
+
+#### Test-first record
+
+1. **Tests written first** (`internal/hollow/podman_test.go`). The requests are decoded from the shared reference payloads in `packages/test-fixtures`, so the sandbox and the protocol are tested on the same inputs.
+   - Complete, hand-written argument vectors for the ADR-007 example and ADR-008's vector 2.
+   - `TestSecurity_PodmanRunArgsRejectsUnsafeInputs`, with 22 rejections:
+     - invalid requests;
+     - workspace paths that are empty, relative, the root, unclean, with a trailing slash, containing NUL, newline, carriage return, or DEL, not UTF-8, or over 4095 bytes;
+     - images without a digest, with a short, long, or uppercase digest, another algorithm, an option-like name, a space, or no name.
+
+     Three pinned images are accepted, including a registry port and a tag.
+   - CSV quoting of mount sources containing `,`, `"`, `:`, `=`, spaces, non-ASCII characters, and an injection attempt (`x",dst=/etc,ro=false,"src=/`).
+   - The exact limit mapping: nine CPU values from 0.001 to 1000, and memory, swap, PIDs, tmpfs, and timeout at their bounds.
+   - Option-like request arguments (`--privileged`, `-v /:/host`, and the image name itself) must stay after the image.
+   - `FuzzPodmanRunArgs`, over the executable, an argument, the working directory, the workspace path, and the access mode.
+   - A shared `checkInvariants`, used by every test that gets a vector:
+     - the vector is `run`, then options that all start with `--`, then the image, then exactly the arguments;
+     - no forbidden option appears, and each required option appears once;
+     - the security options are exactly `no-new-privileges` and `label=disable`, and the environment is exactly the fixed `PATH` and `HOME`;
+     - the mount, parsed as Podman parses it (`encoding/csv`, then splitting at the first `=`), is exactly type, source, destination, and access;
+     - the JSON entrypoint decodes to exactly the executable.
+   - `make security-test` now includes `./internal/hollow`.
+2. **Build failure.** `RunSpec`, `PodmanRunArgs`, and the error values were undefined.
+3. **Declarations-only skeleton.** It rejects everything. Runtime red: all 7 tests failed across 24 subtests, including the fuzz seeds, because the skeleton's error is neither a request nor a workspace error.
