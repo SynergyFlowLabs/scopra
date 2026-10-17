@@ -127,7 +127,7 @@ These belong to later increments:
 
 Increments 1 and 2 can be built and tested in this sandbox. Increments 3 and 4 need a machine with rootless Podman.
 
-**Implementation status (2026-10-17):** increments 1 and 2 are implemented in `internal/hollow`: `hollow.PodmanRunArgs` (Step 22), and `hollow.ParsePodmanInfo` with `PodmanInfo.Check` (Step 23). The preflight reads `podman info --format json`, which includes the version, and is tested on Podman's own documentation sample. Nothing runs Podman yet.
+**Implementation status (2026-10-17):** increments 1 and 2 are implemented in `internal/hollow`: `hollow.PodmanRunArgs` (Step 22), and `hollow.ParsePodmanInfo` with `PodmanInfo.Check` (Step 23). The preflight reads `podman info --format json`, which includes the version, and is tested on Podman's own documentation sample. Nothing ran Podman at that point; the runner status below records what came next.
 
 ## Consequences
 
@@ -237,7 +237,7 @@ With `passthrough` logging, Podman's own error text for a start failure may appe
 - Every helper call has a 30-second deadline.
 - `Runner.RemoveLeftovers` removes labelled `scopra-<32 hex>` containers.
 
-Increment 3a is therefore complete. Mio does not use the runner yet, and it has not met a real Podman. Increment 3b and the adversarial tests need a host with rootless Podman.
+Increment 3a is therefore complete. Mio now uses the runner (ADR-011 increment 2), and it has not met a real Podman. Increment 3b and the adversarial tests need a host with rootless Podman.
 
 **Cleanup**
 

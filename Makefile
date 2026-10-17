@@ -21,4 +21,4 @@ lint:
 	$(GO) vet ./...
 
 security-test:
-	$(GO) test -race ./packages/protocol ./internal/localipc ./internal/workspace/... ./internal/hollow ./cmd/scopra ./cmd/scoprad -run '^TestSecurity_'
+	$(GO) test -race ./packages/protocol ./internal/localipc ./internal/workspace/... ./internal/hollow ./internal/execution ./cmd/scopra ./cmd/scoprad -run '^TestSecurity_'

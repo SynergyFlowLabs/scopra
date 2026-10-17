@@ -113,20 +113,28 @@ Ctrl-C closes the connection, which cancels the run.
 
 ### Increments
 
-1. **IPC protocol:** `execution.run` in `internal/localipc`, with:
+1. **IPC protocol (done, Step 27):** `execution.run` in `internal/localipc`, with:
    - request validation and the exact key set;
    - streamed frames and splitting;
    - the deadlines, the concurrency cap, and cancellation on disconnect;
    - a client function that returns the events and the result.
 
    It is tested with a fake executor, not Hollow.
-2. **Mio wiring:** Podman resolution, leftover cleanup, workspace revalidation, building the request, and running Hollow. It is tested with the fake Podman.
+2. **Mio wiring (done, Step 28):** Podman resolution, leftover cleanup, workspace revalidation, and running Hollow. It is tested with the fake Podman.
 3. **`scopra run`:** flags, output, exit status, and `--json`.
 4. **Real-host verification,** together with ADR-010's increment 3b.
 
 ## Implementation Status
 
-**Increment 1 (IPC protocol): implemented** in `internal/localipc`, tested against a real in-process Mio with a fake executor. `scoprad` does not enable it yet, so Mio still runs no commands.
+**Increment 1 (IPC protocol): implemented** in `internal/localipc`, tested against a real in-process Mio with a fake executor.
+
+**Increment 2 (Mio wiring): implemented.** `scoprad` always enables `execution.run` and gives it a service from `internal/execution`, which runs commands through ADR-010's Hollow runner.
+
+- **Resolution and cleanup:** Mio resolves `podman` once with `exec.LookPath`, keeps the absolute path, and — when `--sandbox-image` is set and Podman exists — removes labelled leftover containers before it serves. A cleanup failure fails closed: this Mio process refuses every run with `containment_unavailable` and reports it on stderr after the listening line. Status and workspace commands keep working.
+- **Per run:** the service looks the workspace ID up in the registry, revalidates the recorded workspace with ADR-004's validator immediately before use, and passes the record's canonical path to Hollow. An unknown ID or a failed revalidation is rejected with `workspace_unavailable`; missing containment is rejected with `containment_unavailable`. A client cannot name a path.
+- **Always a typed answer:** without `--sandbox-image`, or without Podman, Mio starts as before and rejects every run, naming the missing requirement, instead of leaving the connection unanswered.
+- **Unchanged:** the wire format, the result states, and Hollow's arguments. Status and workspace commands are unaffected.
+- **Testing:** increment 2 is tested with ADR-010's fake Podman through a real in-process Mio: a successful run (start notice, output, result, and the mounted path), an unknown workspace, a replaced workspace, a missing image, a missing Podman, leftover cleanup, and a refused cleanup. Mio still has not run a real container.
 
 - **Server:** `Daemon.EnableExecutions(executor)`, before `Serve`, enables `execution.run`. Without it, the command gets no reply.
 - **Client:** `RunExecution(ctx, stateDir, run, events)` delivers the start notice and output frames to callbacks and returns the result. A refusal is a `rejected` result, not an error.

@@ -87,6 +87,8 @@
 ./cmd/scopra/workspace_test.go
 ./cmd/scoprad
 ./cmd/scoprad/README.md
+./cmd/scoprad/execution.go
+./cmd/scoprad/execution_test.go
 ./cmd/scoprad/main.go
 ./cmd/scoprad/main_test.go
 ./deploy
@@ -146,6 +148,8 @@
 ./internal/containment/README.md
 ./internal/execution
 ./internal/execution/README.md
+./internal/execution/service.go
+./internal/execution/service_test.go
 ./internal/grants
 ./internal/grants/README.md
 ./internal/hollow
