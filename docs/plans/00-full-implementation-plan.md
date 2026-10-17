@@ -118,7 +118,9 @@ If any mandatory stage is unavailable or invalid, deny the request. Never add un
 - the canonical request (RFC 8785) and the action hash that approvals bind to (ADR-008);
 - every execution lifecycle message (ADR-009): the terminal `execution.result` with its states and error codes, `execution.started`, output chunks, and `execution.cancel`.
 
-Together these define every part of the first task below, which is therefore checked. The second task stays open: validation tests exist, but no compatibility tests across protocol versions do. Approval records are still pending.
+Together these define every part of the first task below, which is therefore checked.
+
+For the second task, validation tests exist, and the reference payloads in `packages/test-fixtures/messenger/v1` now pin the version 1 wire format for every implementation. It stays open until a second protocol version makes cross-version tests possible. Approval records are still pending.
 
 - [x] Define protocol versions, IDs, canonical request, results, output chunks, errors, and execution states.
 - [ ] Add validation and compatibility tests.

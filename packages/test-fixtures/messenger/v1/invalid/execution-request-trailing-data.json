@@ -1,0 +1,26 @@
+{
+  "executionId": "exe_01HZX3",
+  "principals": {"userId": "usr_1", "agentId": "agt_1", "clientId": "cli_1"},
+  "resources": {"machineId": "mch_1", "workspaceId": "3f2a9c0b7d1e4f6a8b5c2d0e1f3a4b6c"},
+  "grantId": "grt_1",
+  "sessionId": "ses_1",
+  "command": {
+    "executable": "go",
+    "arguments": ["test", "./..."],
+    "shell": false,
+    "workingDirectory": "."
+  },
+  "workspaceAccess": "read-only",
+  "network": "none",
+  "limits": {
+    "timeoutSeconds": 600,
+    "cpuMillicores": 2000,
+    "memoryBytes": 2147483648,
+    "pids": 512,
+    "outputBytes": 1048576
+  },
+  "reason": "Run the unit tests after the fix",
+  "createdAt": "2026-10-16T12:00:00Z",
+  "expiresAt": "2026-10-16T12:15:00Z",
+  "nonce": "kJ3b9sR0cT1uV2wX3yZ4aA"
+} {}

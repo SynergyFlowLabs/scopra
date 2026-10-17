@@ -74,4 +74,13 @@ Checking a sequence of chunks against a result is the receiver's job.
 
 Decoding authorizes nothing: who may cancel is cloud policy, and the envelope must already have been verified.
 
+## Reference payloads
+
+`fixtures_test.go` checks the shared Messenger v1 reference payloads in `packages/test-fixtures/messenger/v1`:
+
+- every valid payload decodes to its exact canonical form, and to its action hash for requests;
+- every invalid payload is rejected with its type's error value, naming the field.
+
+The expected values come from the ADRs and an independent Python rendering. A failing fixture therefore signals a wire-format change, which needs an ADR decision (see that package's README).
+
 Run the package tests with `go test -race ./packages/protocol`. Fuzz the decoders and the canonical forms with `go test -run '^$' -fuzz FuzzDecodeExecutionRequest ./packages/protocol`, `go test -run '^$' -fuzz FuzzCanonicalFieldValues ./packages/protocol`, `go test -run '^$' -fuzz FuzzDecodeExecutionResult ./packages/protocol`, `go test -run '^$' -fuzz FuzzDecodeExecutionStarted ./packages/protocol`, `go test -run '^$' -fuzz FuzzDecodeExecutionOutput ./packages/protocol`, `go test -run '^$' -fuzz FuzzExecutionOutputValues ./packages/protocol`, and `go test -run '^$' -fuzz FuzzDecodeExecutionCancel ./packages/protocol`.

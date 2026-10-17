@@ -3,7 +3,7 @@
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
 **Current increment:** Messenger v1 reference payloads in `packages/test-fixtures` (Step 21)
-**Status:** In progress on `arena/c7a368c1-scopra`: acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
+**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -23,7 +23,7 @@ This file is the running engineering log. Each increment records scope, verifica
 
 ## Roadmap
 
-1. **Protocol foundation** — envelope v1 structural validation, strict execution request v1 decoding (ADR-007), the canonical request and action hash (ADR-008), and every execution lifecycle message: results, start notices, output chunks, and cancellation (ADR-009) are implemented and locally verified. The plan's first Messenger task is complete. Approval records, compatibility tests across protocol versions, cryptographic verification, replay storage, and compatibility/version guarantees remain pending.
+1. **Protocol foundation** — envelope v1 structural validation, strict execution request v1 decoding (ADR-007), the canonical request and action hash (ADR-008), and every execution lifecycle message: results, start notices, output chunks, and cancellation (ADR-009) are implemented and locally verified. The plan's first Messenger task is complete, and reference payloads in `packages/test-fixtures/messenger/v1` pin the version 1 wire format. Approval records, compatibility tests across protocol versions, cryptographic verification, replay storage, and compatibility/version guarantees remain pending.
 2. **Local daemon and CLI** — the initial foreground Mio status service with a persistent per-user state directory and an exclusive state-directory lock, Mariner `scopra status`, a minimal read-only `scopra doctor` (platform, state-directory, workspace-registry, registered-workspace revalidation, and daemon checks), and `scopra workspace add/list/remove` are implemented. Workspace validation (ADR-004) and registry storage (ADR-005) exist; Mio checks its registry at startup and serves add, list, and remove over local IPC (ADR-006). Broader doctor checks, execution, service installation, and expanded CLI/IPC authorization remain pending.
 3. **Policy and containment boundary** — implement default-deny policy and rootless containment before enabling execution; no native fallback.
 4. **Structured execution and audit** — limits, cancellation, bounded output, and attributable events with adversarial tests.
@@ -1535,16 +1535,16 @@ Non-goals:
 
 #### Acceptance checklist (agreed before implementation)
 
-- [ ] `packages/test-fixtures/messenger/v1/` holds a manifest and payload files:
+- [x] `packages/test-fixtures/messenger/v1/` holds a manifest and payload files:
   - valid fixtures: every ADR example, both ADR-008 vectors, all seven result states, and a binary output chunk, each with its canonical form and, for requests, its action hash;
   - invalid fixtures covering every strictness class and key rules for each of the five payload types.
-- [ ] Expected values come from independent sources, never from the Go code: the ADR texts, ADR-008's vectors, and Python's `json` and `base64` rendering.
-- [ ] `packages/protocol/fixtures_test.go` checks three things:
+- [x] Expected values come from independent sources, never from the Go code: the ADR texts, ADR-008's vectors, and Python's `json` and `base64` rendering.
+- [x] `packages/protocol/fixtures_test.go` checks three things:
   - the manifest is complete: names are unique, every file is referenced exactly once, all five payload types have valid and invalid fixtures, and each entry has the right shape;
   - every valid payload decodes to exactly its canonical form, and to its action hash where it has one, and that form is stable;
   - every invalid payload is rejected with its type's error value, naming the field.
-- [ ] `packages/test-fixtures/README.md` documents the format, the provenance, and the change rule: a changed canonical form or hash is a wire-format change, which needs an ADR amendment before the alpha freeze and a protocol-version decision after it.
-- [ ] No production code changes, and full verification passes.
+- [x] `packages/test-fixtures/README.md` documents the format, the provenance, and the change rule: a changed canonical form or hash is a wire-format change, which needs an ADR amendment before the alpha freeze and a protocol-version decision after it.
+- [x] No production code changes, and full verification passes.
 
 Non-goals:
 - Envelope fixtures, whose freshness depends on the time and whose authentication proof does not exist yet.
@@ -1559,3 +1559,40 @@ Non-goals:
    - `TestFixtures_ValidPayloadsDecodeToTheirCanonicalForm` requires the exact canonical bytes and action hash, equality with the independent RFC 8785 reference, and a stable canonical form.
    - `TestSecurity_FixturesRejectInvalidPayloads` requires the type's own error value, naming the field.
 2. **Expected failure.** This step adds tests over existing code, so no production skeleton applies. The red phase is the missing fixture set: all three tests failed with "read the fixture manifest: … no such file or directory".
+
+#### Implementation and verification record
+
+- **Fixtures** (`packages/test-fixtures/messenger/v1/`): `manifest.json`, 14 valid payloads, and 27 invalid ones.
+  - **Valid:** the ADR-007 example; both ADR-008 vectors; a request with ESC, VT, and US in its arguments; all seven result states, including ADR-009's `failed` example; the ADR-009 `started`, `output`, and `cancel` examples; and an output chunk holding all 256 byte values.
+  - **Invalid, requests:** `null`, a duplicate key, an unknown field, a missing field, a raw `0xFF` byte, a lone surrogate, an escaped NUL, `shell: true`, a working directory that escapes with `..`, a bidirectional control in the executable, `network: host`, a lifetime over one hour, and trailing data.
+  - **Invalid, results:** an unknown state, an exit code on a `timed_out` result, inconsistent output counts, a comma in a time, and an exit code of `-0`.
+  - **Invalid, start notices:** second precision, and an uppercase action hash.
+  - **Invalid, output chunks:** padded data, a line break in the data, sequence 0, and stream `stdin`.
+  - **Invalid, cancels:** a missing reason, `principals` that is not an object, and a nested `null`.
+- **Provenance:**
+  - The fixtures were generated by a throwaway Python script outside the repository.
+  - ADR examples are extracted from the ADR Markdown, and canonical forms come from Python's JCS-equivalent `json.dumps`.
+  - Action hashes come from `hashlib`. The script asserts both ADR-008 vectors, vector 2's 709-byte length, and the raw `0xFF` byte.
+  - None of the expected values comes from the Go code.
+- **Gap found during implementation:** a fault check showed that an uppercase-hex canonical writer went unnoticed, because the only escaped control character, `\u0001`, has no hex letters. The control-character request fixture (`\u001b`, `\u000b`, `\u001f`) closes that gap for every implementation that uses the fixtures.
+- **Fault checks**, run one at a time with restore: all 9 caught:
+  - a corrupted canonical form;
+  - an invalid fixture naming the wrong field;
+  - a duplicate fixture name;
+  - an unknown message type;
+  - a payload type left without invalid fixtures, with its files unlisted;
+  - an unlisted file;
+  - a missing listed file;
+  - an uppercase-hex canonical writer;
+  - the time round trip removed from the production code.
+- `packages/test-fixtures/.gitattributes` sets `* -text`, so no checkout converts line endings, and `git check-attr` confirms it.
+- `packages/test-fixtures/README.md` documents the format, the conformance conditions, the provenance, and the change rule. The protocol package README and the plan's Messenger section point to the fixtures. The plan's second task stays open until a second protocol version exists.
+- There is no production code change, so coverage is unchanged (protocol 96.6%).
+- Local verification passed:
+  - `make bootstrap`, `make lint`, `make test`, and `make security-test` (including `TestSecurity_FixturesRejectInvalidPayloads`);
+  - `go test -race -count=1 -timeout 120s ./...` and ten repeated race runs of the protocol package;
+  - every package with `CGO_ENABLED=0`;
+  - `git diff --cached --check`, which accepts the raw `0xFF` fixture;
+  - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64.
+  - The tree is regenerated for the 43 new files.
+- Pushes to `arena/c7a368c1-scopra`: test checkpoint `e028e5e` (red by design), then the commit that adds the fixtures and this record. CI was not checked, at the maintainer's request.

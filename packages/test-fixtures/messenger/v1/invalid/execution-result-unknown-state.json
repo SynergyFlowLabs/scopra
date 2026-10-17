@@ -1,0 +1,1 @@
+{"executionId": "exe_01HZX3", "actionHash": "b4f47c942fc6499aea49d76df1f89c630f8683bd69c98f292b9e03eed4dd44e2", "state": "running", "startedAt": "2026-10-16T12:00:01.250Z", "endedAt": "2026-10-16T12:00:09.004Z", "exitCode": 1, "output": {"stdoutBytes": 64, "stderrBytes": 2048, "truncated": false, "chunks": 3}}

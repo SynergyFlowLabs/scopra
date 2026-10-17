@@ -1,0 +1,255 @@
+{
+  "version": 1,
+  "protocolVersion": "v1",
+  "fixtures": [
+    {
+      "name": "execution-request-adr007",
+      "messageType": "execution.request",
+      "payload": "valid/execution-request-adr007.json",
+      "canonical": "{\"command\":{\"arguments\":[\"test\",\"./...\"],\"executable\":\"go\",\"shell\":false,\"workingDirectory\":\".\"},\"createdAt\":\"2026-10-16T12:00:00Z\",\"executionId\":\"exe_01HZX3\",\"expiresAt\":\"2026-10-16T12:15:00Z\",\"grantId\":\"grt_1\",\"limits\":{\"cpuMillicores\":2000,\"memoryBytes\":2147483648,\"outputBytes\":1048576,\"pids\":512,\"timeoutSeconds\":600},\"network\":\"none\",\"nonce\":\"kJ3b9sR0cT1uV2wX3yZ4aA\",\"principals\":{\"agentId\":\"agt_1\",\"clientId\":\"cli_1\",\"userId\":\"usr_1\"},\"reason\":\"Run the unit tests after the fix\",\"resources\":{\"machineId\":\"mch_1\",\"workspaceId\":\"3f2a9c0b7d1e4f6a8b5c2d0e1f3a4b6c\"},\"sessionId\":\"ses_1\",\"workspaceAccess\":\"read-only\"}",
+      "actionHash": "b4f47c942fc6499aea49d76df1f89c630f8683bd69c98f292b9e03eed4dd44e2"
+    },
+    {
+      "name": "execution-request-adr008-vector2",
+      "messageType": "execution.request",
+      "payload": "valid/execution-request-adr008-vector2.json",
+      "canonical": "{\"command\":{\"arguments\":[\"tab\\there\",\"new\\nline\",\"\\u0001\",\"\u007f\",\"\u2028\",\"quote\\\" back\\\\slash\",\"\u00e9\",\"\ud83d\ude00\",\"\"],\"executable\":\"./scripts/test.sh\",\"shell\":false,\"workingDirectory\":\"src/app\"},\"createdAt\":\"2026-10-16T12:00:00Z\",\"executionId\":\"exe_01HZX3\",\"expiresAt\":\"2026-10-16T12:15:00Z\",\"grantId\":\"grt_1\",\"limits\":{\"cpuMillicores\":2000,\"memoryBytes\":1099511627776,\"outputBytes\":1048576,\"pids\":512,\"timeoutSeconds\":600},\"network\":\"none\",\"nonce\":\"kJ3b9sR0cT1uV2wX3yZ4aA\",\"principals\":{\"agentId\":\"agt_1\",\"clientId\":\"cli_1\",\"userId\":\"usr_1\"},\"reason\":\"Run the unit tests after the fix\",\"resources\":{\"machineId\":\"mch_1\",\"workspaceId\":\"3f2a9c0b7d1e4f6a8b5c2d0e1f3a4b6c\"},\"sessionId\":\"ses_1\",\"workspaceAccess\":\"read-write\"}",
+      "actionHash": "9df45c503097070244bdcf27d06fb6c66e9328ee908d234ae03f3831a5731533"
+    },
+    {
+      "name": "execution-request-control-characters",
+      "messageType": "execution.request",
+      "payload": "valid/execution-request-control-characters.json",
+      "canonical": "{\"command\":{\"arguments\":[\"\\u001b[31mred\\u001b[0m\",\"\\u000b\",\"\\u001f\"],\"executable\":\"go\",\"shell\":false,\"workingDirectory\":\".\"},\"createdAt\":\"2026-10-16T12:00:00Z\",\"executionId\":\"exe_01HZX5\",\"expiresAt\":\"2026-10-16T12:15:00Z\",\"grantId\":\"grt_1\",\"limits\":{\"cpuMillicores\":2000,\"memoryBytes\":2147483648,\"outputBytes\":1048576,\"pids\":512,\"timeoutSeconds\":600},\"network\":\"none\",\"nonce\":\"kJ3b9sR0cT1uV2wX3yZ4aA\",\"principals\":{\"agentId\":\"agt_1\",\"clientId\":\"cli_1\",\"userId\":\"usr_1\"},\"reason\":\"Run the unit tests after the fix\",\"resources\":{\"machineId\":\"mch_1\",\"workspaceId\":\"3f2a9c0b7d1e4f6a8b5c2d0e1f3a4b6c\"},\"sessionId\":\"ses_1\",\"workspaceAccess\":\"read-only\"}",
+      "actionHash": "0c0cd7124b0006335410d4588c599a06431b29fe4c18cf923533569de437c95e"
+    },
+    {
+      "name": "execution-result-succeeded",
+      "messageType": "execution.result",
+      "payload": "valid/execution-result-succeeded.json",
+      "canonical": "{\"actionHash\":\"b4f47c942fc6499aea49d76df1f89c630f8683bd69c98f292b9e03eed4dd44e2\",\"endedAt\":\"2026-10-16T12:00:02.000Z\",\"executionId\":\"exe_01HZX3\",\"exitCode\":0,\"output\":{\"chunks\":1,\"stderrBytes\":0,\"stdoutBytes\":64,\"truncated\":false},\"startedAt\":\"2026-10-16T12:00:01.250Z\",\"state\":\"succeeded\"}"
+    },
+    {
+      "name": "execution-result-failed-adr009",
+      "messageType": "execution.result",
+      "payload": "valid/execution-result-failed-adr009.json",
+      "canonical": "{\"actionHash\":\"b4f47c942fc6499aea49d76df1f89c630f8683bd69c98f292b9e03eed4dd44e2\",\"endedAt\":\"2026-10-16T12:00:09.004Z\",\"executionId\":\"exe_01HZX3\",\"exitCode\":1,\"output\":{\"chunks\":3,\"stderrBytes\":2048,\"stdoutBytes\":64,\"truncated\":false},\"startedAt\":\"2026-10-16T12:00:01.250Z\",\"state\":\"failed\"}"
+    },
+    {
+      "name": "execution-result-timed-out",
+      "messageType": "execution.result",
+      "payload": "valid/execution-result-timed-out.json",
+      "canonical": "{\"actionHash\":\"b4f47c942fc6499aea49d76df1f89c630f8683bd69c98f292b9e03eed4dd44e2\",\"endedAt\":\"2026-10-16T12:10:01.250Z\",\"executionId\":\"exe_01HZX3\",\"output\":{\"chunks\":0,\"stderrBytes\":0,\"stdoutBytes\":0,\"truncated\":false},\"startedAt\":\"2026-10-16T12:00:01.250Z\",\"state\":\"timed_out\"}"
+    },
+    {
+      "name": "execution-result-cancelled",
+      "messageType": "execution.result",
+      "payload": "valid/execution-result-cancelled.json",
+      "canonical": "{\"actionHash\":\"b4f47c942fc6499aea49d76df1f89c630f8683bd69c98f292b9e03eed4dd44e2\",\"endedAt\":\"2026-10-16T12:00:05.500Z\",\"executionId\":\"exe_01HZX3\",\"output\":{\"chunks\":1,\"stderrBytes\":0,\"stdoutBytes\":10,\"truncated\":false},\"startedAt\":\"2026-10-16T12:00:01.250Z\",\"state\":\"cancelled\"}"
+    },
+    {
+      "name": "execution-result-out-of-memory",
+      "messageType": "execution.result",
+      "payload": "valid/execution-result-out-of-memory.json",
+      "canonical": "{\"actionHash\":\"b4f47c942fc6499aea49d76df1f89c630f8683bd69c98f292b9e03eed4dd44e2\",\"endedAt\":\"2026-10-16T12:00:30.000Z\",\"executionId\":\"exe_01HZX3\",\"output\":{\"chunks\":16,\"stderrBytes\":0,\"stdoutBytes\":1048576,\"truncated\":true},\"startedAt\":\"2026-10-16T12:00:01.250Z\",\"state\":\"out_of_memory\"}"
+    },
+    {
+      "name": "execution-result-errored",
+      "messageType": "execution.result",
+      "payload": "valid/execution-result-errored.json",
+      "canonical": "{\"actionHash\":\"b4f47c942fc6499aea49d76df1f89c630f8683bd69c98f292b9e03eed4dd44e2\",\"error\":{\"code\":\"start_failed\",\"message\":\"executable not found: go\"},\"executionId\":\"exe_01HZX3\",\"output\":{\"chunks\":0,\"stderrBytes\":0,\"stdoutBytes\":0,\"truncated\":false},\"state\":\"errored\"}"
+    },
+    {
+      "name": "execution-result-rejected",
+      "messageType": "execution.result",
+      "payload": "valid/execution-result-rejected.json",
+      "canonical": "{\"actionHash\":\"b4f47c942fc6499aea49d76df1f89c630f8683bd69c98f292b9e03eed4dd44e2\",\"error\":{\"code\":\"workspace_unavailable\",\"message\":\"the workspace is not registered\"},\"executionId\":\"exe_01HZX3\",\"state\":\"rejected\"}"
+    },
+    {
+      "name": "execution-started-adr009",
+      "messageType": "execution.started",
+      "payload": "valid/execution-started-adr009.json",
+      "canonical": "{\"actionHash\":\"b4f47c942fc6499aea49d76df1f89c630f8683bd69c98f292b9e03eed4dd44e2\",\"executionId\":\"exe_01HZX3\",\"startedAt\":\"2026-10-16T12:00:01.250Z\"}"
+    },
+    {
+      "name": "execution-output-adr009",
+      "messageType": "execution.output",
+      "payload": "valid/execution-output-adr009.json",
+      "canonical": "{\"data\":\"b2sgIAlnaXRodWIuY29tL1N5bmVyZ3lGbG93TGFicy9zY29wcmEvcGFja2FnZXMvcHJvdG9jb2wJMC4wNjBzCg\",\"executionId\":\"exe_01HZX3\",\"sequence\":1,\"stream\":\"stdout\"}"
+    },
+    {
+      "name": "execution-output-binary",
+      "messageType": "execution.output",
+      "payload": "valid/execution-output-binary.json",
+      "canonical": "{\"data\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn-AgYKDhIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq-wsbKztLW2t7i5uru8vb6_wMHCw8TFxsfIycrLzM3Oz9DR0tPU1dbX2Nna29zd3t_g4eLj5OXm5-jp6uvs7e7v8PHy8_T19vf4-fr7_P3-_w\",\"executionId\":\"exe_01HZX3\",\"sequence\":2,\"stream\":\"stderr\"}"
+    },
+    {
+      "name": "execution-cancel-adr009",
+      "messageType": "execution.cancel",
+      "payload": "valid/execution-cancel-adr009.json",
+      "canonical": "{\"actionHash\":\"b4f47c942fc6499aea49d76df1f89c630f8683bd69c98f292b9e03eed4dd44e2\",\"executionId\":\"exe_01HZX3\",\"principals\":{\"agentId\":\"agt_1\",\"clientId\":\"cli_1\",\"userId\":\"usr_1\"},\"reason\":\"The user stopped the run\"}"
+    },
+    {
+      "name": "execution-request-null-field",
+      "messageType": "execution.request",
+      "payload": "invalid/execution-request-null-field.json",
+      "invalidField": "grantId"
+    },
+    {
+      "name": "execution-request-duplicate-key",
+      "messageType": "execution.request",
+      "payload": "invalid/execution-request-duplicate-key.json",
+      "invalidField": "grantId"
+    },
+    {
+      "name": "execution-request-unknown-field",
+      "messageType": "execution.request",
+      "payload": "invalid/execution-request-unknown-field.json",
+      "invalidField": "env"
+    },
+    {
+      "name": "execution-request-missing-field",
+      "messageType": "execution.request",
+      "payload": "invalid/execution-request-missing-field.json",
+      "invalidField": "nonce"
+    },
+    {
+      "name": "execution-request-invalid-utf8",
+      "messageType": "execution.request",
+      "payload": "invalid/execution-request-invalid-utf8.json",
+      "invalidField": "payload"
+    },
+    {
+      "name": "execution-request-lone-surrogate",
+      "messageType": "execution.request",
+      "payload": "invalid/execution-request-lone-surrogate.json",
+      "invalidField": "payload"
+    },
+    {
+      "name": "execution-request-escaped-nul",
+      "messageType": "execution.request",
+      "payload": "invalid/execution-request-escaped-nul.json",
+      "invalidField": "payload"
+    },
+    {
+      "name": "execution-request-shell",
+      "messageType": "execution.request",
+      "payload": "invalid/execution-request-shell.json",
+      "invalidField": "command.shell"
+    },
+    {
+      "name": "execution-request-working-directory-escape",
+      "messageType": "execution.request",
+      "payload": "invalid/execution-request-working-directory-escape.json",
+      "invalidField": "command.workingDirectory"
+    },
+    {
+      "name": "execution-request-bidi-executable",
+      "messageType": "execution.request",
+      "payload": "invalid/execution-request-bidi-executable.json",
+      "invalidField": "command.executable"
+    },
+    {
+      "name": "execution-request-network",
+      "messageType": "execution.request",
+      "payload": "invalid/execution-request-network.json",
+      "invalidField": "network"
+    },
+    {
+      "name": "execution-request-lifetime",
+      "messageType": "execution.request",
+      "payload": "invalid/execution-request-lifetime.json",
+      "invalidField": "expiresAt"
+    },
+    {
+      "name": "execution-request-trailing-data",
+      "messageType": "execution.request",
+      "payload": "invalid/execution-request-trailing-data.json",
+      "invalidField": "payload"
+    },
+    {
+      "name": "execution-result-unknown-state",
+      "messageType": "execution.result",
+      "payload": "invalid/execution-result-unknown-state.json",
+      "invalidField": "state"
+    },
+    {
+      "name": "execution-result-exit-code-for-timeout",
+      "messageType": "execution.result",
+      "payload": "invalid/execution-result-exit-code-for-timeout.json",
+      "invalidField": "exitCode"
+    },
+    {
+      "name": "execution-result-inconsistent-output",
+      "messageType": "execution.result",
+      "payload": "invalid/execution-result-inconsistent-output.json",
+      "invalidField": "output"
+    },
+    {
+      "name": "execution-result-comma-time",
+      "messageType": "execution.result",
+      "payload": "invalid/execution-result-comma-time.json",
+      "invalidField": "startedAt"
+    },
+    {
+      "name": "execution-result-negative-zero-exit",
+      "messageType": "execution.result",
+      "payload": "invalid/execution-result-negative-zero-exit.json",
+      "invalidField": "exitCode"
+    },
+    {
+      "name": "execution-started-second-precision",
+      "messageType": "execution.started",
+      "payload": "invalid/execution-started-second-precision.json",
+      "invalidField": "startedAt"
+    },
+    {
+      "name": "execution-started-uppercase-hash",
+      "messageType": "execution.started",
+      "payload": "invalid/execution-started-uppercase-hash.json",
+      "invalidField": "actionHash"
+    },
+    {
+      "name": "execution-output-padded-data",
+      "messageType": "execution.output",
+      "payload": "invalid/execution-output-padded-data.json",
+      "invalidField": "data"
+    },
+    {
+      "name": "execution-output-line-break-in-data",
+      "messageType": "execution.output",
+      "payload": "invalid/execution-output-line-break-in-data.json",
+      "invalidField": "data"
+    },
+    {
+      "name": "execution-output-sequence-zero",
+      "messageType": "execution.output",
+      "payload": "invalid/execution-output-sequence-zero.json",
+      "invalidField": "sequence"
+    },
+    {
+      "name": "execution-output-stdin",
+      "messageType": "execution.output",
+      "payload": "invalid/execution-output-stdin.json",
+      "invalidField": "stream"
+    },
+    {
+      "name": "execution-cancel-missing-reason",
+      "messageType": "execution.cancel",
+      "payload": "invalid/execution-cancel-missing-reason.json",
+      "invalidField": "reason"
+    },
+    {
+      "name": "execution-cancel-principals-not-object",
+      "messageType": "execution.cancel",
+      "payload": "invalid/execution-cancel-principals-not-object.json",
+      "invalidField": "principals"
+    },
+    {
+      "name": "execution-cancel-nested-null",
+      "messageType": "execution.cancel",
+      "payload": "invalid/execution-cancel-nested-null.json",
+      "invalidField": "principals.userId"
+    }
+  ]
+}
