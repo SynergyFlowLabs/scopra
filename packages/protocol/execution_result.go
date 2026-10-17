@@ -191,8 +191,7 @@ func (r ExecutionResult) Validate() error {
 		case !validErrorCode(r.Error.Code):
 			return resultPayload.fieldError("error.code", "must match [a-z][a-z_]* and be at most 32 bytes")
 		case !validText(r.Error.Message, maxErrorMessage):
-			return resultPayload.fieldError("error.message",
-				"must be 1 to 1024 bytes of valid UTF-8 with no control, format, or line or paragraph separator characters")
+			return resultPayload.fieldError("error.message", untrustedTextRule)
 		}
 	} else if r.Error != (ResultError{}) {
 		return resultPayload.fieldError("error", unused)

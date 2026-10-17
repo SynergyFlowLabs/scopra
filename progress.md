@@ -3,7 +3,7 @@
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
 **Current increment:** `execution.cancel` (Step 20, the third and last increment of ADR-009)
-**Status:** In progress on `arena/c7a368c1-scopra`: acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
+**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -23,7 +23,7 @@ This file is the running engineering log. Each increment records scope, verifica
 
 ## Roadmap
 
-1. **Protocol foundation** — envelope v1 structural validation, strict execution request v1 decoding (ADR-007), the canonical request and action hash (ADR-008), and execution results, start notices, and output chunks (ADR-009, increments 1 and 2) are implemented and locally verified. `execution.cancel`, approval records, cryptographic verification, replay storage, and compatibility/version guarantees remain pending.
+1. **Protocol foundation** — envelope v1 structural validation, strict execution request v1 decoding (ADR-007), the canonical request and action hash (ADR-008), and every execution lifecycle message: results, start notices, output chunks, and cancellation (ADR-009) are implemented and locally verified. The plan's first Messenger task is complete. Approval records, compatibility tests across protocol versions, cryptographic verification, replay storage, and compatibility/version guarantees remain pending.
 2. **Local daemon and CLI** — the initial foreground Mio status service with a persistent per-user state directory and an exclusive state-directory lock, Mariner `scopra status`, a minimal read-only `scopra doctor` (platform, state-directory, workspace-registry, registered-workspace revalidation, and daemon checks), and `scopra workspace add/list/remove` are implemented. Workspace validation (ADR-004) and registry storage (ADR-005) exist; Mio checks its registry at startup and serves add, list, and remove over local IPC (ADR-006). Broader doctor checks, execution, service installation, and expanded CLI/IPC authorization remain pending.
 3. **Policy and containment boundary** — implement default-deny policy and rootless containment before enabling execution; no native fallback.
 4. **Structured execution and audit** — limits, cancellation, bounded output, and attributable events with adversarial tests.
@@ -1450,10 +1450,10 @@ Non-goals:
 
 #### Acceptance checklist (agreed before implementation)
 
-- [ ] `DecodeExecutionCancel` strictly decodes `execution.cancel` with exact keys (including the `principals` object) and ADR-009's field rules: identifiers, action hash, and `reason` under ADR-007's text rules. Errors wrap `ErrInvalidExecutionCancel` and name the field. The typed value gets `Validate` and `CanonicalJSON`.
-- [ ] `ExecutionCancel.ValidateAgainst(request)` checks the execution ID and the action hash, which is how Mio ignores a cancel that does not match the running execution. Principals are not compared, because the canceller may differ from the requester.
-- [ ] `Envelope.ExecutionCancel()` decodes only `execution.cancel`, like the other helpers.
-- [ ] Tests:
+- [x] `DecodeExecutionCancel` strictly decodes `execution.cancel` with exact keys (including the `principals` object) and ADR-009's field rules: identifiers, action hash, and `reason` under ADR-007's text rules. Errors wrap `ErrInvalidExecutionCancel` and name the field. The typed value gets `Validate` and `CanonicalJSON`.
+- [x] `ExecutionCancel.ValidateAgainst(request)` checks the execution ID and the action hash, which is how Mio ignores a cancel that does not match the running execution. Principals are not compared, because the canceller may differ from the requester.
+- [x] `Envelope.ExecutionCancel()` decodes only `execution.cancel`, like the other helpers.
+- [x] Tests:
   - ADR-009's example decodes, and its canonical bytes match an independent Python rendering;
   - field rules are tested at both sides of their bounds, with exact keys at both levels;
   - shared strictness errors wrap only `ErrInvalidExecutionCancel`;
@@ -1481,3 +1481,49 @@ Non-goals:
    - The shared tests were updated: the envelope round trip now includes `execution.cancel` (and the test was renamed `TestDecodeEnvelope_CarriesTheExecutionMessages`), the helper table includes `ExecutionCancel()`, and every shared strictness check must not wrap `ErrInvalidExecutionCancel` for other payloads.
 3. **Build failure.** `ExecutionCancel` and `DecodeExecutionCancel` were undefined.
 4. **Declarations-only skeleton.** Runtime red: 9 tests failed across 64 subtests. The fuzz seeds passed, as expected, because rejecting everything satisfies the fuzz property.
+
+#### Implementation and verification record
+
+- **`packages/protocol/execution_cancel.go`:**
+  - a strict decoder with exact keys at both levels, using the shared `cancelPayload` kind;
+  - `Validate`, covering four identifiers, the action hash, and the reason under ADR-007's text rules;
+  - `ValidateAgainst`, covering the execution ID and the action hash recomputed with ADR-008, but deliberately not the principals;
+  - `CanonicalJSON`, and `Envelope.ExecutionCancel()` through the shared `expectType`.
+- **Small shared refactors, guarded by unchanged tests:**
+  - `untrustedTextRule` now holds the rule text for the request's reason, the result's error message, and the cancel's reason, with the same wording as before.
+  - `canonicalPrincipals` builds the principals object for requests and cancels. ADR-008's byte-exact vectors still pass.
+- Green: all tests pass under the race detector with no skips.
+- Mutation testing, run in one sequential batch: 17 deliberate mutations, all caught:
+  - the identifier loop disabled, or the client ID dropped from it;
+  - the action hash or the reason unchecked, or the reason bound off by one;
+  - `Validate` skipped, or a partial value returned;
+  - the principals key set without `clientId`;
+  - swapped fields in the shared principals encoding, which ADR-008's vector 1 catches;
+  - the reason encoded from the wrong field;
+  - either comparison removed;
+  - a principals comparison added, which the cancel-by-other-principals case catches;
+  - the request or the cancel left unvalidated;
+  - the helper checking the wrong type;
+  - cancel errors wrapping the output error.
+- Fuzzing, run one after another, found no failures:
+  - `FuzzDecodeExecutionCancel`: 45 seconds, 2.92 million inputs. Its corpus held 19 accepted cancels with 16 distinct reasons, all passing the canonical round trip.
+  - `FuzzCanonicalFieldValues`, after the shared-principals refactor: 20 seconds, 0.52 million inputs.
+- Coverage: protocol 96.6% (up from 96.4%), with every new function at 100%.
+- Documentation:
+  - ADR-009 has an implementation status, and the ADR index says it is fully implemented.
+  - The plan's Messenger section lists the increments and **checks the first task**: versions, IDs, the canonical request, results, output chunks, errors, and states are all defined and implemented. The second task, compatibility tests across protocol versions, stays open.
+  - Also updated: the protocol package README, `docs/architecture/protocol.md`, the README status line, and the roadmap above.
+- Security review:
+  - A cancel identifies who asked, so the action is attributable.
+  - It names the action by its recomputed action hash.
+  - It authorizes nothing by itself.
+  - Its reason is untrusted text under ADR-007's rules.
+  - No high-confidence exploitable issue was found.
+- Local verification passed:
+  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `go test -race -count=1 -timeout 120s ./...` and ten repeated race runs of the protocol package;
+  - every package with `CGO_ENABLED=0`;
+  - `git diff --cached --check`;
+  - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64.
+  - The tree is current.
+- Pushes to `arena/c7a368c1-scopra`: test checkpoint `ac4bbff` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.

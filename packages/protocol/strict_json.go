@@ -21,6 +21,7 @@ var (
 	resultPayload  = payloadKind{invalid: ErrInvalidExecutionResult}
 	startedPayload = payloadKind{invalid: ErrInvalidExecutionStarted}
 	outputPayload  = payloadKind{invalid: ErrInvalidExecutionOutput}
+	cancelPayload  = payloadKind{invalid: ErrInvalidExecutionCancel}
 )
 
 // Rule texts shared by several payloads, so that a rule reads the same
@@ -30,6 +31,7 @@ const (
 	actionHashRule      = "must be 64 lowercase hexadecimal characters"
 	millisecondTimeRule = "must be a UTC time with millisecond precision between years 0 and 9999"
 	millisecondTimeForm = "must be RFC 3339 in UTC with exactly three fractional digits (YYYY-MM-DDTHH:MM:SS.sssZ)"
+	untrustedTextRule   = "must be 1 to 1024 bytes of valid UTF-8 with no control, format, or line or paragraph separator characters"
 )
 
 // millisecondTimeLayout is the only accepted form of ADR-009's times: RFC 3339

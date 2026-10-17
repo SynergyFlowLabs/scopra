@@ -64,6 +64,14 @@ Both payloads follow ADR-007's strict-document rules with exact keys. Their erro
 
 The envelope's closed set now includes both types (ADR-002, amended). `Envelope.ExecutionRequest()`, `ExecutionResult()`, `ExecutionStarted()`, and `ExecutionOutput()` each decode only their own message type and fail with `ErrUnexpectedMessageType` otherwise.
 
-Checking a sequence of chunks against a result is the receiver's job, and `execution.cancel` is not implemented yet.
+Checking a sequence of chunks against a result is the receiver's job.
 
-Run the package tests with `go test -race ./packages/protocol`. Fuzz the decoders and the canonical forms with `go test -run '^$' -fuzz FuzzDecodeExecutionRequest ./packages/protocol`, `go test -run '^$' -fuzz FuzzCanonicalFieldValues ./packages/protocol`, `go test -run '^$' -fuzz FuzzDecodeExecutionResult ./packages/protocol`, `go test -run '^$' -fuzz FuzzDecodeExecutionStarted ./packages/protocol`, `go test -run '^$' -fuzz FuzzDecodeExecutionOutput ./packages/protocol`, and `go test -run '^$' -fuzz FuzzExecutionOutputValues ./packages/protocol`.
+## Implemented: cancellation
+
+`DecodeExecutionCancel` decodes `execution.cancel`, which holds the execution ID, the action hash, the principals who asked for the cancellation, and an untrusted `reason`. It follows ADR-007's strict-document rules with exact keys at both levels, and its errors wrap `ErrInvalidExecutionCancel`.
+
+`ExecutionCancel.ValidateAgainst(request)` checks the execution ID and the action hash, so that Mio can ignore a cancel that does not match the running execution. It deliberately does not compare principals, because a user may cancel an agent's run. `Envelope.ExecutionCancel()` decodes only `execution.cancel`.
+
+Decoding authorizes nothing: who may cancel is cloud policy, and the envelope must already have been verified.
+
+Run the package tests with `go test -race ./packages/protocol`. Fuzz the decoders and the canonical forms with `go test -run '^$' -fuzz FuzzDecodeExecutionRequest ./packages/protocol`, `go test -run '^$' -fuzz FuzzCanonicalFieldValues ./packages/protocol`, `go test -run '^$' -fuzz FuzzDecodeExecutionResult ./packages/protocol`, `go test -run '^$' -fuzz FuzzDecodeExecutionStarted ./packages/protocol`, `go test -run '^$' -fuzz FuzzDecodeExecutionOutput ./packages/protocol`, `go test -run '^$' -fuzz FuzzExecutionOutputValues ./packages/protocol`, and `go test -run '^$' -fuzz FuzzDecodeExecutionCancel ./packages/protocol`.

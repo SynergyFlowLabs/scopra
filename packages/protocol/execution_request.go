@@ -187,7 +187,7 @@ func (r ExecutionRequest) Validate() error {
 	}
 	switch {
 	case !validText(r.Reason, MaxReasonBytes):
-		return requestPayload.fieldError("reason", "must be 1 to 1024 bytes of valid UTF-8 with no control, format, or line or paragraph separator characters")
+		return requestPayload.fieldError("reason", untrustedTextRule)
 	case !validRequestTime(r.CreatedAt):
 		return requestPayload.fieldError("createdAt", "must be a UTC time with second precision between years 0 and 9999")
 	case !validRequestTime(r.ExpiresAt):

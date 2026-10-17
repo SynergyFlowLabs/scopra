@@ -174,3 +174,5 @@ Each step is test-first, as before:
 1. Generalize ADR-007's strict-document helpers so that any payload can use them, with no change in behaviour. Then implement `execution.result`: its states, per-state key sets, and errors, with a strict decoder and a canonical encoder.
 2. Implement `execution.started` and `execution.output`, and add both types to the envelope's closed set.
 3. Implement `execution.cancel`.
+
+**Implementation status (2026-10-17):** all three steps are implemented in `packages/protocol` (Steps 18 to 20 in `progress.md`). Mio does not yet produce or act on these messages; that needs the relay and containment.

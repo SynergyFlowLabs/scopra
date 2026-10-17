@@ -32,11 +32,7 @@ func (r ExecutionRequest) CanonicalJSON() ([]byte, error) {
 
 	return canonicalObject(
 		canonicalMember{"executionId", canonicalString(r.ExecutionID)},
-		canonicalMember{"principals", canonicalObject(
-			canonicalMember{"userId", canonicalString(r.Principals.UserID)},
-			canonicalMember{"agentId", canonicalString(r.Principals.AgentID)},
-			canonicalMember{"clientId", canonicalString(r.Principals.ClientID)},
-		)},
+		canonicalMember{"principals", canonicalPrincipals(r.Principals)},
 		canonicalMember{"resources", canonicalObject(
 			canonicalMember{"machineId", canonicalString(r.Resources.MachineID)},
 			canonicalMember{"workspaceId", canonicalString(r.Resources.WorkspaceID)},
@@ -79,6 +75,16 @@ func (r ExecutionRequest) ActionHash() (string, error) {
 	digest.Write([]byte(actionHashLabel))
 	digest.Write(canonical)
 	return hex.EncodeToString(digest.Sum(nil)), nil
+}
+
+// canonicalPrincipals writes the principals object that requests and cancels
+// share.
+func canonicalPrincipals(p Principals) []byte {
+	return canonicalObject(
+		canonicalMember{"userId", canonicalString(p.UserID)},
+		canonicalMember{"agentId", canonicalString(p.AgentID)},
+		canonicalMember{"clientId", canonicalString(p.ClientID)},
+	)
 }
 
 // canonicalMember is an object member whose value is already canonical JSON.
