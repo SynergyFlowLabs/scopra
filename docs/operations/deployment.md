@@ -76,8 +76,9 @@ Every response carries `Content-Security-Policy` (`script-src 'none'`,
 `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
 `Referrer-Policy: strict-origin-when-cross-origin`,
 `Cross-Origin-Opener-Policy: same-origin`, and a `Permissions-Policy` that
-disables every feature the site does not use. `styles.css` is always
-revalidated; the favicon is cached for a day.
+disables every feature the site does not use. HTML and `styles.css` are always
+revalidated, so a promoted deployment is visible immediately; the favicon is
+cached for a day.
 
 The site itself loads no JavaScript, no web fonts, and no third-party
 stylesheets. The only external request is the badge images on the rendered
