@@ -29,7 +29,7 @@ func TestSecurity_EnvelopeAcceptsExactlyTheVersion1MessageTypes(t *testing.T) {
 	}
 }
 
-func TestDecodeEnvelope_CarriesTheDaemonToCloudMessages(t *testing.T) {
+func TestDecodeEnvelope_CarriesTheExecutionMessages(t *testing.T) {
 	now := time.Date(2026, time.October, 16, 12, 0, 0, 0, time.UTC)
 	tests := []struct {
 		messageType MessageType
@@ -40,6 +40,7 @@ func TestDecodeEnvelope_CarriesTheDaemonToCloudMessages(t *testing.T) {
 		{MessageTypeExecutionStarted, startedExample, func(e Envelope) (any, error) { return e.ExecutionStarted() }, startedExampleDecoded()},
 		{MessageTypeExecutionOutput, outputExample, func(e Envelope) (any, error) { return e.ExecutionOutput() }, outputExampleDecoded()},
 		{MessageTypeExecutionResult, resultExamples[StateFailed], func(e Envelope) (any, error) { return e.ExecutionResult() }, resultExampleDecoded(StateFailed)},
+		{MessageTypeExecutionCancel, cancelExample, func(e Envelope) (any, error) { return e.ExecutionCancel() }, cancelExampleDecoded()},
 	}
 	for _, test := range tests {
 		t.Run(string(test.messageType), func(t *testing.T) {
@@ -69,8 +70,9 @@ func TestEnvelope_PayloadHelpersDecodeOnlyTheirOwnType(t *testing.T) {
 		MessageTypeExecutionResult:  func(e Envelope) error { _, err := e.ExecutionResult(); return err },
 		MessageTypeExecutionStarted: func(e Envelope) error { _, err := e.ExecutionStarted(); return err },
 		MessageTypeExecutionOutput:  func(e Envelope) error { _, err := e.ExecutionOutput(); return err },
+		MessageTypeExecutionCancel:  func(e Envelope) error { _, err := e.ExecutionCancel(); return err },
 	}
-	payloadErrors := []error{ErrInvalidExecutionRequest, ErrInvalidExecutionResult, ErrInvalidExecutionStarted, ErrInvalidExecutionOutput}
+	payloadErrors := []error{ErrInvalidExecutionRequest, ErrInvalidExecutionResult, ErrInvalidExecutionStarted, ErrInvalidExecutionOutput, ErrInvalidExecutionCancel}
 	messageTypes := []MessageType{
 		MessageTypeExecutionRequest, MessageTypeExecutionResult, MessageTypeExecutionStarted, MessageTypeExecutionOutput,
 		MessageTypeExecutionCancel, MessageTypeMachineRevocation, MessageTypeAcknowledgement, "execution.progress",

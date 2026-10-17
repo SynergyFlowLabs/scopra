@@ -191,6 +191,8 @@
 ./packages/protocol/envelope.go
 ./packages/protocol/envelope_messages_test.go
 ./packages/protocol/envelope_test.go
+./packages/protocol/execution_cancel.go
+./packages/protocol/execution_cancel_test.go
 ./packages/protocol/execution_output.go
 ./packages/protocol/execution_output_test.go
 ./packages/protocol/execution_request.go

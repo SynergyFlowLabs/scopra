@@ -253,7 +253,7 @@ func checkAmbiguousJSON(t *testing.T, example []byte, member, nextKey, text stri
 		{name: "nesting over 64 levels", payload: replace(nextKey, `"deep": `+strings.Repeat("[", 70)+strings.Repeat("]", 70)+`, `+nextKey), wantText: "nesting"},
 		{name: "control characters in an unknown field", payload: replace(nextKey, `"\u001b[2J": 1, `+nextKey), wantText: `\x1b[2J`},
 	}
-	others := []error{ErrInvalidExecutionRequest, ErrInvalidExecutionResult, ErrInvalidExecutionStarted, ErrInvalidExecutionOutput}
+	others := []error{ErrInvalidExecutionRequest, ErrInvalidExecutionResult, ErrInvalidExecutionStarted, ErrInvalidExecutionOutput, ErrInvalidExecutionCancel}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			value, err := decode(test.payload)

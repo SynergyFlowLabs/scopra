@@ -2,8 +2,8 @@
 
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
-**Current increment:** `execution.started` and `execution.output` (Step 19, the second increment of ADR-009)
-**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
+**Current increment:** `execution.cancel` (Step 20, the third and last increment of ADR-009)
+**Status:** In progress on `arena/c7a368c1-scopra`: acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -1443,3 +1443,41 @@ Non-goals:
   - The tree is current.
 - Follow-up: increment 3, `execution.cancel`, which closes the plan's Messenger task.
 - Pushes to `arena/c7a368c1-scopra`: test checkpoint `f78e8aa` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.
+
+### 2026-10-17 — Step 20: `execution.cancel` (ADR-009, increment 3 of 3)
+
+- Selection: ADR-009's implementation plan, which the maintainer accepted, makes this the last increment. After Step 19, "continue" was stated to start it, and the maintainer replied "Continue". With it, every part of the plan's first Messenger task has been defined and implemented.
+
+#### Acceptance checklist (agreed before implementation)
+
+- [ ] `DecodeExecutionCancel` strictly decodes `execution.cancel` with exact keys (including the `principals` object) and ADR-009's field rules: identifiers, action hash, and `reason` under ADR-007's text rules. Errors wrap `ErrInvalidExecutionCancel` and name the field. The typed value gets `Validate` and `CanonicalJSON`.
+- [ ] `ExecutionCancel.ValidateAgainst(request)` checks the execution ID and the action hash, which is how Mio ignores a cancel that does not match the running execution. Principals are not compared, because the canceller may differ from the requester.
+- [ ] `Envelope.ExecutionCancel()` decodes only `execution.cancel`, like the other helpers.
+- [ ] Tests:
+  - ADR-009's example decodes, and its canonical bytes match an independent Python rendering;
+  - field rules are tested at both sides of their bounds, with exact keys at both levels;
+  - shared strictness errors wrap only `ErrInvalidExecutionCancel`;
+  - the envelope round trip and the helper table include the new type;
+  - a fuzz test covers the decoder.
+
+  The documentation is updated: ADR-009 is marked fully implemented, and the plan's first Messenger task is checked. Full verification passes.
+
+Non-goals:
+- Mio acting on a cancel: process-tree termination, and the `cancelled` result.
+- Authorizing who may cancel, which is cloud policy.
+- Retries and acknowledgements.
+- The plan's second Messenger task, compatibility tests across protocol versions.
+
+#### Test-first record
+
+1. **Independent reference:** the canonical form of ADR-009's cancel example was rendered with Python's `json` module.
+2. **Tests written first** (`execution_cancel_test.go`):
+   - the example decodes exactly, and its canonical bytes match the Python rendering;
+   - 29 field-rule rows at both sides of each bound, covering identifiers, the action hash, all three principals, and the reason (newline, bidirectional controls, a line separator, and length) with wrong JSON types;
+   - exact keys at both levels, and `principals` that is not an object;
+   - the shared strictness cases, plus a nested `null` and a nested duplicate in `principals`;
+   - `ValidateAgainst`: a cancel by *other* principals is still accepted (ADR-009), and another execution, another or changed action hash, an invalid cancel, or an invalid request is not;
+   - `Validate` on typed values, and a fuzz test.
+   - The shared tests were updated: the envelope round trip now includes `execution.cancel` (and the test was renamed `TestDecodeEnvelope_CarriesTheExecutionMessages`), the helper table includes `ExecutionCancel()`, and every shared strictness check must not wrap `ErrInvalidExecutionCancel` for other payloads.
+3. **Build failure.** `ExecutionCancel` and `DecodeExecutionCancel` were undefined.
+4. **Declarations-only skeleton.** Runtime red: 9 tests failed across 64 subtests. The fuzz seeds passed, as expected, because rejecting everything satisfies the fuzz property.
