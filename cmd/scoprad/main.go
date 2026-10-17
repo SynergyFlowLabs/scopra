@@ -12,6 +12,7 @@ import (
 
 	"github.com/SynergyFlowLabs/scopra/internal/buildinfo"
 	"github.com/SynergyFlowLabs/scopra/internal/hollow"
+	"github.com/SynergyFlowLabs/scopra/internal/journal"
 	"github.com/SynergyFlowLabs/scopra/internal/localipc"
 	"github.com/SynergyFlowLabs/scopra/internal/workspace"
 	"github.com/SynergyFlowLabs/scopra/internal/workspace/registry"
@@ -72,10 +73,18 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return errors.Join(fmt.Errorf("start Scopra Mio: %w", err), daemon.Close())
 	}
+	// The run journal is opened before serving: Mio never runs anything it
+	// cannot record (ADR-013). A journal it cannot open or validate prevents
+	// it from starting, like an unusable registry.
+	runJournal, err := journal.Open(daemon.StateDir())
+	if err != nil {
+		return errors.Join(fmt.Errorf("start Scopra Mio: %w", err), daemon.Close())
+	}
+	defer func() { _ = runJournal.Close() }()
 	// Local execution is always enabled (ADR-011): when containment cannot be
 	// offered, every run is answered with a typed refusal rather than silence.
 	executor, warning := newExecutor(workspaces, validator, config.sandboxImage)
-	if err := daemon.EnableExecutions(executor); err != nil {
+	if err := daemon.EnableExecutions(executor, runJournal); err != nil {
 		return errors.Join(fmt.Errorf("start Scopra Mio: %w", err), daemon.Close())
 	}
 	if _, err := fmt.Fprintln(stderr, "scoprad: listening"); err != nil {

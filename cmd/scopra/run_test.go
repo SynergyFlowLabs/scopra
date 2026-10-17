@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SynergyFlowLabs/scopra/internal/journal"
 	"github.com/SynergyFlowLabs/scopra/internal/localipc"
 	"github.com/SynergyFlowLabs/scopra/internal/workspace"
 	"github.com/SynergyFlowLabs/scopra/internal/workspace/registry"
@@ -518,7 +519,12 @@ func startRunDaemonOn(t *testing.T, stateDir string, executor *recordingExecutor
 	if err != nil {
 		t.Fatalf("localipc.Listen() error = %v", err)
 	}
-	if err := daemon.EnableExecutions(executor); err != nil {
+	runJournal, err := journal.Open(daemon.StateDir())
+	if err != nil {
+		t.Fatalf("journal.Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = runJournal.Close() })
+	if err := daemon.EnableExecutions(executor, runJournal); err != nil {
 		t.Fatalf("EnableExecutions() error = %v", err)
 	}
 	serveDaemon(t, daemon)
@@ -549,7 +555,12 @@ func startWorkspaceRunDaemon(t *testing.T) (string, *recordingExecutor) {
 	executor := &recordingExecutor{execute: func(_ context.Context, request protocol.ExecutionRequest, _ localipc.ExecutionEvents) (protocol.ExecutionResult, error) {
 		return succeededFor(request), nil
 	}}
-	if err := daemon.EnableExecutions(executor); err != nil {
+	runJournal, err := journal.Open(daemon.StateDir())
+	if err != nil {
+		t.Fatalf("journal.Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = runJournal.Close() })
+	if err := daemon.EnableExecutions(executor, runJournal); err != nil {
 		t.Fatalf("EnableExecutions() error = %v", err)
 	}
 	serveDaemon(t, daemon)

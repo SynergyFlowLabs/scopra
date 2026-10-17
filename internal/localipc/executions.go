@@ -87,11 +87,13 @@ type RunEvents struct {
 }
 
 // EnableExecutions makes the daemon serve execution.run (ADR-011) with
-// executor. It must be called before Serve; until then, execution.run is
-// treated as an unknown command and gets no reply.
-func (d *Daemon) EnableExecutions(executor Executor) error {
-	if d == nil || executor == nil {
-		return errors.New("localipc: a daemon and an executor are required")
+// executor and execution.logs (ADR-013) from runJournal. Both are required:
+// Mio never runs anything it cannot record, and it reads logs from the same
+// journal. It must be called before Serve; until then, both commands are
+// treated as unknown and get no reply.
+func (d *Daemon) EnableExecutions(executor Executor, runJournal RunJournal) error {
+	if d == nil || executor == nil || runJournal == nil {
+		return errors.New("localipc: a daemon, an executor, and a run journal are required")
 	}
 	d.serveMu.Lock()
 	defer d.serveMu.Unlock()
@@ -99,6 +101,7 @@ func (d *Daemon) EnableExecutions(executor Executor) error {
 		return ErrDaemonAlreadyServing
 	}
 	d.executor = executor
+	d.journal = runJournal
 	return nil
 }
 
@@ -330,11 +333,23 @@ func (d *Daemon) serveRun(ctx context.Context, connection *net.UnixConn, message
 		request:    request,
 	}
 
+	// A journal that cannot record makes every run unsafe to offer, so the
+	// refusal is an errored result and no command runs (ADR-013).
+	if d.journal.Broken() {
+		stream.result(protocol.ExecutionResult{
+			ExecutionID: request.ExecutionID,
+			ActionHash:  actionHash,
+			State:       protocol.StateErrored,
+			Error:       protocol.ResultError{Code: protocol.ErrorCodeInternal, Message: journalUnavailableMessage},
+		})
+		return
+	}
+
 	select {
 	case d.runs <- struct{}{}:
 		defer func() { <-d.runs }()
 	default:
-		stream.result(protocol.ExecutionResult{
+		d.recordAndSend(stream, request, protocol.ExecutionResult{
 			ExecutionID: request.ExecutionID,
 			ActionHash:  actionHash,
 			State:       protocol.StateRejected,
@@ -371,6 +386,14 @@ func (d *Daemon) serveRun(ctx context.Context, connection *net.UnixConn, message
 	if err != nil || result.ValidateAgainst(request) != nil {
 		return
 	}
+	d.recordAndSend(stream, request, result)
+}
+
+// recordAndSend journals one answered result and then sends it. A journal
+// failure cannot undo a finished run, so the result still goes to the client;
+// the journal is now broken and later runs are refused before they start.
+func (d *Daemon) recordAndSend(stream *runStream, request protocol.ExecutionRequest, result protocol.ExecutionResult) {
+	_ = d.journal.Append(request.Resources.WorkspaceID, result)
 	stream.result(result)
 }
 

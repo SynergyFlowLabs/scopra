@@ -243,7 +243,7 @@ func TestWorkspacePageEdges(t *testing.T) {
 	}
 }
 
-func TestWorkspaceErrorCodes(t *testing.T) {
+func TestReplyErrorCodes(t *testing.T) {
 	tests := []struct {
 		err  error
 		want string
@@ -285,9 +285,9 @@ func TestErrorRepliesCarryBoundedValidMessages(t *testing.T) {
 				t.Fatalf("encodeErrorReply() error = %v", err)
 			}
 			_, err = decodeWorkspaceReply(encoded, testRequestID)
-			var replyErr *WorkspaceError
+			var replyErr *ReplyError
 			if !errors.As(err, &replyErr) {
-				t.Fatalf("decodeWorkspaceReply(error reply) error = %v, want a *WorkspaceError", err)
+				t.Fatalf("decodeWorkspaceReply(error reply) error = %v, want a *ReplyError", err)
 			}
 			message := replyErr.Message
 			if replyErr.Code != CodeInternal || message == "" || len(message) > maxErrorMessageBytes || !utf8.ValidString(message) {
@@ -304,9 +304,9 @@ func TestErrorRepliesCarryBoundedValidMessages(t *testing.T) {
 func TestDecodeWorkspaceReplyAcceptsFutureErrorCodes(t *testing.T) {
 	data := replyPrefix + `"error":{"code":"quota_exceeded","message":"too many workspaces today"}}`
 	_, err := decodeWorkspaceReply([]byte(data), testRequestID)
-	var replyErr *WorkspaceError
+	var replyErr *ReplyError
 	if !errors.As(err, &replyErr) || replyErr.Code != "quota_exceeded" || replyErr.Message != "too many workspaces today" {
-		t.Fatalf("decodeWorkspaceReply() error = %v, want a *WorkspaceError with the unknown code", err)
+		t.Fatalf("decodeWorkspaceReply() error = %v, want a *ReplyError with the unknown code", err)
 	}
 }
 
@@ -338,7 +338,7 @@ func TestSecurity_DecodeWorkspaceRepliesRejectInvalidReplies(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			got, err := decodeWorkspaceReply([]byte(test.data), testRequestID)
-			var replyErr *WorkspaceError
+			var replyErr *ReplyError
 			if !errors.Is(err, ErrInvalidMessage) || errors.As(err, &replyErr) {
 				t.Fatalf("decodeWorkspaceReply() = %+v, %v; want ErrInvalidMessage", got, err)
 			}

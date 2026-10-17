@@ -2,7 +2,7 @@
 
 Scopra Mio is the local execution daemon. The executable remains `scoprad`.
 
-## Implemented foreground status service
+## Implemented foreground service
 
 ```text
 scoprad [--state-dir PATH] [--sandbox-image NAME@sha256:DIGEST] [--version]
@@ -14,12 +14,14 @@ Only one Mio serves a state directory at a time. While running, `scoprad` holds 
 
 At startup, after taking the lock, Mio opens its workspace registry, `<state-dir>/workspaces.json`, if the file exists (ADR-005). Mio does not create or rewrite the file at startup. If the file is unsafe (for example, readable by others, or a symlink) or invalid, `scoprad` exits 1 with the reason and leaves the file unchanged; fix or remove it yourself. Recorded workspaces are checked again before use, so a workspace directory that no longer exists does not stop Mio. Mio also needs to know your home directory, from `$HOME` or the account database, so that no workspace can contain it.
 
+After the registry, Mio opens its run journal, `<state-dir>/runs.jsonl` (ADR-013). It creates the file with mode `0600` if it is missing, requires a regular file owned by you with mode `0600` (a symlink is refused), discards a torn final line, and validates every committed line. If the journal cannot be opened or validated, `scoprad` exits 1 and runs nothing. Mio appends one metadata-only line for every answered run, including rejections and busy refusals: execution and workspace IDs, state, times, duration, exit code, stdout/stderr byte counts, truncation flag, chunk count, and error code. It never stores the command, arguments, reason, path, or output. The journal is bounded to 1000 entries and 1 MiB and rotates by dropping the oldest entries. If an append fails, the result already sent is unchanged, the journal becomes unusable, and later runs are answered with an `errored`/`internal` result without executing.
+
 `--sandbox-image` names the container image that the Hollow sandbox will run commands in (ADR-010).
 
 - It must be pinned by digest, as `name@sha256:` followed by 64 lowercase hexadecimal characters, for example `registry.example/scopra/runner@sha256:…`.
 - A malformed value, including an empty one, is a usage error (exit status 2) that is reported before Mio touches its state directory, even with `--version`.
 - Mio never pulls the image.
-- Nothing runs commands yet, so the setting has no visible effect for now. Without it, Mio will reject every execution with `containment_unavailable` once execution exists.
-- It is a command-line setting only. A persisted setting comes with the service installation.
+- Without it, Mio rejects every execution with `containment_unavailable`.
+- `scopra service install --sandbox-image` writes the setting into the systemd unit, which is the durable configuration (ADR-012).
 
-Mio serves `workspace.add`, `workspace.list`, and `workspace.remove` on the same socket (ADR-006). Any process running as you can use them, as it can edit your files, and they are accepted only on this local socket. Use `scopra workspace add/list/remove` to manage them. Registering a workspace authorizes nothing by itself: this daemon does not connect to Caloris/Goldstone, authorize actions, or execute commands. Same-UID local processes share the OS identity; peer credentials do not isolate them from one another. See ADR-003 for the IPC contract and security limits.
+Mio serves `workspace.add`, `workspace.list`, and `workspace.remove` on the same socket (ADR-006), local execution as `execution.run` (ADR-011), and the read-only journal as `execution.logs` (ADR-013). Any process running as you can use them, as it can edit your files, and they are accepted only on this local socket. Use `scopra workspace add/list/remove`, `scopra run`, and `scopra logs` to use them. When `--sandbox-image` and Podman are available, `execution.run` revalidates the registered workspace, runs the command in Hollow, and streams the start notice, output, and result; without them every run is refused with `containment_unavailable`. Registering a workspace authorizes nothing by itself: this daemon does not connect to Caloris/Goldstone or authorize actions, and the journal is not an audit trail. Same-UID local processes share the OS identity; peer credentials do not isolate them from one another. See ADR-003 for the IPC contract and security limits.

@@ -83,6 +83,8 @@
 ./cmd/scopra/containment_test.go
 ./cmd/scopra/doctor.go
 ./cmd/scopra/doctor_test.go
+./cmd/scopra/logs.go
+./cmd/scopra/logs_test.go
 ./cmd/scopra/main.go
 ./cmd/scopra/main_test.go
 ./cmd/scopra/run.go
@@ -130,6 +132,7 @@
 ./docs/decisions/010-hollow-rootless-podman.md
 ./docs/decisions/011-local-execution.md
 ./docs/decisions/012-systemd-user-service.md
+./docs/decisions/013-run-journal.md
 ./docs/decisions/README.md
 ./docs/operations
 ./docs/operations/runbooks.md
@@ -173,6 +176,11 @@
 ./internal/hollow/testdata/podman-info-v4.0.0-docs.json
 ./internal/identity
 ./internal/identity/README.md
+./internal/journal
+./internal/journal/journal.go
+./internal/journal/journal_linux.go
+./internal/journal/journal_other.go
+./internal/journal/journal_test.go
 ./internal/localipc
 ./internal/localipc/executions.go
 ./internal/localipc/executions_linux_test.go
@@ -183,6 +191,9 @@
 ./internal/localipc/lock_linux.go
 ./internal/localipc/lock_linux_test.go
 ./internal/localipc/lock_other.go
+./internal/localipc/logs.go
+./internal/localipc/logs_linux_test.go
+./internal/localipc/logs_test.go
 ./internal/localipc/messages.go
 ./internal/localipc/security_linux.go
 ./internal/localipc/security_other.go

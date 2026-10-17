@@ -366,7 +366,7 @@ func TestExitCode(t *testing.T) {
 		{name: "interrupted", err: fmt.Errorf("read response: %w", context.Canceled), want: 130},
 		{
 			name:       "failure with control characters",
-			err:        &localipc.WorkspaceError{Code: localipc.CodeInternal, Message: "disk\x1b[31m on\nfire"},
+			err:        &localipc.ReplyError{Code: localipc.CodeInternal, Message: "disk\x1b[31m on\nfire"},
 			want:       1,
 			wantStderr: `error: localipc: Mio reported internal: disk\x1b[31m on\nfire` + "\n",
 		},

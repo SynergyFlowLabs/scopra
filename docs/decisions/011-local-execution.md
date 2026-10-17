@@ -188,3 +188,7 @@ Ctrl-C closes the connection, which cancels the run.
 - **Raising the IPC frame limit for output:** rejected. Bounded frames are a core defence (ADR-006).
 - **A separate socket for execution:** rejected. It is the same trust level, and a second socket would add surface without adding protection.
 - **Running natively when containment is unavailable:** rejected (ADR-010).
+
+## Amendments
+
+- 2026-10-17: ADR-013 adds `<state-dir>/runs.jsonl`, a bounded metadata-only journal of answered runs, served read-only over `execution.logs` and rendered by `scopra logs`. It stores the result metadata above (IDs, state, times, exit code, output counts) but **no output and no command line**, so "output ... never logged" still holds.

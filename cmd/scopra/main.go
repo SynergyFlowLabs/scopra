@@ -46,6 +46,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return runWorkspace(ctx, args[1:], stdout, stderr)
 	case "run":
 		return runRun(ctx, args[1:], stdout, stderr)
+	case "logs":
+		return runLogs(ctx, args[1:], stdout, stderr)
 	case "service":
 		return runService(ctx, args[1:], stdout, stderr)
 	case "version", "--version":
@@ -132,6 +134,8 @@ commands:
       [--workdir DIR] [--timeout DURATION] [--memory BYTES] [--cpus N]
       [--pids N] [--output-limit BYTES] [--reason TEXT] -- EXECUTABLE [ARGUMENT...]
                                                    run a command in the workspace, inside Scopra Hollow
+  logs [--state-dir PATH] [--workspace ID] [--limit N] [--json]
+                                                   list recorded runs from Mio's journal
   service install [--state-dir PATH] [--sandbox-image IMAGE] [--scoprad PATH] [--force]
                                                    install Scopra Mio as a systemd user service
   service uninstall                                stop and remove the systemd user service

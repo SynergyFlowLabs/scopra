@@ -13,6 +13,7 @@ scopra workspace remove [--state-dir PATH] [--json] ID
 scopra run [--state-dir PATH] [--json] (--workspace ID | --path PATH) [--write]
            [--workdir DIR] [--timeout DURATION] [--memory BYTES] [--cpus N]
            [--pids N] [--output-limit BYTES] [--reason TEXT] -- EXECUTABLE [ARGUMENT...]
+scopra logs [--state-dir PATH] [--workspace ID] [--limit N] [--json]
 scopra service install [--state-dir PATH] [--sandbox-image IMAGE] [--scoprad PATH] [--force]
 scopra service uninstall
 scopra service status [--json]
@@ -133,6 +134,34 @@ Exit status:
 
 A dropped connection after the start notice ends the run with an error; `scopra run` never invents an exit status. Output is untrusted: `--json` is the safe form for programs, while the human mode writes bytes unchanged, exactly as a native run would.
 
+### `scopra logs`
+
+`scopra logs` reads Mio's bounded, metadata-only journal of answered runs (ADR-013) through the read-only `execution.logs` command. Mio records one line per answered run — including rejections and busy refusals — in `<state-dir>/runs.jsonl`: execution and workspace IDs, state, recorded/started/ended times, duration, exit code, stdout/stderr byte counts, the truncation flag, the chunk count, and the error code. It stores no command, arguments, working directory, reason, path, or output.
+
+```text
+scopra logs [--state-dir PATH] [--workspace ID] [--limit N] [--json]
+```
+
+- `--limit` is how many entries to show, 1 to 100, newest first. Default 20.
+- `--workspace ID` limits the result to one workspace, using the ID `workspace list` shows.
+- `--json` writes exactly one object, `{"schemaVersion":1,"entries":[…]}`, with `entries` always an array. Each entry has the stored form:
+
+```json
+{"schemaVersion":1,"executionId":"local-…","workspaceId":"…","state":"failed","recordedAt":"2026-10-17T06:42:04.217Z","startedAt":"2026-10-17T06:42:04.000Z","endedAt":"2026-10-17T06:42:04.000Z","durationMs":0,"exitCode":3,"stdoutBytes":23,"stderrBytes":18,"truncated":false,"chunks":2,"errorCode":""}
+```
+
+Without `--json`, one line per entry, newest first:
+
+```text
+2026-10-17T06:42:04.217Z  failed  exit 3  duration 0s  stdout 23 B  stderr 18 B  workspace …  execution local-…
+```
+
+`errored` and `rejected` entries show `error <code>` instead of an exit code, and entries with no times (rejected and errored results) show `duration -`. Text is terminal-escaped. An empty journal prints `No runs have been recorded.`, or `No runs have been recorded for workspace <id>.` with a filter.
+
+The journal is not an audit trail: it is owner-only (`0600`), bounded to 1000 entries and 1 MiB, rotates silently, and the user can edit or delete it. Output capture is not implemented. If Mio cannot open the journal it refuses to start; if an append fails, the result already computed is still returned but later runs are refused until Mio restarts.
+
+Exit status: `0` on success, `1` when Mio is unavailable or refuses, `2` for usage errors (an unknown flag, a stray argument, an invalid workspace ID, or a limit outside 1–100), and `130` when interrupted.
+
 ### `scopra service`
 
 `scopra service` manages Scopra Mio as a systemd **user** service (ADR-012). It never installs a system service and never uses root.
@@ -190,4 +219,4 @@ Exit status:
 
 Registering a workspace authorizes nothing by itself. `scopra run` runs a command in a registered workspace through Mio and Hollow; policy, approvals, and audit are not implemented. Any process running as you can use these commands, just as it can edit your files.
 
-`scopra status` and `scopra doctor` change nothing, `scopra workspace` changes only Mio's registrations, and `scopra run` runs a command in a registered workspace, read-only unless `--write` is given. See ADR-003 and ADR-006 for the local IPC trust boundary and remaining work.
+`scopra status` and `scopra doctor` change nothing, `scopra logs` only reads Mio's run journal, `scopra workspace` changes only Mio's registrations, and `scopra run` runs a command in a registered workspace, read-only unless `--write` is given. See ADR-003 and ADR-006 for the local IPC trust boundary and remaining work.

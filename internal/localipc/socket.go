@@ -47,9 +47,9 @@ var (
 
 // Daemon is Mio's foreground local IPC service. It serves status, workspace
 // registration commands once EnableWorkspaces is called (ADR-006), and local
-// execution.run once EnableExecutions is called (ADR-011). A Daemon holds an
-// exclusive lock on its state directory until it can no longer act, so at
-// most one Mio serves a state directory at a time.
+// execution.run and execution.logs once EnableExecutions is called (ADR-011,
+// ADR-013). A Daemon holds an exclusive lock on its state directory until it
+// can no longer act, so at most one Mio serves a state directory at a time.
 type Daemon struct {
 	listener      *net.UnixListener
 	stateDir      string
@@ -59,6 +59,7 @@ type Daemon struct {
 	lock          *os.File
 	workspaces    WorkspaceRegistry // nil until EnableWorkspaces
 	executor      Executor          // nil until EnableExecutions
+	journal       RunJournal        // nil until EnableExecutions
 	// frameWriteTimeout bounds writing each reply frame of a run.
 	frameWriteTimeout time.Duration
 	runs              chan struct{} // one token per execution in progress
@@ -487,13 +488,16 @@ func (d *Daemon) handleConnection(ctx context.Context, connection *net.UnixConn)
 // reply returns the encoded reply to a decoded request, or an error when the
 // request must go unanswered.
 func (d *Daemon) reply(message request) ([]byte, error) {
-	if message.Command == statusCommand {
+	switch message.Command {
+	case statusCommand:
 		return encodeResponse(StatusResponse{
 			ProtocolVersion: protocolVersion,
 			RequestID:       message.RequestID,
 			Status:          statusRunning,
 			DaemonVersion:   d.daemonVersion,
 		})
+	case logsCommand:
+		return d.replyToLogsCommand(message)
 	}
 	if d.workspaces == nil {
 		return nil, fmt.Errorf("%w: workspace commands are not enabled", ErrInvalidMessage)

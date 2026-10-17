@@ -236,7 +236,7 @@ func TestSecurity_AStalledReaderCancelsTheRun(t *testing.T) {
 		return cancelledResult(request), nil
 	}}
 	stateDir, daemon := listenForTest(t)
-	if err := daemon.EnableExecutions(executor); err != nil {
+	if err := daemon.EnableExecutions(executor, &fakeRunJournal{}); err != nil {
 		t.Fatalf("EnableExecutions() error = %v", err)
 	}
 	if daemon.frameWriteTimeout != 30*time.Second {
@@ -309,7 +309,7 @@ func TestSecurity_ShutdownCancelsRuns(t *testing.T) {
 		return cancelledResult(request), nil
 	}}
 	stateDir, daemon := listenForTest(t)
-	if err := daemon.EnableExecutions(executor); err != nil {
+	if err := daemon.EnableExecutions(executor, &fakeRunJournal{}); err != nil {
 		t.Fatalf("EnableExecutions() error = %v", err)
 	}
 	serveCtx, stopServing := context.WithCancel(context.Background())
@@ -408,14 +408,14 @@ func TestSecurity_RunsNeedAnEnabledExecutor(t *testing.T) {
 
 func TestSecurity_EnableExecutionsOnlyBeforeServe(t *testing.T) {
 	stateDir, daemon := listenForTest(t)
-	if err := daemon.EnableExecutions(nil); err == nil {
+	if err := daemon.EnableExecutions(nil, nil); err == nil {
 		t.Fatal("EnableExecutions(nil) error = nil, want an error")
 	}
 	serveInBackground(t, daemon)
 	if _, err := Status(requestContext(t), stateDir); err != nil {
 		t.Fatalf("Status() error = %v", err)
 	}
-	if err := daemon.EnableExecutions(&fakeExecutor{}); !errors.Is(err, ErrDaemonAlreadyServing) {
+	if err := daemon.EnableExecutions(&fakeExecutor{}, &fakeRunJournal{}); !errors.Is(err, ErrDaemonAlreadyServing) {
 		t.Fatalf("EnableExecutions() while serving error = %v, want ErrDaemonAlreadyServing", err)
 	}
 }
@@ -486,7 +486,7 @@ func (f *fakeExecutor) onlyRequest(t *testing.T) protocol.ExecutionRequest {
 func startExecutionDaemon(t *testing.T, executor Executor) string {
 	t.Helper()
 	stateDir, daemon := listenForTest(t)
-	if err := daemon.EnableExecutions(executor); err != nil {
+	if err := daemon.EnableExecutions(executor, &fakeRunJournal{}); err != nil {
 		t.Fatalf("EnableExecutions() error = %v", err)
 	}
 	serveInBackground(t, daemon)
