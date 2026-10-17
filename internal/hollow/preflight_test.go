@@ -136,6 +136,19 @@ func TestPodmanInfo_Check(t *testing.T) {
 	}
 }
 
+// TestAtLeastVersion checks the comparison with a minimum whose minor
+// version is not 0, as a future minimum such as 4.4 would have.
+func TestAtLeastVersion(t *testing.T) {
+	for version, want := range map[string]bool{
+		"4.4.0": true, "4.4": true, "4.10.1": true, "5.0.0": true, "10.0": true, "4.4.0-rc1": true,
+		"4.3.9": false, "4.3": false, "3.99.99": false, "4.x": false, "4.": false, ".4": false, "": false,
+	} {
+		if got := atLeastVersion(version, 4, 4); got != want {
+			t.Errorf("atLeastVersion(%q, 4, 4) = %v, want %v", version, got, want)
+		}
+	}
+}
+
 func TestSecurity_ParsePodmanInfoFailsClosed(t *testing.T) {
 	sample := documentationSample(t)
 	tests := []struct {

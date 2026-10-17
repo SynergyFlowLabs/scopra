@@ -140,7 +140,12 @@ For the second task, validation tests exist, and the reference payloads in `pack
 - [ ] Canonicalize workspace and record repository fingerprint.
 - [ ] Reject root and complete home directory.
 - [ ] Revalidate workspace before execution.
-**Hollow, first increment implemented (ADR-010):** `internal/hollow` builds the exact rootless `podman run` argument vector for a validated request. That covers no network, no capabilities, `no-new-privileges`, a read-only root, the workspace as the only mount, an empty environment, and limits with no swap. Nothing runs Podman yet, so the containment tasks below stay unchecked until the runner exists and has been verified on a host with rootless Podman.
+**Hollow, first increments implemented (ADR-010):**
+
+- `internal/hollow` builds the exact rootless `podman run` argument vector for a validated request: no network, no capabilities, `no-new-privileges`, a read-only root, the workspace as the only mount, an empty environment, and limits with no swap.
+- Its preflight check parses `podman info --format json` and fails closed unless Podman is 4.0 or later, rootless, on cgroups v2, with the `cpu`, `memory`, and `pids` controllers delegated.
+
+Nothing runs Podman yet, so the containment tasks below stay unchecked until the runner exists and has been verified on a host with rootless Podman.
 
 - [ ] Implement the Scopra Hollow rootless Podman adapter behind the containment interface.
 - [ ] Mount only workspace; default read-only.

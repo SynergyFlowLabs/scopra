@@ -3,7 +3,7 @@
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
 **Current increment:** Hollow preflight checks (Step 23, increment 2 of ADR-010)
-**Status:** In progress on `arena/c7a368c1-scopra`: acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
+**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -25,7 +25,7 @@ This file is the running engineering log. Each increment records scope, verifica
 
 1. **Protocol foundation** — envelope v1 structural validation, strict execution request v1 decoding (ADR-007), the canonical request and action hash (ADR-008), and every execution lifecycle message: results, start notices, output chunks, and cancellation (ADR-009) are implemented and locally verified. The plan's first Messenger task is complete, and reference payloads in `packages/test-fixtures/messenger/v1` pin the version 1 wire format. Approval records, compatibility tests across protocol versions, cryptographic verification, replay storage, and compatibility/version guarantees remain pending.
 2. **Local daemon and CLI** — the initial foreground Mio status service with a persistent per-user state directory and an exclusive state-directory lock, Mariner `scopra status`, a minimal read-only `scopra doctor` (platform, state-directory, workspace-registry, registered-workspace revalidation, and daemon checks), and `scopra workspace add/list/remove` are implemented. Workspace validation (ADR-004) and registry storage (ADR-005) exist; Mio checks its registry at startup and serves add, list, and remove over local IPC (ADR-006). Broader doctor checks, execution, service installation, and expanded CLI/IPC authorization remain pending.
-3. **Policy and containment boundary** — implement default-deny policy and rootless containment before enabling execution; no native fallback. ADR-010 decides the rootless Podman backend. Its first increment, the exact `podman run` argument builder in `internal/hollow`, is implemented and verified. Preflight checks, the runner, and adversarial tests remain, and the last two need a host with rootless Podman.
+3. **Policy and containment boundary** — implement default-deny policy and rootless containment before enabling execution; no native fallback. ADR-010 decides the rootless Podman backend. Its first two increments, the exact `podman run` argument builder and the fail-closed preflight check in `internal/hollow`, are implemented and verified. The runner and adversarial tests remain, and both need a host with rootless Podman.
 4. **Structured execution and audit** — limits, cancellation, bounded output, and attributable events with adversarial tests.
 5. **Enrollment, relay, approvals, and integrations** — proceed only after local foundations and security invariants are testable.
 
@@ -1725,15 +1725,15 @@ Non-goals:
 
 #### Acceptance checklist (agreed before implementation)
 
-- [ ] `internal/hollow` parses `podman info --format json` output: bounded to 1 MiB, ignoring fields it does not need so that newer Podman versions can add some, and failing closed on missing or mistyped required fields, non-JSON input, or trailing data.
-- [ ] A check requires Podman 4.0 or later (compared numerically), rootless operation, cgroups v2, and the `cpu`, `memory`, and `pids` controllers. Every failure wraps a new `ErrContainmentUnavailable` (ADR-009's `containment_unavailable`) and names every unmet requirement.
-- [ ] Tests:
+- [x] `internal/hollow` parses `podman info --format json` output: bounded to 1 MiB, ignoring fields it does not need so that newer Podman versions can add some, and failing closed on missing or mistyped required fields, non-JSON input, or trailing data.
+- [x] A check requires Podman 4.0 or later (compared numerically), rootless operation, cgroups v2, and the `cpu`, `memory`, and `pids` controllers. Every failure wraps a new `ErrContainmentUnavailable` (ADR-009's `containment_unavailable`) and names every unmet requirement.
+- [x] Tests:
   - the verbatim documentation sample parses to its exact values and is refused for its missing delegation;
   - a delegating variant derived from it is accepted;
   - a table covers each requirement at its edge (3.4.4 and 4.0.0, 10.0.0 compared numerically, suffixes, unrecognized versions, root, cgroups v1, each missing controller, and all failures at once);
   - fail-closed parsing cases;
   - a fuzz test.
-- [ ] The sample's provenance is documented in `testdata`. The documentation and ADR-010's status are updated, and full verification passes.
+- [x] The sample's provenance is documented in `testdata`. The documentation and ADR-010's status are updated, and full verification passes.
 
 Non-goals:
 - Running `podman info` (the runner, increment 3).
@@ -1754,3 +1754,39 @@ Non-goals:
    - While writing the tests, I tightened the fuzz invariant. It first rejected only single-digit majors below 4, which would have let an implementation that accepted `03.0` through.
 3. **Build failure.** `ParsePodmanInfo`, `PodmanInfo`, and `ErrContainmentUnavailable` were undefined.
 4. **Declarations-only skeleton.** Parsing fails, and the check accepts everything. Runtime red: 4 tests failed across 31 subtests. The fuzz seeds passed, as expected, because every parse error wraps the error value.
+
+#### Implementation and verification record
+
+- **`internal/hollow/preflight.go`:**
+  - `ParsePodmanInfo` decodes the required fields into pointers, so a missing field is distinguishable from `false`, `""`, or `[]`. It ignores unknown fields, so newer Podman versions can add some. It rejects output over 1 MiB, anything other than one JSON object, trailing data, and a missing required field. Every error wraps the new `ErrContainmentUnavailable`.
+  - `PodmanInfo.Check` collects every unmet requirement and reports them together, quoting untrusted text with `%q`.
+  - `atLeastVersion` compares major and minor as integers of at most 6 digits each, and ignores further components and suffixes.
+- **Found by the tests during implementation:** a version with an escape sequence after its numbers (`4.0.0\x1b[2J`) was first accepted, because suffixes were ignored. Versions are now limited to letters, digits, and `.-+~_`, so anything else fails closed.
+- **Found by mutation testing:**
+  - With a minimum of 4.0, loosening the major comparison was equivalent, because "minor of at least 0" always holds. `TestAtLeastVersion` now tests the helper with a 4.4 minimum, as a future minimum would use.
+  - A redundant missing-dot check was removed, because an empty minor version already fails.
+- Green: all tests pass under the race detector with no skips.
+- Mutation testing, run in sequential batches: 17 deliberate mutations, all caught:
+  - the size bound and the trailing-data check;
+  - all four presence checks, whose removal makes the parser panic;
+  - the version comparison and the minimum major version;
+  - root and cgroups v1 accepted;
+  - a missing `pids` requirement, and loose controller matching;
+  - the version character set, the digit bound, and minor truncation;
+  - reporting only the first problem, and the format of the controller list.
+- Fuzzing: `FuzzParsePodmanInfo` ran for 60 seconds, about 3.09 million inputs, with no failure.
+- Coverage: `internal/hollow` 98.0% (up from 95.7%), with every preflight function at 100%.
+- Documentation: the ADR-010 implementation status, the ADR index, the plan, the README status line, and the roadmap above. Each says that nothing runs Podman yet.
+- Security review:
+  - The check fails closed on anything it cannot establish, and never trusts a default value for a missing field.
+  - Podman's output is bounded, and text from it is quoted in errors.
+  - The real trust question, the `podman` binary on `PATH`, belongs to the runner (increment 3).
+  - No high-confidence exploitable issue was found.
+- Local verification passed:
+  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `go test -race -count=1 -timeout 120s ./...` and ten repeated race runs of `internal/hollow`;
+  - every package with `CGO_ENABLED=0`;
+  - `git diff --cached --check`;
+  - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64.
+  - The tree is current.
+- Pushes to `arena/c7a368c1-scopra`: test checkpoint `6f1064b` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.

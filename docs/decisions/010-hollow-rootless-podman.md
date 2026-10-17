@@ -127,7 +127,7 @@ These belong to later increments:
 
 Increments 1 and 2 can be built and tested in this sandbox. Increments 3 and 4 need a machine with rootless Podman.
 
-**Implementation status (2026-10-17):** increment 1 is implemented as `hollow.PodmanRunArgs` in `internal/hollow` (Step 22 in `progress.md`). Nothing runs Podman yet.
+**Implementation status (2026-10-17):** increments 1 and 2 are implemented in `internal/hollow`: `hollow.PodmanRunArgs` (Step 22), and `hollow.ParsePodmanInfo` with `PodmanInfo.Check` (Step 23). The preflight reads `podman info --format json`, which includes the version, and is tested on Podman's own documentation sample. Nothing runs Podman yet.
 
 ## Consequences
 
