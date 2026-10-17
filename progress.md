@@ -3,7 +3,7 @@
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
 **Current increment:** Hollow `podman run` argument builder (Step 22, increment 1 of ADR-010)
-**Status:** In progress on `arena/c7a368c1-scopra`: ADR-010 and the acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
+**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -25,7 +25,7 @@ This file is the running engineering log. Each increment records scope, verifica
 
 1. **Protocol foundation** — envelope v1 structural validation, strict execution request v1 decoding (ADR-007), the canonical request and action hash (ADR-008), and every execution lifecycle message: results, start notices, output chunks, and cancellation (ADR-009) are implemented and locally verified. The plan's first Messenger task is complete, and reference payloads in `packages/test-fixtures/messenger/v1` pin the version 1 wire format. Approval records, compatibility tests across protocol versions, cryptographic verification, replay storage, and compatibility/version guarantees remain pending.
 2. **Local daemon and CLI** — the initial foreground Mio status service with a persistent per-user state directory and an exclusive state-directory lock, Mariner `scopra status`, a minimal read-only `scopra doctor` (platform, state-directory, workspace-registry, registered-workspace revalidation, and daemon checks), and `scopra workspace add/list/remove` are implemented. Workspace validation (ADR-004) and registry storage (ADR-005) exist; Mio checks its registry at startup and serves add, list, and remove over local IPC (ADR-006). Broader doctor checks, execution, service installation, and expanded CLI/IPC authorization remain pending.
-3. **Policy and containment boundary** — implement default-deny policy and rootless containment before enabling execution; no native fallback.
+3. **Policy and containment boundary** — implement default-deny policy and rootless containment before enabling execution; no native fallback. ADR-010 decides the rootless Podman backend. Its first increment, the exact `podman run` argument builder in `internal/hollow`, is implemented and verified. Preflight checks, the runner, and adversarial tests remain, and the last two need a host with rootless Podman.
 4. **Structured execution and audit** — limits, cancellation, bounded output, and attributable events with adversarial tests.
 5. **Enrollment, relay, approvals, and integrations** — proceed only after local foundations and security invariants are testable.
 
@@ -1624,22 +1624,22 @@ Non-goals:
 
 #### Acceptance checklist (agreed before implementation)
 
-- [ ] ADR-010 is accepted, with any changes the maintainer asks for, and indexed as accepted.
-- [ ] `internal/hollow` builds the exact `podman run` argument vector of ADR-010 from a validated request, a canonical workspace path, and a pinned image. Tests pin the complete vector for the ADR-007 example and for ADR-008's vector 2.
-- [ ] It rejects, with typed errors, the following:
+- [x] ADR-010 is accepted, with any changes the maintainer asks for, and indexed as accepted.
+- [x] `internal/hollow` builds the exact `podman run` argument vector of ADR-010 from a validated request, a canonical workspace path, and a pinned image. Tests pin the complete vector for the ADR-007 example and for ADR-008's vector 2.
+- [x] It rejects, with typed errors, the following:
   - an invalid request;
   - a workspace path that is relative, not UTF-8, or contains control characters;
   - an image reference without a digest.
 
   It quotes the mount source as CSV, which is tested with paths containing `,`, `"`, `:`, `=`, and spaces, and checked against an `encoding/csv` round trip.
-- [ ] Property tests:
+- [x] Property tests:
   - exactly one bind mount, the workspace, read-only unless access is read-write;
   - no forbidden argument ever appears;
   - everything after the image is the request's executable and arguments, verbatim, including arguments that look like Podman options;
   - limits map exactly: millicores to an exact decimal CPU count, bytes with no swap, PIDs, and the timeout plus 10 seconds.
 
   A fuzz test over request text and paths keeps that shape.
-- [ ] No process is started, there is no new dependency, and full verification passes.
+- [x] No process is started, there is no new dependency, and full verification passes.
 
 Non-goals:
 - Preflight checks (increment 2).
@@ -1671,3 +1671,45 @@ Non-goals:
    - `make security-test` now includes `./internal/hollow`.
 2. **Build failure.** `RunSpec`, `PodmanRunArgs`, and the error values were undefined.
 3. **Declarations-only skeleton.** It rejects everything. Runtime red: all 7 tests failed across 24 subtests, including the fuzz seeds, because the skeleton's error is neither a request nor a workspace error.
+
+#### Implementation and verification record
+
+- **`internal/hollow/podman.go`:** `PodmanRunArgs(RunSpec)` emits ADR-010's table in order.
+  - Validation comes first:
+    - the request, through `ActionHash`, whose hash also names and labels the container;
+    - the workspace path, which must be absolute, not the root, clean, valid UTF-8 with no control characters, and at most 4095 bytes;
+    - the image, which needs a name starting with a letter or digit, only reference characters, and `@sha256:` with 64 lowercase hexadecimal characters.
+  - Errors quote paths and images with `%q`.
+  - The mount source is a CSV-quoted `src=` field with inner quotes doubled.
+  - CPUs are an exact decimal built with integer arithmetic.
+  - The entrypoint is a JSON array without HTML escaping.
+  - The request's arguments follow the image verbatim.
+- **Two rules go beyond ADR-010's text, as defence in depth that ADR-004 already guarantees for registered workspaces:** the path must be clean, and it must not be the filesystem root.
+- **Test-data correction during implementation:** the injection-attempt path first ended in `src=/`, a trailing slash, so it was correctly rejected as unclean before quoting mattered. It now ends in `/y`, and the test checks that the attempt stays a single `src` field when parsed as Podman parses it.
+- Green: all tests pass under the race detector with no skips. `make security-test` now covers `./internal/hollow`.
+- Mutation testing, run in one sequential batch: 34 deliberate mutations, all caught:
+  - every isolation option: network, capabilities, `no-new-privileges`, the SELinux option, the read-only root, logging, pulls, `/tmp` execution, the environment, `HOME`, init, and the user namespace;
+  - the mount quoting and quote doubling, and the access mode inverted or forced;
+  - the working-directory join;
+  - the swap limit, the CPU divisor and decimal trimming, the timeout backstop, and PIDs;
+  - the container name length;
+  - five image rules and five path rules;
+  - dropped arguments;
+  - an invalid request accepted, which makes the builder panic.
+- Fuzzing: `FuzzPodmanRunArgs` ran for 60 seconds, about 549,000 inputs, with no failure. Its corpus held 37 accepted inputs, 13 of them with `,`, `"`, `=`, `:`, or a space in the workspace path, each checked against Podman's CSV parsing.
+- Coverage: `internal/hollow` 95.7%. The only uncovered lines are the two encode-error returns, which cannot fail for a string slice written to memory. The other packages are unchanged.
+- Documentation: the ADR-010 implementation status, the ADR index, the plan, the system overview, the README status line, and the roadmap above. Each says that nothing runs Podman yet, and the plan's containment tasks stay unchecked.
+- Security review:
+  - The builder is a pure function: it starts no process and reads no environment.
+  - Request text can reach Podman only after the image (arguments) or inside a JSON array (the executable). Option names never come from the request.
+  - The mount source cannot inject options.
+  - No high-confidence exploitable issue was found.
+  - Every Podman behaviour that the vector relies on still has to be confirmed on a real rootless host in increment 3.
+- Local verification passed:
+  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `go test -race -count=1 -timeout 120s ./...` (8 packages) and ten repeated race runs of `internal/hollow`;
+  - every package with `CGO_ENABLED=0`;
+  - `git diff --cached --check`;
+  - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64.
+  - The tree is current.
+- Pushes to `arena/c7a368c1-scopra`: the proposal `a6d6d7b`, test checkpoint `1cf9fc6` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.

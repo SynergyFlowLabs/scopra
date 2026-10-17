@@ -127,6 +127,8 @@ These belong to later increments:
 
 Increments 1 and 2 can be built and tested in this sandbox. Increments 3 and 4 need a machine with rootless Podman.
 
+**Implementation status (2026-10-17):** increment 1 is implemented as `hollow.PodmanRunArgs` in `internal/hollow` (Step 22 in `progress.md`). Nothing runs Podman yet.
+
 ## Consequences
 
 - Commands run only where rootless Podman 4.0 or later and cgroup delegation exist. That excludes, for example, Ubuntu 22.04, which ships Podman 3.4. Elsewhere Mio says why it refuses and never falls back.

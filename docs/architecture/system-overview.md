@@ -9,7 +9,7 @@ AI agent / MCP host
   -> Scopra Mio (local daemon)
        -> Scopra Resolution (policy evaluation)
        -> Scopra Rupes (final local authorization and enforcement boundary)
-       -> Scopra Hollow (rootless isolated execution environment)
+       -> Scopra Hollow (rootless isolated execution environment; ADR-010)
        -> Scopra Catena (append-only audit and execution-event chain)
 ```
 

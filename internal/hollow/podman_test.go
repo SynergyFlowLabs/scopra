@@ -182,7 +182,7 @@ func TestPodmanRunArgs_QuotesTheMountSourceAsCSV(t *testing.T) {
 		"/home/alice/a=b",
 		"/home/alice/a b",
 		"/home/alice/ü/😀",
-		`/home/alice/x",dst=/etc,ro=false,"src=/`,
+		`/home/alice/x",dst=/etc,ro=false,"src=/y`,
 	} {
 		t.Run(workspace, func(t *testing.T) {
 			spec := testSpec(t)
