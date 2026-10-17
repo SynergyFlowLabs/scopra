@@ -2341,4 +2341,4 @@ The remaining survivor (`arguments = nil`) was unreachable code and was removed:
 
 Coverage: `cmd/scopra` 91.9% (the new `run.go` functions are 85–100%), `internal/localipc` 85.3%, `internal/execution` 100.0%, `internal/hollow` 98.0%, `cmd/scoprad` 73.1%.
 
-Commit `12bd706` (`feat(cli): add scopra run`) holds the implementation and the documentation updates, and `a9d9564` records this log. Both were pushed to `arena/fe74ddf7-scopra` (`7808799..a9d9564`), so PR #3 picks them up; the PR's title and body were updated to cover increments 2 and 3. CI is out of scope, as recorded in the Baseline section.
+Commit `12bd706` (`feat(cli): add scopra run`) holds the implementation and the documentation updates, `a9d9564` records this log, `b4c0904` adds the `cmd/scopra/README.md` section, and `c244e01` corrects the ADR index's ADR-010 status summary. All were pushed to `arena/fe74ddf7-scopra` (`7808799..c244e01`), so PR #3 picks them up; the PR's title and body were updated to cover increments 2 and 3. CI is out of scope, as recorded in the Baseline section.
