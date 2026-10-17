@@ -2,7 +2,7 @@
 
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
-**Current increment:** `scopra service` systemd user service (Step 31)
+**Current increment:** bounded run journal and `scopra logs` (Step 32)
 **Status:** Implemented on `arena/fe74ddf7-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
@@ -24,8 +24,8 @@ This file is the running engineering log. Each increment records scope, verifica
 ## Roadmap
 
 1. **Protocol foundation** — envelope v1 structural validation, strict execution request v1 decoding (ADR-007), the canonical request and action hash (ADR-008), and every execution lifecycle message: results, start notices, output chunks, and cancellation (ADR-009) are implemented and locally verified. The plan's first Messenger task is complete, and reference payloads in `packages/test-fixtures/messenger/v1` pin the version 1 wire format. Approval records, compatibility tests across protocol versions, cryptographic verification, replay storage, and compatibility/version guarantees remain pending.
-2. **Local daemon and CLI** — the initial foreground Mio status service with a persistent per-user state directory and an exclusive state-directory lock, Mariner `scopra status`, a minimal read-only `scopra doctor` (platform, state-directory, workspace-registry, registered-workspace revalidation, and daemon checks), and `scopra workspace add/list/remove` are implemented. Workspace validation (ADR-004) and registry storage (ADR-005) exist; Mio checks its registry at startup and serves add, list, and remove over local IPC (ADR-006). Broader doctor checks, execution, service installation, and expanded CLI/IPC authorization remain pending.
-3. **Policy and containment boundary** — implement default-deny policy and rootless containment before enabling execution; no native fallback. ADR-010 decides the rootless Podman backend. Its first two increments, the exact `podman run` argument builder and the fail-closed preflight check in `internal/hollow`, and the `scoprad --sandbox-image` setting are implemented and verified. The runner against a fake Podman, with its timeout, cancellation, per-run preflight, and leftover cleanup (3a-2 and 3a-3), is also done, and Mio now wires it into `execution.run` (ADR-011 increment 2), so a local run executes through Hollow when the host has rootless Podman and a pinned image. Still to do: verification on a real host (3b) and the adversarial tests, both of which need rootless Podman, and `scopra run` (increment 3).
+2. **Local daemon and CLI** — the initial foreground Mio status service with a persistent per-user state directory and an exclusive state-directory lock, Mariner `scopra status`, a minimal read-only `scopra doctor` (platform, state-directory, workspace-registry, registered-workspace revalidation, and daemon checks), and `scopra workspace add/list/remove` are implemented. Workspace validation (ADR-004) and registry storage (ADR-005) exist; Mio checks its registry at startup and serves add, list, and remove over local IPC (ADR-006). Local execution (`scopra run`, ADR-011, tested with fakes), `scopra service` (ADR-012), and the bounded metadata journal read by `scopra logs` (ADR-013) are implemented too. Broader doctor checks, output capture and retention, and expanded CLI/IPC authorization remain pending.
+3. **Policy and containment boundary** — implement default-deny policy and rootless containment before enabling execution; no native fallback. ADR-010 decides the rootless Podman backend. Its first two increments, the exact `podman run` argument builder and the fail-closed preflight check in `internal/hollow`, and the `scoprad --sandbox-image` setting are implemented and verified. The runner against a fake Podman, with its timeout, cancellation, per-run preflight, and leftover cleanup (3a-2 and 3a-3), is also done, and Mio now wires it into `execution.run` (ADR-011 increment 2), so a local run executes through Hollow when the host has rootless Podman and a pinned image. Still to do: verification on a real host (3b) and the adversarial tests, both of which need rootless Podman.
 4. **Structured execution and audit** — limits, cancellation, bounded output, and attributable events with adversarial tests.
 5. **Enrollment, relay, approvals, and integrations** — proceed only after local foundations and security invariants are testable.
 
@@ -2520,3 +2520,119 @@ Verification (Go 1.26.9, `GORACE=atexit_sleep_ms=0` for the fake daemons):
 - Not verified: a real systemd user manager and a real rootless Podman host, neither of which exists in this sandbox. The fakes script systemd's answers; they cannot prove its parsing. This is recorded, with the real-host check, as an open item rather than claimed.
 
 Commit `9bc6081` (`feat(service): install Mio as a systemd user service`) holds the implementation, the tests, ADR-012, and the documentation; a second commit records this log. Both were pushed to `arena/fe74ddf7-scopra`, so PR #3 picks them up. CI remains out of scope.
+### 2026-10-17 — Step 32: run journal and `scopra logs` (ADR-013)
+
+- Selection: the maintainer replied "Continue" to the proposal after Step 31. The plan's Milestone 1 names "local execution, status, logs, cancellation": cancellation and status exist, logs do not. This step adds a bounded, metadata-only run journal and a read-only way to read it.
+- Shape:
+  - Mio appends one metadata-only record per answered run to `$STATE/scopra/runs.jsonl`: execution ID, workspace ID, state, recorded/started/ended times, duration, exit code, stdout/stderr byte counts, truncation flag, chunk count, and error code. It stores no command, arguments, reason, path, or output.
+  - `scopra logs [--state-dir PATH] [--workspace ID] [--limit N] [--json]` reads the journal through a new read-only IPC command, `execution.logs`; `--limit` is 1–100 (default 20) and entries are newest first.
+  - The journal is bounded to 1000 entries and 1 MiB. When either bound would be exceeded the oldest entries are dropped by writing a temp file and renaming it; the file is owner-only 0600 and must be a regular file, not a symlink.
+  - Mio refuses to start when the journal cannot be opened or validated, so it never runs anything it cannot record. If an append fails later, the result the client already saw is left alone, the journal is marked unusable, and every later run is answered with an `errored`/`internal` result without executing.
+- Decisions:
+  - **Metadata only.** Output and command lines are exactly what a log would leak, so this increment records neither. The count, truncation flag, and chunk count still answer "did it produce output, and how much". A later ADR can add bounded output capture with its own retention and redaction rules.
+  - **Journal at the IPC boundary.** Every result Mio sends is journaled where it is sent, so refusals (unknown workspace, missing containment, busy) are recorded too, and there is one place to audit. Runs that never receive a result (malformed requests, Mio crashes) are not journaled.
+  - **Fail closed before running.** The journal is opened and validated before Mio serves. A later write failure cannot undo a finished run, so it is handled at the next boundary: the journal is marked unusable and later runs are refused without executing.
+  - **Only newline-terminated lines are committed.** A crash can leave a partial final line; Mio discards the unterminated tail at startup. Any other malformed line is corruption and refuses startup.
+  - **The read command is read-only and bounded.** `execution.logs` changes nothing, filters by workspace ID, caps the reply at 100 entries, and uses the same envelope, key checking, and error-reply rules as the workspace commands.
+  - **No new protocol code and no new ADR-009 state.** Busy refusals keep `busy`; an unusable journal is an `errored` result with `internal`, which already means "Mio failed" (ADR-009).
+- Status JSON and text: `scopra logs --json` prints exactly one object, `{"schemaVersion":1,"entries":[...]}`; each entry is the stored record. Human output prints one line per entry with the recorded time, state, exit or error detail, stream byte counts, workspace ID, and execution ID.
+- Non-goals: capturing stdout/stderr (deferred), retention policies beyond the fixed bounds, a delete/export command, remote access, journaling runs that never got a result, and changing ADR-009's result codes.
+
+#### Acceptance checklist (agreed before implementation)
+
+- [x] `scopra logs [--state-dir PATH] [--workspace ID] [--limit N] [--json]` exists and is listed in the root usage; unknown flags, stray arguments, an invalid workspace ID, and a limit outside 1–100 are usage errors (exit 2); the default limit is 20.
+- [x] Mio records one metadata-only entry per answered run, including rejections and busy refusals: execution ID, workspace ID, state, recorded/started/ended times, duration, exit code, stdout/stderr bytes, truncation flag, chunk count, and error code. It stores no command, arguments, reason, path, output, or user identity.
+- [x] The journal is bounded to 1000 entries and 1 MiB; when either bound would be exceeded the oldest entries are dropped by an atomic temp-file rewrite. The file is a regular file owned by the user with mode 0600 and is never a symlink.
+- [x] Opening the journal validates every committed line, discards a torn (unterminated) final line, and refuses any other corruption; Mio refuses to start when the journal cannot be opened or validated.
+- [x] If an append fails after a run, the result already sent is unchanged, the journal becomes unusable, and every later run is answered with an `errored`/`internal` result without executing.
+- [x] `execution.logs` is a read-only IPC command: request `{protocolVersion, requestId, command, workspaceId, limit}`, reply `{protocolVersion, requestId, entries}`; keys and values are strictly checked, entries are newest first, the workspace filter applies, and an unreadable journal gets an error reply.
+- [x] `scopra logs` prints one line per entry (newest first) with recorded time, state, exit code or error code, stdout/stderr bytes, workspace ID, and execution ID; an empty journal prints a clear message; text is terminal-escaped.
+- [x] `scopra logs --json` prints exactly one object `{"schemaVersion":1,"entries":[...]}` with the same newest-first order and fields as stored.
+- [x] Tests cover entry encoding and validation, bounds and rotation, torn tails, permissions and symlinks, an unusable journal, IPC request/reply validation, the daemon and client paths, and CLI flags/output; no real Podman or systemd is needed.
+- [x] Mutation testing of the journal and logs path catches every mutant; ADR-013 records the decision and its security considerations; ADR-011 and ADR-009 references, READMEs, the plan, system overview, tree, and this log are updated; `make security-test` covers the new security tests.
+- [x] `make lint`, `make test`, `make security-test`, the cross-platform build and vet, and a real-binary smoke test with a fake sandbox all pass.
+
+#### Test-first record
+
+Tests were written before the implementation, in this order: `internal/journal/journal_test.go` (the entry contract, the file contract, and the bounds), `internal/localipc/logs_test.go` (wire request and reply validation, client pre-checks), `internal/localipc/logs_linux_test.go` (a daemon with a fake journal, result recording, busy refusals, a broken journal), and `cmd/scopra/logs_test.go` (flags, text lines, JSON, empty output, filtering, terminal safety). Only then were `internal/journal/journal.go`, `journal_linux.go`, `journal_other.go`, `internal/localipc/logs.go`, and `cmd/scopra/logs.go` written.
+
+Recorded red run, captured by moving those five implementation files aside and leaving the tests in place (`sha256sum -c` confirmed every file was restored byte for byte):
+
+```text
+github.com/SynergyFlowLabs/scopra/internal/journal: no non-test Go files in /home/user/scopra/internal/journal
+# github.com/SynergyFlowLabs/scopra/internal/journal [github.com/SynergyFlowLabs/scopra/internal/journal.test]
+internal/journal/journal_test.go:51:61: undefined: Entry
+internal/journal/journal_test.go:53:16: undefined: NewEntry
+internal/journal/journal_test.go:67:18: undefined: NewEntry
+internal/journal/journal_test.go:71:30: undefined: SchemaVersion
+internal/journal/journal_test.go:157:17: undefined: NewEntry
+internal/journal/journal_test.go:187:20: undefined: DecodeEntry
+FAIL    github.com/SynergyFlowLabs/scopra/internal/journal [build failed]
+# github.com/SynergyFlowLabs/scopra/internal/localipc
+internal/localipc/socket.go:62:16: undefined: RunJournal
+internal/localipc/socket.go:499:7: undefined: logsCommand
+internal/localipc/socket.go:500:12: d.replyToLogsCommand undefined (type *Daemon has no field or method replyToLogsCommand)
+internal/localipc/executions.go:94:65: undefined: RunJournal
+internal/localipc/executions.go:343:81: undefined: journalUnavailableMessage
+FAIL    github.com/SynergyFlowLabs/scopra/internal/localipc [build failed]
+```
+
+`cmd/scopra` failed the same way on `undefined: runLogs`, behind the other two packages' errors.
+
+Two existing suites changed with the contract, so they were extended before the code existed: `internal/localipc/executions_linux_test.go` gained a `fakeRunJournal` and calls `EnableExecutions` with it, and `cmd/scopra/run_test.go` opens a real journal in each harness so the existing run tests exercise the recording path.
+
+Corrections found by the red/green cycles, kept as test or design fixes rather than code changes:
+
+- The decode table's `bad workspace ID` case replaced the execution ID first, because `testWorkspaceID` and the test request ID are the same string. It now replaces the complete `"workspaceId":"…"` pair.
+- A `truncated null` decode case was removed: `json.Unmarshal` accepts `null` for a `bool` without an error, so the case could not fail. The object-shape rules are covered by the surrounding-key, missing-key, and trailing-data cases instead.
+- `journal.NewEntry` rejects `failed` with exit code 0 (ADR-009 requires a failing code), so the fake-journal helpers use exit code 1 for a failed result.
+- The filter test in `logs_linux_test.go` needed a second workspace ID that differs from `testWorkspaceID`; both were identical at first.
+- The IPC request's unused-field rule means `workspaceId` and `limit` had to be added to the request struct, the exact key list, the encoder, the decoder, and the validator together; adding only the fields produced no reply.
+- Three build/vet corrections: a duplicate `ValidateRun` was removed (`executions.go` already owns it), an unused `time` import was dropped from a test, and `logsSchemaVersion` was declared once instead of in both the CLI and its test.
+
+#### Implementation and verification record
+
+**Journal (`internal/journal`).** One file, `<state-dir>/runs.jsonl`. The proposal wrote `$STATE/scopra/runs.jsonl`; the default state directory already ends in `scopra`, so the implemented path is `<state-dir>/runs.jsonl` (`~/.local/state/scopra/runs.jsonl` by default).
+
+- `Entry` carries exactly the fourteen stored fields: schema version, execution and workspace ID, state, recorded/started/ended times, duration, exit code, stdout/stderr byte counts, truncation flag, chunk count, and error code. `NewEntry` copies only those fields from a result, so a command, arguments, reason, path, or output cannot reach the file by construction.
+- `Entry.Validate` mirrors ADR-009: `succeeded` needs times and exit 0; `failed` needs times and 1–255; `timed_out`, `cancelled`, and `out_of_memory` need times and no exit code; `errored` needs an error code; `rejected` needs an error code and has no output counts. A rejected run's output counts must all be zero. Byte counts must fit the chunk count (`chunks ≤ stdoutBytes + stderrBytes ≤ chunks × 64 KiB`), each count is at most 2^30, and timestamps are UTC with exactly millisecond precision.
+- `MarshalJSON` validates first and emits the stored key order. `DecodeEntry` accepts valid UTF-8, exactly the fourteen keys, no duplicates, no unknown or incorrectly-cased keys, no trailing data, and then re-applies every `Validate` rule. Entry size is bounded at 8 KiB before parsing.
+- `Open` requires an absolute real state directory, creates the file with `O_EXCL` and explicitly `chmod 0600` (the umask would otherwise mask it), refuses a non-regular file, a symlink, a foreign owner, or a mode other than `0600`, and re-checks the opened inode with `os.SameFile`. It then discards an unterminated final line, `fsync`s, and validates every committed line; any other malformed line refuses startup.
+- `Append` writes one line and `fsync`s it. When the 1000-entry or 1 MiB bound would be exceeded, `compactLocked` keeps the newest entries that fit, `rewriteLocked` writes a `0600` temp file in the same directory, `fsync`s, renames over the journal, `fsync`s the directory, reopens, and re-validates the new file as owner-only. A failure at any point marks the journal broken.
+- `Entries(workspaceID, limit)` reads the whole file under the 1 MiB bound, drops a torn tail, parses strictly, filters by workspace ID, and returns newest first. It does not mark the journal broken: a read failure is not a write failure.
+- `Broken` reports the sticky write failure. `Close` is idempotent. `journal_linux.go` provides the platform flag and owner check (`syscall.Stat_t.Uid`); `journal_other.go` fails closed.
+
+**Daemon and IPC (`internal/localipc`, `cmd/scoprad`).**
+
+- `execution.logs` was added to the request struct, the exact-key list, the encoder, the decoder, and the validator: `workspaceId` is optional and must be 32 lowercase hexadecimal characters, `limit` is required and 1–100. The reply is `{protocolVersion, requestId, entries}` and is decoded with the existing strict envelope rules; an unreadable journal becomes a typed `ReplyError` with the journal's message.
+- `RunJournal` is a small interface (`Append`, `Entries`, `Broken`) so the daemon tests can use a fake and the journal's own tests can cover the file.
+- `Daemon.EnableExecutions(executor, runJournal)` now requires both; the reply switch serves `execution.logs` only when they were enabled. `replyToLogsCommand` answers without touching anything.
+- `cmd/scoprad` opens the journal after the workspace registry and before serving. A failure exits 1, so Mio never serves runs it cannot record. `recordAndSend` appends every answered result — normal results, rejections, and busy refusals — before sending it; an append error is deliberately ignored for that result, because it has already been computed and the client must see the truth. The journal's sticky broken flag then answers every later run with an `errored`/`internal` result and the fixed message "Mio could not record its run journal", without executing.
+- `localipc.WorkspaceError` became `localipc.ReplyError`, because the logs reply now uses the same typed error and its name no longer described only workspace replies. All call sites and comments were updated; the wire shape did not change.
+
+**CLI (`cmd/scopra`).** `scopra logs [--state-dir PATH] [--workspace ID] [--limit N] [--json]` parses and checks its flags before contacting Mio: default limit 20, 1–100, a 32-hex workspace ID, no positional arguments. Text output is one line per entry, newest first, ending with the workspace and execution IDs; rejected and errored entries show `error <code>`, entries without times show `duration -`, and every line passes through `terminalSafe`. JSON output is exactly one object with `schemaVersion` 1 and `entries` always an array. The empty messages are `No runs have been recorded.` and `No runs have been recorded for workspace <id>.` Usage errors exit 2, an unavailable or refusing Mio exits 1, and interruption exits 130.
+
+**Verification.**
+
+- `make lint`: `gofmt -l` empty and `go vet ./...` clean.
+- `make test` (`go test -race ./...`): all ten packages pass.
+- `make security-test` now includes `./internal/journal`; every listed package passes with `-race`. The new security tests are `TestSecurity_JournalRefusesASymlink`, `TestSecurity_JournalRefusesUnsafeMode`, and `TestSecurity_LogsRejectsMalformedRequestsAndStaysReadOnly` (malformed logs requests are dropped with no journal or file change, and the existing entry is still readable).
+- Cross-platform: `go build` and `go vet` pass for darwin/amd64, windows/amd64, and linux/arm64, so `journal_other.go` compiles and vets everywhere.
+- Coverage over the three touched packages (total 86.6%): `internal/journal` 81.0%, `internal/localipc` 85.8%, `cmd/scopra` 89.9%. Every function in `internal/localipc/logs.go` is 100%, as are `parseLogsOptions` and `formatLogEntry`; `runLogs` is 90.9%, and the journal's remaining gaps are I/O-failure paths such as `rewriteLocked` (61.1%) and `openJournalFile` (62.5%).
+- Mutation testing: 54 mutants across `internal/journal/journal.go`, `internal/localipc/{logs,messages,executions}.go`, and `cmd/scopra/logs.go`; 51 were caught and 3 survived, all three proven equivalent:
+  - removing the explicit trailing-data check in `checkEntryKeys` is masked by `json.Unmarshal`, which also rejects a second top-level value;
+  - removing the client's own limit check, or its workspace-ID check, is masked by `encodeRequest`, which re-runs the same validation before dialing. Both layers remain as defence in depth.
+  One mutant initially failed to build because it left `info` unused; it was rewritten to compile (`maxBytes * 1024`) and was then caught. Every mutated file was restored byte for byte (`journal.go` `17cf37c5…6eff6`, `localipc/logs.go` `7743b28e…fff`, `cmd/scopra/logs.go` `74098535…e79e`, `executions.go` `b4b121ac…08b9`, `messages.go` `cf2fa0f1…225b`).
+- Real-binary smoke on Linux (`/tmp/smoke32`, a shell-script fake `podman` that scripts `info`, `image exists`, `run`, `inspect`, `rm`, `ps`, and `kill`; a temporary `HOME`; state directory mode `0700`):
+  - `scoprad --sandbox-image …` started and printed only `scoprad: listening`;
+  - `workspace add --json` registered the directory;
+  - a successful run printed the fake sandbox's stdout/stderr, exited 0, and was recorded as `succeeded`, exit 0, `stdoutBytes` 23, `stderrBytes` 18, `chunks` 2;
+  - a run whose fake container exited 3 made `scopra run` exit 3 and was recorded as `failed`, exit 3;
+  - a run with an unregistered workspace exited 1 and was recorded as `rejected`/`workspace_unavailable` with zero output;
+  - `scopra logs` printed the three entries newest first (`rejected`, `failed`, `succeeded`), and `scopra logs --json` printed schema 1 with the same fields and order;
+  - the journal file was `-rw-------`, contained no copy of the command (`grep -c "echo hello"` was 0), and survived a daemon restart (`logs --limit 10` still returned three lines);
+  - `--workspace <absent>` printed the empty message in text and `"entries":[]` in JSON; `--limit 0`, `--limit 101`, `--workspace nope`, and a stray argument each exited 2 with a specific message; `-h` exited 0; a missing daemon exited 1.
+- Security review: covered data minimisation (no command, arguments, reason, path, output, or identity beyond the two IDs), file permissions and ownership, symlink and inode-swap refusal, atomic replacement, the 1 MiB/1000-entry/8 KiB/1–100 limits, strict decoding of every stored line (unknown keys, duplicates, trailing data, invalid UTF-8, out-of-range counts), fail-closed startup, the one-run window after a failed append, terminal escaping, and the unchanged same-UID IPC boundary. No high-confidence exploitable issue was found. The documented limits are that the journal is not tamper-evident (the user can edit or delete it, and it is not Catena) and that same-UID processes can read it, as they could read the file.
+- Not verified: a real rootless-Podman host and a real systemd user manager, neither of which exists in this sandbox; the fake `podman` scripts its answers and cannot prove parsing of real Podman output. Output capture, retention beyond the fixed bounds, and any remote log access remain out of scope and are recorded as such in ADR-013.
+
+Commit `26590a6` (`feat(journal): record run metadata and add scopra logs`) holds the implementation, the tests, ADR-013, and the documentation; a second commit records this log. The increment was pushed to `arena/fe74ddf7-scopra` as `0294819..26590a6`, so PR #3 picks it up. CI remains out of scope.
