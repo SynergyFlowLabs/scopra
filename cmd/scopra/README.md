@@ -13,6 +13,9 @@ scopra workspace remove [--state-dir PATH] [--json] ID
 scopra run [--state-dir PATH] [--json] (--workspace ID | --path PATH) [--write]
            [--workdir DIR] [--timeout DURATION] [--memory BYTES] [--cpus N]
            [--pids N] [--output-limit BYTES] [--reason TEXT] -- EXECUTABLE [ARGUMENT...]
+scopra service install [--state-dir PATH] [--sandbox-image IMAGE] [--scoprad PATH] [--force]
+scopra service uninstall
+scopra service status [--json]
 scopra version
 ```
 
@@ -129,6 +132,26 @@ Exit status:
 - `2` for usage errors, which are detected before Mio is contacted.
 
 A dropped connection after the start notice ends the run with an error; `scopra run` never invents an exit status. Output is untrusted: `--json` is the safe form for programs, while the human mode writes bytes unchanged, exactly as a native run would.
+
+### `scopra service`
+
+`scopra service` manages Scopra Mio as a systemd **user** service (ADR-012). It never installs a system service and never uses root.
+
+- `install` writes `$XDG_CONFIG_HOME/systemd/user/scoprad.service` (`~/.config/systemd/user/scoprad.service` by default), runs `systemctl --user daemon-reload`, then `systemctl --user enable --now scoprad.service`. `--state-dir` is resolved exactly as `scoprad` resolves it and is written into the unit. `--sandbox-image` must be pinned by digest and is written into the unit; without it, Mio starts but refuses every run, and the command says so. `--scoprad` selects the daemon binary (default: `scoprad` on `PATH`, then beside `scopra`).
+- `uninstall` stops and disables the unit, removes it, and reloads systemd. It removes nothing when Scopra Mio is not installed.
+- `status` is read-only. It reports whether the unit exists, whether Scopra wrote it, and systemd's `is-enabled` and `is-active` answers. `--json` writes one object on one line:
+
+```json
+{"schemaVersion":1,"unitPath":"/home/alice/.config/systemd/user/scoprad.service","installed":true,"managed":true,"enabled":"enabled","active":"active"}
+```
+
+`schemaVersion` changes only for incompatible changes. When the unit is absent, only `schemaVersion`, `unitPath`, and `installed` are present.
+
+The unit runs `scoprad` with the absolute paths and the image in `ExecStart`; there is no separate configuration file. Arguments are escaped as systemd reads them, control characters are refused, the unit is written atomically with mode 0600, and its directory chain must be private (a root-owned sticky directory such as `/tmp` is allowed). Install refuses to overwrite a unit it did not write unless `--force` is given, and uninstall always refuses one. If `daemon-reload` or `enable --now` fails, the previous unit (or its absence) is restored before the error is reported.
+
+The unit deliberately omits `NoNewPrivileges`, `ProtectHome`, and `ProtectSystem`: rootless Podman needs its setuid helpers and the workspace under the home directory. Its containment boundary is Hollow, not systemd.
+
+Exit status: `0` on success, including "not installed" and a stopped service; `1` when `systemctl`, `scoprad`, the filesystem, or the unit refuses the operation; `2` for usage errors, such as an unpinned image or an unknown flag. `130` when interrupted.
 
 ### `scopra workspace`
 

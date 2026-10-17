@@ -23,6 +23,9 @@ func TestMain(m *testing.M) {
 	if dir := os.Getenv(doctorFakePodmanEnv); dir != "" {
 		os.Exit(fakePodman(dir, os.Args[1:]))
 	}
+	if dir := os.Getenv(fakeSystemctlEnv); dir != "" {
+		os.Exit(fakeSystemctl(dir, os.Args[1:]))
+	}
 	// `scopra doctor` resolves podman from PATH. Point PATH at a private empty
 	// directory so that no test depends on the host's Podman; tests that need
 	// one call startFakePodman, which prepends its own directory.

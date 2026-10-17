@@ -46,6 +46,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return runWorkspace(ctx, args[1:], stdout, stderr)
 	case "run":
 		return runRun(ctx, args[1:], stdout, stderr)
+	case "service":
+		return runService(ctx, args[1:], stdout, stderr)
 	case "version", "--version":
 		if len(args) != 1 {
 			return failUsage(stderr, "version takes no arguments")
@@ -130,6 +132,10 @@ commands:
       [--workdir DIR] [--timeout DURATION] [--memory BYTES] [--cpus N]
       [--pids N] [--output-limit BYTES] [--reason TEXT] -- EXECUTABLE [ARGUMENT...]
                                                    run a command in the workspace, inside Scopra Hollow
+  service install [--state-dir PATH] [--sandbox-image IMAGE] [--scoprad PATH] [--force]
+                                                   install Scopra Mio as a systemd user service
+  service uninstall                                stop and remove the systemd user service
+  service status [--json]                          report the unit and its systemd state
   version                                          print the scopra version
 
 Flags go before PATH or ID.

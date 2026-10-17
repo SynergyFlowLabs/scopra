@@ -87,6 +87,10 @@
 ./cmd/scopra/main_test.go
 ./cmd/scopra/run.go
 ./cmd/scopra/run_test.go
+./cmd/scopra/service.go
+./cmd/scopra/service_linux.go
+./cmd/scopra/service_other.go
+./cmd/scopra/service_test.go
 ./cmd/scopra/workspace.go
 ./cmd/scopra/workspace_test.go
 ./cmd/scoprad
@@ -125,6 +129,7 @@
 ./docs/decisions/009-execution-lifecycle-messages.md
 ./docs/decisions/010-hollow-rootless-podman.md
 ./docs/decisions/011-local-execution.md
+./docs/decisions/012-systemd-user-service.md
 ./docs/decisions/README.md
 ./docs/operations
 ./docs/operations/runbooks.md
