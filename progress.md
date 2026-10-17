@@ -2847,3 +2847,10 @@ Commit `26590a6` (`feat(journal): record run metadata and add scopra logs`) hold
 - The service opt-out is explicit and fail-closed: interactive no-service selection and `--yes --no-service` also probe the current process cgroup before writing binaries when `scoprad` is present. The CLI flag now skips the service-choice screen rather than silently falling back to the default service choice. A failed direct check blocks the install and points back to the delegated service option.
 - Test coverage: exact `systemd-run` argv and path validation in `internal/hollow`; injected delegated/current-context checks in `internal/installer`; fake `systemd-run` plus fake Podman for doctor; no-service TUI/CLI refusal and pass cases; generated service-unit expectation; documentation regenerated from Markdown.
 - Verification: `go test ./...`, `go test -race ./...`, `go vet ./...`, `make lint`, `make site`, and `git diff --check` pass on this branch. No real systemd user manager or Podman host is available in the sandbox, so host behavior remains unverified. No release or deployment has been made in this increment.
+
+### 2026-10-18 — Step 41: publish the repaired installer
+
+- Built `v0.1.0-alpha.8` for Linux amd64 and arm64 from the fixed branch using `scripts/release.sh`; the committed checksums verify, and the extracted amd64 binary reports `scopra v0.1.0-alpha.8`.
+- Updated `releases/latest.txt` and the pinned-version examples, regenerated the site, and added the new immutable release directory to `apps/docs-site/public` and `docs/repository-tree.txt`.
+- Deployed commit `4e1c686` to Vercel production as `dpl_AJWec11DRPEBHzhfyPoYByVJ6cvq`. Vercel reports `READY`, `PROMOTED`, and alias assignment to `scopra-six.vercel.app`.
+- Verification: `go test ./... -count=1`, `go test -race ./...`, `go vet ./...`, `make lint`, `make site`, `git diff --check`, SHA-256 verification for both release archives, and `scopra version` pass. No real Podman/systemd host was available for a host-level installation test.
