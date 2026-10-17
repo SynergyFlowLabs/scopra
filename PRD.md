@@ -4,7 +4,9 @@
 **Product:** Scopra  
 **Category:** Controlled execution infrastructure for AI agents  
 **Initial target:** Linux private alpha  
-**Last updated:** 2026-10-16
+**Last updated:** 2026-10-17
+
+**License:** MIT, free for everyone, with no pricing model (ADR-014)
 
 ## Executive Summary
 
@@ -42,6 +44,7 @@ Scopra becomes the trusted execution layer between AI agents and real computing 
 - Multi-agent delegation
 - Secret injection
 - Team RBAC, SSO, or self-hosting
+- Pricing, paid plans, billing, usage charges, and feature gating
 
 ## Users
 
@@ -67,6 +70,7 @@ Governs shared machines, agents, policies, approvals, identity lifecycle, and re
 6. Security remains usable.
 7. Auditability is part of execution.
 8. Escalation is narrow and explicit.
+9. Free and open source, with no pricing model: every capability is released under the MIT License, and there are no paid tiers, usage-based charges, plan limits, or feature gates.
 
 ## Alpha Scope
 

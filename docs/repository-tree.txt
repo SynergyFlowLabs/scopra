@@ -60,6 +60,7 @@
 ./CONTRIBUTING.md
 ./LICENSE
 ./Makefile
+./NOTICE
 ./PRD.md
 ./README.md
 ./SECURITY.md
@@ -133,6 +134,7 @@
 ./docs/decisions/011-local-execution.md
 ./docs/decisions/012-systemd-user-service.md
 ./docs/decisions/013-run-journal.md
+./docs/decisions/014-open-source-no-pricing.md
 ./docs/decisions/README.md
 ./docs/operations
 ./docs/operations/runbooks.md

@@ -1,0 +1,26 @@
+# Notices
+
+Scopra is free and open-source software, licensed under the MIT License. See
+`LICENSE`.
+
+Scopra is distributed at no charge and with no pricing model: there are no
+paid tiers, subscriptions, usage-based charges, plan limits, feature gates, or
+account requirements. Every capability described in the documentation is
+available under the same license to everyone.
+
+## Third-party material
+
+The MIT License above covers original Scopra code and documentation. The
+following material keeps its own license:
+
+- `internal/hollow/testdata/podman-info-v4.0.0-docs.json` is copied verbatim
+  from the Podman documentation (`containers/podman`, tag `v6.1.4`,
+  `docs/source/markdown/podman-info.1.md`, lines 175–325). Podman is licensed
+  under the Apache License 2.0. Provenance and the SHA-256 are recorded in
+  `internal/hollow/testdata/README.md`.
+- The skills under `.agents/skills/` are development aids installed from the
+  third-party repositories listed in `skills-lock.json`. They carry their own
+  licenses, recorded in each `SKILL.md`, and are not part of the Scopra
+  software.
+
+No third-party Go dependencies are linked into the binaries.

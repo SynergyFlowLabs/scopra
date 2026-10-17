@@ -2,7 +2,9 @@
 
 **Status:** Execution-ready draft v1.1  
 **Target:** Linux private alpha  
-**Last updated:** 2026-10-16
+**Last updated:** 2026-10-17
+
+**License:** MIT, free for everyone, with no pricing model (ADR-014)
 
 ## Implementation Rule
 
@@ -32,6 +34,7 @@ If any mandatory stage is unavailable or invalid, deny the request. Never add un
 - Encrypted object storage for optional artifacts
 - Scopra Goldstone outbound TLS WebSocket machine relay carrying authenticated Scopra Messenger Protocol envelopes
 - Rootless Podman behind a containment interface for Scopra Hollow
+- MIT-licensed open source, with no pricing model, paid tiers, or feature gates (ADR-014)
 - OpenTelemetry-compatible observability
 - Canonical component names are defined in `docs/product/naming.md`; retain `scopra` and `scoprad` executable names unless a separate compatibility decision changes them.
 
@@ -337,7 +340,7 @@ Mio now runs Podman for local runs, but no host with rootless Podman has been us
 ## Milestone 6: Public Beta Hardening
 
 - [ ] Analyze alpha activation, approvals, failures, unmet workflows, remaining manual relay, trust, and churn.
-- [ ] Add local redaction, destination profiles, egress records, encrypted artifacts, retention, custom policy, simulation, improved integrations, billing, and plan limits.
+- [ ] Add local redaction, destination profiles, egress records, encrypted artifacts, retention, custom policy, simulation, and improved integrations.
 - [ ] Decide Linux ARM64 and macOS based on evidence.
 - [ ] Commission penetration test and remediate serious findings.
 - [ ] Verify audit integrity, stronger approval, anomaly detection, key rotation, incident response, recovery, and deletion.
