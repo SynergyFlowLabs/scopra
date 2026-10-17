@@ -2,8 +2,8 @@
 
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
-**Current increment:** `execution.cancel` (Step 20, the third and last increment of ADR-009)
-**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
+**Current increment:** Messenger v1 reference payloads in `packages/test-fixtures` (Step 21)
+**Status:** In progress on `arena/c7a368c1-scopra`: acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -1527,3 +1527,35 @@ Non-goals:
   - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64.
   - The tree is current.
 - Pushes to `arena/c7a368c1-scopra`: test checkpoint `ac4bbff` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.
+
+### 2026-10-17 — Step 21: Messenger v1 reference payloads in `packages/test-fixtures`
+
+- Selection: after Step 20 the default was (a), shared reference payloads for every message type with their canonical bytes and hashes, checked by the Go tests. They guard the wire format against accidental change and give the future TypeScript side the same files. The maintainer replied "continue".
+- No ADR: no protocol rule changes. The fixtures record the existing contract of ADR-002 and ADR-007 to ADR-009.
+
+#### Acceptance checklist (agreed before implementation)
+
+- [ ] `packages/test-fixtures/messenger/v1/` holds a manifest and payload files:
+  - valid fixtures: every ADR example, both ADR-008 vectors, all seven result states, and a binary output chunk, each with its canonical form and, for requests, its action hash;
+  - invalid fixtures covering every strictness class and key rules for each of the five payload types.
+- [ ] Expected values come from independent sources, never from the Go code: the ADR texts, ADR-008's vectors, and Python's `json` and `base64` rendering.
+- [ ] `packages/protocol/fixtures_test.go` checks three things:
+  - the manifest is complete: names are unique, every file is referenced exactly once, all five payload types have valid and invalid fixtures, and each entry has the right shape;
+  - every valid payload decodes to exactly its canonical form, and to its action hash where it has one, and that form is stable;
+  - every invalid payload is rejected with its type's error value, naming the field.
+- [ ] `packages/test-fixtures/README.md` documents the format, the provenance, and the change rule: a changed canonical form or hash is a wire-format change, which needs an ADR amendment before the alpha freeze and a protocol-version decision after it.
+- [ ] No production code changes, and full verification passes.
+
+Non-goals:
+- Envelope fixtures, whose freshness depends on the time and whose authentication proof does not exist yet.
+- A TypeScript consumer.
+- Tests across protocol versions, because only version 1 exists. The plan's second Messenger task stays open.
+- A committed generator script.
+
+#### Test-first record
+
+1. **Contract tests written first** (`packages/protocol/fixtures_test.go`). They define the manifest format: `version`, `protocolVersion`, and fixtures with `name`, `messageType`, `payload`, and then either `canonical` (plus `actionHash` for requests) or `invalidField`. They also define what each fixture must prove:
+   - `TestFixtures_ManifestIsComplete` checks unique names and payloads, a known message type for each entry, the right shape and directory for valid and invalid entries, at least one valid and one invalid fixture for each of the five payload types, no unlisted files, and no missing ones.
+   - `TestFixtures_ValidPayloadsDecodeToTheirCanonicalForm` requires the exact canonical bytes and action hash, equality with the independent RFC 8785 reference, and a stable canonical form.
+   - `TestSecurity_FixturesRejectInvalidPayloads` requires the type's own error value, naming the field.
+2. **Expected failure.** This step adds tests over existing code, so no production skeleton applies. The red phase is the missing fixture set: all three tests failed with "read the fixture manifest: … no such file or directory".

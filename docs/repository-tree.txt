@@ -201,6 +201,7 @@
 ./packages/protocol/execution_result_test.go
 ./packages/protocol/execution_started.go
 ./packages/protocol/execution_started_test.go
+./packages/protocol/fixtures_test.go
 ./packages/protocol/strict_json.go
 ./packages/sdk-typescript
 ./packages/sdk-typescript/README.md
