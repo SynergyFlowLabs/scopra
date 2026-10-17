@@ -10,6 +10,9 @@ scopra doctor [--state-dir PATH] [--json]
 scopra workspace add [--state-dir PATH] [--json] PATH
 scopra workspace list [--state-dir PATH] [--json]
 scopra workspace remove [--state-dir PATH] [--json] ID
+scopra run [--state-dir PATH] [--json] (--workspace ID | --path PATH) [--write]
+           [--workdir DIR] [--timeout DURATION] [--memory BYTES] [--cpus N]
+           [--pids N] [--output-limit BYTES] [--reason TEXT] -- EXECUTABLE [ARGUMENT...]
 scopra version
 ```
 
@@ -87,6 +90,45 @@ The human-readable report goes to stdout, with control characters in paths and e
 
 Exit status: `0` when no check fails, `1` when any check fails (after the report is written), `2` for usage errors, and `130` when interrupted.
 
+### `scopra run`
+
+`scopra run` runs one command in a registered workspace through Mio and Scopra Hollow (ADR-011). Mio must be running, must have been started with `--sandbox-image`, and must find `podman`; otherwise the run is refused. The workspace is selected by `--workspace ID` (as `workspace list` shows it) or by `--path PATH`, which resolves like `workspace remove --path`: an exact recorded path or the directory it now resolves to, with an ambiguous match refused. The two flags are mutually exclusive and one is required.
+
+The command follows `--`, so an argument that looks like an option stays an argument. The flags and their defaults are:
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--write` | off | Mount the workspace read-write instead of read-only. |
+| `--workdir DIR` | `.` | Workspace-relative working directory. |
+| `--timeout DURATION` | `10m` | Run time limit: a whole number of seconds, 1s to 24h. |
+| `--memory BYTES` | `2 GiB` | Memory limit in bytes (1 MiB to 1 TiB). |
+| `--cpus N` | `2` | CPU limit as a whole number, 1 to 1000 (converted to millicores). |
+| `--pids N` | `512` | Process limit (1 to 65536). |
+| `--output-limit BYTES` | `16 MiB` | Combined stdout and stderr limit (1 to 1 GiB). |
+| `--reason TEXT` | "local run by the workspace owner" | Why the command runs. It grants nothing. |
+
+The limits are defaults, not policy: Mio enforces its own maximum and the container limits still apply. Without `--json`, the command's stdout and stderr bytes are written unchanged to `scopra`'s stdout and stderr, as a native run would write them. With `--json`, stdout carries one JSON object per line, in arrival order:
+
+```json
+{"type":"started","actionHash":"…","executionId":"local-…","startedAt":"…"}
+{"type":"output","executionId":"local-…","stream":"stdout","data":"aGVsbG8K"}
+{"type":"output","executionId":"local-…","stream":"stderr","data":"d2FybmluZwo"}
+{"type":"result","actionHash":"…","endedAt":"…","executionId":"local-…","exitCode":0,"output":{"chunks":2,"stderrBytes":8,"stdoutBytes":6,"truncated":false},"startedAt":"…","state":"succeeded"}
+```
+
+Each line is the canonical ADR-008 encoding of that message plus a `type` field. `data` is unpadded base64url. Frames, not ADR-009 chunk numbers, are reported, because Mio splits a chunk to fit its IPC frames. Diagnostics go to stderr in both modes, so with `--json` stdout holds nothing but JSON objects.
+
+Exit status:
+
+- the command's own exit status when it ran, whether it succeeded or failed;
+- `124` when the run timed out;
+- `130` when it was cancelled, including Ctrl-C, which closes the connection and cancels the run;
+- `137` when it was killed for using too much memory;
+- `1` when Mio rejected the run or it could not start, after `<code>: <message>` is written to stderr; also `1` when Mio is unreachable;
+- `2` for usage errors, which are detected before Mio is contacted.
+
+A dropped connection after the start notice ends the run with an error; `scopra run` never invents an exit status. Output is untrusted: `--json` is the safe form for programs, while the human mode writes bytes unchanged, exactly as a native run would.
+
 ### `scopra workspace`
 
 `scopra workspace` manages Mio's workspace registrations over local IPC (ADR-006). Mio must be running.
@@ -122,6 +164,6 @@ Exit status:
 - `2` for usage errors, which are detected before Mio is contacted. These include a malformed ID, both an ID and `--path`, and a path that is empty, is not valid UTF-8, or would be longer than 4095 bytes.
 - `130` when interrupted.
 
-Registering a workspace authorizes nothing by itself; nothing in Scopra executes commands yet. Any process running as you can use these commands, just as it can edit your files.
+Registering a workspace authorizes nothing by itself. `scopra run` runs a command in a registered workspace through Mio and Hollow; policy, approvals, and audit are not implemented. Any process running as you can use these commands, just as it can edit your files.
 
-`scopra status` and `scopra doctor` change nothing, and `scopra workspace` changes only Mio's registrations. See ADR-003 and ADR-006 for the local IPC trust boundary and remaining work.
+`scopra status` and `scopra doctor` change nothing, `scopra workspace` changes only Mio's registrations, and `scopra run` runs a command in a registered workspace, read-only unless `--write` is given. See ADR-003 and ADR-006 for the local IPC trust boundary and remaining work.

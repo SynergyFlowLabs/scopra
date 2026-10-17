@@ -2310,6 +2310,7 @@ After the first green run, two tests were wrong and the code was right: a bare e
   - **Exit statuses:** `commandExitError` carries the command's own status, 124, 130, or 137 to `exitCode`, which reports it without printing an error line. `rejected` and `errored` become `<code>: <message>`, which `exitCode` prints escaped.
 - **`cmd/scopra/main.go`:** the `run` command is dispatched and listed in the usage text; `exitCode` recognizes `commandExitError` before its generic failure branch.
 - **`internal/localipc/executions.go`:** `ValidateRun` exposes the client-side ADR-007 check that `RunExecution` already performed, without dialing.
+- **Docs:** `cmd/scopra/README.md` gains the command, its flags, its JSON lines, and its exit statuses, and drops the claim that nothing executes commands; ADR-011, the root README, the plan, the system overview, the tree, and this log are updated.
 
 **Mutation testing** (sequential, against `run.go` and `main.go`): 35 mutations, 34 caught and one no longer applicable. The first round caught 23 and its eight survivors exposed weak assertions: the missing-separator, missing-workspace, workspace-ID, timeout-bound, and CPU-bound rejections all happened to be caught by a *later* check, so the tests passed for the wrong reason. The rejection table now asserts the message of the check that must reject each case, and new cases cover `--workspace` alone and a positional before `--`.
 
@@ -2340,4 +2341,4 @@ The remaining survivor (`arguments = nil`) was unreachable code and was removed:
 
 Coverage: `cmd/scopra` 91.9% (the new `run.go` functions are 85–100%), `internal/localipc` 85.3%, `internal/execution` 100.0%, `internal/hollow` 98.0%, `cmd/scoprad` 73.1%.
 
-Commit `12bd706` (`feat(cli): add scopra run`) holds the implementation and the documentation updates; a second commit records this log. Both were pushed to `arena/fe74ddf7-scopra`, so PR #3 picks them up. CI is out of scope, as recorded in the Baseline section.
+Commit `12bd706` (`feat(cli): add scopra run`) holds the implementation and the documentation updates, and `a9d9564` records this log. Both were pushed to `arena/fe74ddf7-scopra` (`7808799..a9d9564`), so PR #3 picks them up; the PR's title and body were updated to cover increments 2 and 3. CI is out of scope, as recorded in the Baseline section.
