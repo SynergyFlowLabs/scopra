@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Security Policy — Scopra</title>
+<meta name="description" content="Security Policy — Scopra documentation.">
+<link rel="canonical" href="https://scopra-gulzaibs-projects-347c279f.vercel.app/docs/community/security-policy.html">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0b0e14">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Security Policy — Scopra">
+<meta property="og:description" content="Security Policy — Scopra documentation.">
+<meta property="og:url" content="https://scopra-gulzaibs-projects-347c279f.vercel.app/docs/community/security-policy.html">
+<meta property="og:site_name" content="Scopra">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>Scopra</a>
+  <nav aria-label="Main">
+    <a href="/docs/">Docs</a>
+    <a href="/docs/overview.html">Overview</a>
+    <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">GitHub</a>
+  </nav>
+</header>
+<div class="layout"><nav class="sidebar" aria-label="Documentation"><p class="group">Overview</p><ul><li><a href="/docs/overview.html">Overview</a></li><li><a href="/docs/changelog.html">Changelog</a></li></ul><p class="group">Product</p><ul><li><a href="/docs/prd.html">Product Requirements</a></li><li><a href="/docs/product/alpha-scope.html">Alpha Scope</a></li><li><a href="/docs/product/naming.html">Naming</a></li></ul><p class="group">Architecture</p><ul><li><a href="/docs/architecture/system-overview.html">System Overview</a></li><li><a href="/docs/architecture/domain-model.html">Domain Model</a></li><li><a href="/docs/architecture/protocol.html">Protocol</a></li></ul><p class="group">Security</p><ul><li><a href="/docs/security/threat-model.html">Threat Model</a></li><li><a href="/docs/security/risk-register.html">Risk Register</a></li><li><a href="/docs/security/security-architecture.html">Security Architecture</a></li></ul><p class="group">Decisions</p><ul><li><a href="/docs/decisions/000-template.html">ADR-000: Title</a></li><li><a href="/docs/decisions/001-go-module-layout.html">ADR-001: Initial Go Module Layout</a></li><li><a href="/docs/decisions/002-messenger-envelope-v1.html">ADR-002: Scopra Messenger Envelope v1 Structural Contract</a></li><li><a href="/docs/decisions/003-local-status-ipc.html">ADR-003: Mio Foreground Status Daemon and Local IPC v1</a></li><li><a href="/docs/decisions/004-workspace-validation.html">ADR-004: Workspace Path Validation and Fingerprint v1</a></li><li><a href="/docs/decisions/005-workspace-registry-storage.html">ADR-005: Workspace Registry Storage v1</a></li><li><a href="/docs/decisions/006-local-workspace-commands.html">ADR-006: Local Workspace Commands over IPC v1</a></li><li><a href="/docs/decisions/007-execution-request-v1.html">ADR-007: Execution Request v1 Structural Contract</a></li><li><a href="/docs/decisions/008-canonical-execution-request.html">ADR-008: Canonical Execution Request and Action Hash</a></li><li><a href="/docs/decisions/009-execution-lifecycle-messages.html">ADR-009: Execution States, Results, Output, Errors, and Cancellation</a></li><li><a href="/docs/decisions/010-hollow-rootless-podman.html">ADR-010: Hollow Containment Backend: Rootless Podman</a></li><li><a href="/docs/decisions/011-local-execution.html">ADR-011: Local Execution over the Mio Socket</a></li><li><a href="/docs/decisions/012-systemd-user-service.html">ADR-012: Mio as a systemd User Service</a></li><li><a href="/docs/decisions/013-run-journal.html">ADR-013: Bounded Local Run Journal and `scopra logs`</a></li><li><a href="/docs/decisions/014-open-source-no-pricing.html">ADR-014: MIT License and No Pricing Model</a></li><li><a href="/docs/decisions.html">Architecture Decision Records</a></li></ul><p class="group">Planning</p><ul><li><a href="/docs/plan/implementation-plan.html">Implementation Plan</a></li></ul><p class="group">API</p><ul><li><a href="/docs/api/mcp-tools.html">MCP Tools</a></li></ul><p class="group">Operations</p><ul><li><a href="/docs/operations/runbooks.html">Runbooks</a></li></ul><p class="group">Community</p><ul><li><a href="/docs/community/security-policy.html" class="current" aria-current="page">Security Policy</a></li><li><a href="/docs/community/contributing.html">Contributing</a></li><li><a href="/docs/community/code-of-conduct.html">Code of Conduct</a></li></ul></nav><main id="main" class="content"><nav class="breadcrumb" aria-label="Breadcrumb"><a href="/docs/">Docs</a> <span aria-hidden="true">/</span> Community</nav><article class="prose"><h1 id="security-policy">Security Policy</h1>
+<p>Scopra runs commands and holds a boundary around a user&#39;s machine. Security reports are taken seriously, and the project is grateful to anyone who takes the time to report one responsibly.</p>
+<p>Scopra is <strong>pre-alpha</strong>. It is not ready for production or sensitive systems, and no security guarantee is offered yet.</p>
+<h2 id="reporting-a-vulnerability">Reporting a vulnerability</h2>
+<p><strong>Please do not open a public issue, pull request, or discussion for a suspected vulnerability.</strong></p>
+<p>Report privately through either channel, in order of preference:</p>
+<ol>
+<li><strong>GitHub Private Vulnerability Reporting</strong> — use the <a href="https://github.com/SynergyFlowLabs/scopra/security/advisories/new" rel="noopener noreferrer">Security tab</a> → <em>Report a vulnerability</em>. This creates a private advisory visible only to you and the maintainers.</li>
+<li><strong>Email</strong> — <code>security@synergyflowlabs.com</code>. Encrypt if you can; ask for a key first rather than sending secrets in an unencrypted message.</li>
+</ol>
+<p>Please include, as far as you can:</p>
+<ul>
+<li>the component and version or commit (<code>scopra version</code>, <code>scoprad --version</code>);</li>
+<li>the platform (distribution, kernel, Podman version, cgroup mode);</li>
+<li>the exact command line or sequence of steps;</li>
+<li>what you expected and what happened;</li>
+<li>the impact you believe applies (for example: workspace escape, privilege escalation, command execution as the user, data disclosure);</li>
+<li>any proof of concept, ideally minimal and safe to run.</li>
+</ul>
+<p>Do <strong>not</strong> include real secrets, third-party personal data, or output from someone else&#39;s machine.</p>
+<h2 id="what-to-expect">What to expect</h2>
+<ul>
+<li><strong>Acknowledgement within 3 business days.</strong></li>
+<li>A first assessment and severity within <strong>10 business days</strong>, with a remediation plan or an explanation of why it is not a vulnerability.</li>
+<li>Progress updates at least every <strong>14 days</strong> while a fix is in progress.</li>
+<li>Credit in the release notes and, if you wish, in the security advisory. Let us know if you prefer to stay anonymous.</li>
+</ul>
+<h2 id="disclosure">Disclosure</h2>
+<p>The maintainers coordinate disclosure:</p>
+<ul>
+<li>Fixes are prepared privately, tested, and released before details are published.</li>
+<li>A GitHub Security Advisory is published when a fix is available, or after <strong>90 days</strong>, whichever comes first, unless a longer period is agreed with the reporter.</li>
+<li>If a fix cannot be produced in time, the advisory describes the limitation so users can protect themselves.</li>
+</ul>
+<h2 id="scope">Scope</h2>
+<p>In scope:</p>
+<ul>
+<li>the <code>scopra</code> and <code>scoprad</code> binaries, and the Go packages in <code>internal/</code> and <code>packages/</code>;</li>
+<li>the local IPC protocol and its trust boundary;</li>
+<li>the Hollow sandbox invocation and workspace validation;</li>
+<li>the run journal and its file handling;</li>
+<li>the systemd unit written by <code>scopra service</code>;</li>
+<li>the protocol decoders: envelope, execution request, lifecycle messages.</li>
+</ul>
+<p>Out of scope:</p>
+<ul>
+<li>vulnerabilities in Podman, the kernel, systemd, or a container image (report those upstream; if Scopra&#39;s use of them is the problem, that <em>is</em> in scope);</li>
+<li>attacks that require the attacker to already run code as the same user owning the workspace, unless they cross a boundary Scopra claims to enforce;</li>
+<li>denial of service caused by a user exhausting their own machine or state directory;</li>
+<li>the pre-alpha absence of features that are documented as not implemented (policy, approvals, audit chain);</li>
+<li>findings that depend on running Scopra as root when the documentation says not to.</li>
+</ul>
+<h2 id="known-security-properties-and-limits">Known security properties and limits</h2>
+<p>These are deliberate, documented, and not vulnerabilities in themselves:</p>
+<ul>
+<li><strong>Same-UID trust.</strong> Any process running as you can talk to Mio&#39;s socket and use <code>scopra</code>, exactly as it could already run commands. Peer credentials do not isolate processes sharing a UID.</li>
+<li><strong>Local runs grant nothing.</strong> <code>scopra run</code> is your own action. There is no policy engine or approval gate yet.</li>
+<li><strong>The journal is not an audit trail.</strong> It is metadata-only, owner-only (<code>0600</code>), bounded, and the user can edit or delete it. Tamper-evident audit is planned (Catena) but not implemented (ADR-013).</li>
+<li><strong>Containment is Hollow&#39;s container.</strong> The systemd unit deliberately omits <code>NoNewPrivileges</code>, <code>ProtectHome</code>, and <code>ProtectSystem</code> because rootless Podman needs its setuid helpers and home-directory workspaces (ADR-012).</li>
+<li><strong>No real-host verification yet.</strong> Execution is tested against a fake Podman, and the service against a fake <code>systemctl</code>.</li>
+</ul>
+<h2 id="safe-harbor">Safe harbor</h2>
+<p>The maintainers will not pursue legal action against researchers who:</p>
+<ul>
+<li>act in good faith and follow this policy;</li>
+<li>test only against their own installation and data;</li>
+<li>do not access, modify, or exfiltrate another person&#39;s data;</li>
+<li>do not degrade service for others;</li>
+<li>give the project reasonable time to fix the issue before public disclosure.</li>
+</ul>
+<p>If in doubt, ask first: <code>security@synergyflowlabs.com</code>.</p>
+<h2 id="hardening-for-users">Hardening for users</h2>
+<p>Until Scopra leaves pre-alpha:</p>
+<ul>
+<li>run it only on a machine you can reimage;</li>
+<li>keep the state directory (<code>~/.local/state/scopra</code>) owner-only and never share it;</li>
+<li>use a digest-pinned image, and keep it updated;</li>
+<li>do not grant the workspace anything you would not grant a shell — the sandbox narrows authority, it does not make untrusted code safe;</li>
+<li>keep Podman and the host kernel patched.</li>
+</ul>
+</article><p class="edit-link"><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/SECURITY.md" rel="noopener noreferrer">Edit this page on GitHub</a></p></main><aside class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#reporting-a-vulnerability">Reporting a vulnerability</a></li><li><a href="#what-to-expect">What to expect</a></li><li><a href="#disclosure">Disclosure</a></li><li><a href="#scope">Scope</a></li><li><a href="#known-security-properties-and-limits">Known security properties and limits</a></li><li><a href="#safe-harbor">Safe harbor</a></li><li><a href="#hardening-for-users">Hardening for users</a></li></ul></aside></div><footer class="site-footer">
+  <div class="footer-inner">
+    <p><strong>Scopra</strong> — controlled execution for AI agents. Free and open source under the <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE">MIT License</a>.</p>
+    <p class="muted">No pricing model, no telemetry, no account. Generated from the Markdown in <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">the repository</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

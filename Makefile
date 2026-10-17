@@ -1,9 +1,8 @@
 GO ?= go
 GOFMT ?= gofmt
-SITE_OUT ?= apps/docs-site/dist
+SITE_OUT ?= apps/docs-site/public
 SITE_STATIC ?= apps/docs-site/static
-SITE_BASE_URL ?= https://scopra.vercel.app
-SITE_COMMIT ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || printf 'unknown')
+SITE_BASE_URL ?= https://scopra-gulzaibs-projects-347c279f.vercel.app
 
 .PHONY: help bootstrap test lint security-test site
 
@@ -31,4 +30,4 @@ security-test:
 # part of this repository and has no dependencies beyond the Go standard
 # library, so the deployed artifact is always the Markdown in this checkout.
 site:
-	$(GO) run ./tools/docsite -root . -out $(SITE_OUT) -static $(SITE_STATIC) -base-url $(SITE_BASE_URL) -commit $(SITE_COMMIT)
+	$(GO) run ./tools/docsite -root . -out $(SITE_OUT) -static $(SITE_STATIC) -base-url $(SITE_BASE_URL)

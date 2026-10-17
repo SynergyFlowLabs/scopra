@@ -82,25 +82,25 @@ var rootDocuments = []struct {
 	{"CHANGELOG.md", "changelog", "overview", "Changelog"},
 }
 
+// defaultBaseURL is the production URL Vercel assigns to the project.
+const defaultBaseURL = "https://scopra-gulzaibs-projects-347c279f.vercel.app"
+
 // siteOptions controls one build.
 type siteOptions struct {
 	Root    string
 	Out     string
 	BaseURL string
-	Commit  string
 	Static  string
-	Now     string
 }
 
 func main() {
 	root := flag.String("root", ".", "repository root")
 	out := flag.String("out", "apps/docs-site/dist", "output directory")
-	baseURL := flag.String("base-url", "https://scopra.vercel.app", "canonical site URL")
-	commit := flag.String("commit", "unknown", "commit the site was built from")
+	baseURL := flag.String("base-url", defaultBaseURL, "canonical site URL")
 	static := flag.String("static", "apps/docs-site/static", "static assets directory")
 	flag.Parse()
 
-	options := siteOptions{Root: *root, Out: *out, BaseURL: *baseURL, Commit: *commit, Static: *static}
+	options := siteOptions{Root: *root, Out: *out, BaseURL: *baseURL, Static: *static}
 	if err := buildSite(options); err != nil {
 		fmt.Fprintln(os.Stderr, "docsite:", err)
 		os.Exit(1)
@@ -331,17 +331,13 @@ func headerNav() string {
 }
 
 func footer(options siteOptions) string {
-	commit := options.Commit
-	if len(commit) > 7 {
-		commit = commit[:7]
-	}
 	return fmt.Sprintf(`<footer class="site-footer">
   <div class="footer-inner">
     <p><strong>Scopra</strong> — controlled execution for AI agents. Free and open source under the <a href="%sLICENSE">MIT License</a>.</p>
-    <p class="muted">No pricing model, no telemetry, no account. Built from <a href="%scommit/%s" rel="noopener noreferrer">%s</a>.</p>
+    <p class="muted">No pricing model, no telemetry, no account. Generated from the Markdown in <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">the repository</a>.</p>
   </div>
 </footer>
-`, repositoryBlobURL+"LICENSE", "https://github.com/SynergyFlowLabs/scopra/commit/", html.EscapeString(commit), html.EscapeString(commit))
+`, repositoryBlobURL)
 }
 
 func renderDocumentPage(doc *document, documents []document, options siteOptions) string {

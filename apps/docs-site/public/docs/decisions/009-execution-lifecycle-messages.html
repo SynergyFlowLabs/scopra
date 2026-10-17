@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADR-009: Execution States, Results, Output, Errors, and Cancellation — Scopra</title>
+<meta name="description" content="ADR-009: Execution States, Results, Output, Errors, and Cancellation — Scopra documentation.">
+<link rel="canonical" href="https://scopra-gulzaibs-projects-347c279f.vercel.app/docs/decisions/009-execution-lifecycle-messages.html">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0b0e14">
+<meta property="og:type" content="website">
+<meta property="og:title" content="ADR-009: Execution States, Results, Output, Errors, and Cancellation — Scopra">
+<meta property="og:description" content="ADR-009: Execution States, Results, Output, Errors, and Cancellation — Scopra documentation.">
+<meta property="og:url" content="https://scopra-gulzaibs-projects-347c279f.vercel.app/docs/decisions/009-execution-lifecycle-messages.html">
+<meta property="og:site_name" content="Scopra">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>Scopra</a>
+  <nav aria-label="Main">
+    <a href="/docs/">Docs</a>
+    <a href="/docs/overview.html">Overview</a>
+    <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">GitHub</a>
+  </nav>
+</header>
+<div class="layout"><nav class="sidebar" aria-label="Documentation"><p class="group">Overview</p><ul><li><a href="/docs/overview.html">Overview</a></li><li><a href="/docs/changelog.html">Changelog</a></li></ul><p class="group">Product</p><ul><li><a href="/docs/prd.html">Product Requirements</a></li><li><a href="/docs/product/alpha-scope.html">Alpha Scope</a></li><li><a href="/docs/product/naming.html">Naming</a></li></ul><p class="group">Architecture</p><ul><li><a href="/docs/architecture/system-overview.html">System Overview</a></li><li><a href="/docs/architecture/domain-model.html">Domain Model</a></li><li><a href="/docs/architecture/protocol.html">Protocol</a></li></ul><p class="group">Security</p><ul><li><a href="/docs/security/threat-model.html">Threat Model</a></li><li><a href="/docs/security/risk-register.html">Risk Register</a></li><li><a href="/docs/security/security-architecture.html">Security Architecture</a></li></ul><p class="group">Decisions</p><ul><li><a href="/docs/decisions/000-template.html">ADR-000: Title</a></li><li><a href="/docs/decisions/001-go-module-layout.html">ADR-001: Initial Go Module Layout</a></li><li><a href="/docs/decisions/002-messenger-envelope-v1.html">ADR-002: Scopra Messenger Envelope v1 Structural Contract</a></li><li><a href="/docs/decisions/003-local-status-ipc.html">ADR-003: Mio Foreground Status Daemon and Local IPC v1</a></li><li><a href="/docs/decisions/004-workspace-validation.html">ADR-004: Workspace Path Validation and Fingerprint v1</a></li><li><a href="/docs/decisions/005-workspace-registry-storage.html">ADR-005: Workspace Registry Storage v1</a></li><li><a href="/docs/decisions/006-local-workspace-commands.html">ADR-006: Local Workspace Commands over IPC v1</a></li><li><a href="/docs/decisions/007-execution-request-v1.html">ADR-007: Execution Request v1 Structural Contract</a></li><li><a href="/docs/decisions/008-canonical-execution-request.html">ADR-008: Canonical Execution Request and Action Hash</a></li><li><a href="/docs/decisions/009-execution-lifecycle-messages.html" class="current" aria-current="page">ADR-009: Execution States, Results, Output, Errors, and Cancellation</a></li><li><a href="/docs/decisions/010-hollow-rootless-podman.html">ADR-010: Hollow Containment Backend: Rootless Podman</a></li><li><a href="/docs/decisions/011-local-execution.html">ADR-011: Local Execution over the Mio Socket</a></li><li><a href="/docs/decisions/012-systemd-user-service.html">ADR-012: Mio as a systemd User Service</a></li><li><a href="/docs/decisions/013-run-journal.html">ADR-013: Bounded Local Run Journal and `scopra logs`</a></li><li><a href="/docs/decisions/014-open-source-no-pricing.html">ADR-014: MIT License and No Pricing Model</a></li><li><a href="/docs/decisions.html">Architecture Decision Records</a></li></ul><p class="group">Planning</p><ul><li><a href="/docs/plan/implementation-plan.html">Implementation Plan</a></li></ul><p class="group">API</p><ul><li><a href="/docs/api/mcp-tools.html">MCP Tools</a></li></ul><p class="group">Operations</p><ul><li><a href="/docs/operations/runbooks.html">Runbooks</a></li></ul><p class="group">Community</p><ul><li><a href="/docs/community/security-policy.html">Security Policy</a></li><li><a href="/docs/community/contributing.html">Contributing</a></li><li><a href="/docs/community/code-of-conduct.html">Code of Conduct</a></li></ul></nav><main id="main" class="content"><nav class="breadcrumb" aria-label="Breadcrumb"><a href="/docs/">Docs</a> <span aria-hidden="true">/</span> Decisions</nav><article class="prose"><h1 id="adr-009-execution-states-results-output-errors-and-cancellation">ADR-009: Execution States, Results, Output, Errors, and Cancellation</h1>
+<p><strong>Status:</strong> Accepted (proposed, then accepted as written by the maintainer) <strong>Date:</strong> 2026-10-16</p>
+<h2 id="context">Context</h2>
+<p>ADR-007 and ADR-008 define what Caloris sends to Mio. The plan&#39;s Messenger milestone also asks for &#34;results, output chunks, errors, and execution states&#34;. The PRD requires:</p>
+<ul>
+<li>structured stdout and stderr, status, exit code, timing, and truncation;</li>
+<li>cursor-based output reads;</li>
+<li>streaming with a p95 latency below 500 ms;</li>
+<li>cancellation that terminates descendants;</li>
+<li>reconnection without duplicate execution;</li>
+<li>a terminal state for every accepted execution;</li>
+<li>separate retention for metadata and output.</li>
+</ul>
+<p>The plan&#39;s MCP section requires the system to distinguish denial, approval, offline, timeout, and failure. It also requires raw output to stay out of metadata.</p>
+<p>ADR-002 reserves <code>execution.result</code> and <code>execution.cancel</code> but defines neither payload. Process output is arbitrary bytes, which may not be UTF-8, and it is untrusted and may contain secrets.</p>
+<h2 id="decision">Decision</h2>
+<h3 id="messages">Messages</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Type</th><th>Direction</th><th>Sent</th></tr></thead>
+<tbody>
+<tr><td><code>execution.started</code> (new)</td><td>Mio to Caloris</td><td>at most once per execution ID, when the command&#39;s process starts</td></tr>
+<tr><td><code>execution.output</code> (new)</td><td>Mio to Caloris</td><td>for each output chunk, in order</td></tr>
+<tr><td><code>execution.result</code> (reserved)</td><td>Mio to Caloris</td><td>exactly once per execution ID that reaches a terminal state, including a rejection</td></tr>
+<tr><td><code>execution.cancel</code> (reserved)</td><td>Caloris to Mio</td><td>to ask Mio to stop an execution</td></tr>
+</tbody></table></div>
+<p>Adding the two new types amends ADR-002&#39;s closed set for version 1. Nothing is deployed, so no version bump is needed.</p>
+<p>Freshness, replay protection, and authentication come from the envelope (ADR-002). Every payload follows ADR-007&#39;s strict rules:</p>
+<ul>
+<li>every field is required, and each object has exactly its keys;</li>
+<li><code>null</code> is never allowed;</li>
+<li>decoded text equals transmitted text;</li>
+<li>integers stay below 2^53.</li>
+</ul>
+<p>Mio encodes the payloads it sends with ADR-008&#39;s canonical writer.</p>
+<h3 id="states">States</h3>
+<p>Mio&#39;s states for one execution ID are shown below. The cloud&#39;s own states, such as pending approval or machine offline, are not part of Messenger.</p>
+<pre><code class="language-text">received ──&gt; rejected                       never started
+         └─&gt; running ──&gt; succeeded          exit code 0
+                     ├─&gt; failed             exit code 1–255
+                     ├─&gt; timed_out          Mio killed it at limits.timeoutSeconds
+                     ├─&gt; cancelled          Mio killed it after execution.cancel
+                     ├─&gt; out_of_memory      the sandbox killed it at limits.memoryBytes
+                     └─&gt; errored            the sandbox or Mio failed
+         └─&gt; errored                        the command could not start
+</code></pre>
+<p><strong>When Mio sends a result</strong></p>
+<ul>
+<li>A request that decodes and authenticates but that Mio refuses gets a <code>rejected</code> result.</li>
+<li>A request that fails to decode or to authenticate gets no reply. Mio does not answer forgeries, and without a valid execution ID it cannot address a result.</li>
+<li>A repeated request with a known execution ID never starts a second execution. If that execution is terminal, Mio sends its stored result again; otherwise it does nothing.</li>
+</ul>
+<p><strong>Which terminal state is reported</strong></p>
+<ul>
+<li><code>timed_out</code> and <code>cancelled</code> mean that Mio initiated the kill, and the first kill wins.</li>
+<li>A process that ends from a signal Mio did not send reports the sandbox&#39;s exit code, which is 128 plus the signal number, as a <code>failed</code> result.</li>
+<li>A PID limit causes fork failures, not a kill. A CPU limit throttles.</li>
+</ul>
+<p><strong>Output</strong></p>
+<p>Mio terminates the whole process tree for <code>timed_out</code>, <code>cancelled</code>, and <code>out_of_memory</code>. Output beyond <code>limits.outputBytes</code> (stdout and stderr combined) is still read but is discarded and never sent. The process keeps running, and the result reports <code>truncated: true</code>.</p>
+<h3 id="payloads">Payloads</h3>
+<p><code>execution.started</code>:</p>
+<pre><code class="language-json">{&#34;executionId&#34;: &#34;exe_01HZX3&#34;, &#34;actionHash&#34;: &#34;b4f47c942fc6499aea49d76df1f89c630f8683bd69c98f292b9e03eed4dd44e2&#34;, &#34;startedAt&#34;: &#34;2026-10-16T12:00:01.250Z&#34;}
+</code></pre>
+<p><code>execution.output</code>:</p>
+<pre><code class="language-json">{&#34;executionId&#34;: &#34;exe_01HZX3&#34;, &#34;sequence&#34;: 1, &#34;stream&#34;: &#34;stdout&#34;, &#34;data&#34;: &#34;b2sgIAlnaXRodWIuY29tL1N5bmVyZ3lGbG93TGFicy9zY29wcmEvcGFja2FnZXMvcHJvdG9jb2wJMC4wNjBzCg&#34;}
+</code></pre>
+<p><code>execution.result</code> has three common fields (<code>executionId</code>, <code>actionHash</code>, and <code>state</code>) and exactly the following further keys for each state:</p>
+<div class="table-wrap"><table>
+<thead><tr><th><code>state</code></th><th>Further keys</th></tr></thead>
+<tbody>
+<tr><td><code>succeeded</code></td><td><code>startedAt</code>, <code>endedAt</code>, <code>exitCode</code> (0), <code>output</code></td></tr>
+<tr><td><code>failed</code></td><td><code>startedAt</code>, <code>endedAt</code>, <code>exitCode</code> (1–255), <code>output</code></td></tr>
+<tr><td><code>timed_out</code>, <code>cancelled</code>, <code>out_of_memory</code></td><td><code>startedAt</code>, <code>endedAt</code>, <code>output</code></td></tr>
+<tr><td><code>errored</code></td><td><code>error</code>, <code>output</code></td></tr>
+<tr><td><code>rejected</code></td><td><code>error</code></td></tr>
+</tbody></table></div>
+<pre><code class="language-json">{&#34;executionId&#34;: &#34;exe_01HZX3&#34;, &#34;actionHash&#34;: &#34;b4f47c942fc6499aea49d76df1f89c630f8683bd69c98f292b9e03eed4dd44e2&#34;, &#34;state&#34;: &#34;failed&#34;, &#34;startedAt&#34;: &#34;2026-10-16T12:00:01.250Z&#34;, &#34;endedAt&#34;: &#34;2026-10-16T12:00:09.004Z&#34;, &#34;exitCode&#34;: 1, &#34;output&#34;: {&#34;stdoutBytes&#34;: 64, &#34;stderrBytes&#34;: 2048, &#34;truncated&#34;: false, &#34;chunks&#34;: 3}}
+</code></pre>
+<p><code>execution.cancel</code>:</p>
+<pre><code class="language-json">{&#34;executionId&#34;: &#34;exe_01HZX3&#34;, &#34;actionHash&#34;: &#34;b4f47c942fc6499aea49d76df1f89c630f8683bd69c98f292b9e03eed4dd44e2&#34;, &#34;principals&#34;: {&#34;userId&#34;: &#34;usr_1&#34;, &#34;agentId&#34;: &#34;agt_1&#34;, &#34;clientId&#34;: &#34;cli_1&#34;}, &#34;reason&#34;: &#34;The user stopped the run&#34;}
+</code></pre>
+<h3 id="field-rules">Field rules</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Field</th><th>Rule</th></tr></thead>
+<tbody>
+<tr><td><code>executionId</code>, <code>principals.*</code></td><td>As in ADR-007. The principals in a cancel identify who asked for it, which may differ from who requested the execution.</td></tr>
+<tr><td><code>actionHash</code></td><td>64 lowercase hexadecimal characters: the ADR-008 action hash of the request. Caloris checks it against the request it dispatched. Mio ignores a cancel whose action hash does not match the running execution.</td></tr>
+<tr><td><code>startedAt</code>, <code>endedAt</code></td><td>RFC 3339 in UTC with exactly three fractional digits (<code>YYYY-MM-DDTHH:MM:SS.sssZ</code>). <code>endedAt</code> is not before <code>startedAt</code>.</td></tr>
+<tr><td><code>sequence</code></td><td>1 to 2^30. Each execution&#39;s chunks are numbered 1, 2, 3, and so on with no gap, across both streams, in the order Mio read them.</td></tr>
+<tr><td><code>stream</code></td><td><code>stdout</code> or <code>stderr</code>.</td></tr>
+<tr><td><code>data</code></td><td>Unpadded base64url (canonical, as for ADR-002 nonces) of 1 to 65536 bytes. Empty chunks are not sent.</td></tr>
+<tr><td><code>exitCode</code></td><td>The exit status that the sandbox reports.</td></tr>
+<tr><td><code>output.stdoutBytes</code>, <code>output.stderrBytes</code></td><td>0 to 2^30: the bytes sent in chunks for each stream. Their sum is at most the request&#39;s <code>limits.outputBytes</code>.</td></tr>
+<tr><td><code>output.truncated</code></td><td>Whether any output was discarded at the limit.</td></tr>
+<tr><td><code>output.chunks</code></td><td>0 to 2^30: the number of chunks sent, which is the last sequence number. A receiver can therefore tell when it holds all of them.</td></tr>
+<tr><td><code>error.code</code></td><td><code>[a-z][a-z_]*</code>, at most 32 bytes. Senders use the codes below. Receivers treat an unknown well-formed code as a generic error, as in ADR-006, so that codes can be added.</td></tr>
+<tr><td><code>error.message</code>, <code>reason</code></td><td>1 to 1024 bytes with no control, format, or line or paragraph separator characters (ADR-007). The text is untrusted and grants nothing.</td></tr>
+</tbody></table></div>
+<h3 id="error-codes">Error codes</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Code</th><th>Used for</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>expired</code></td><td><code>rejected</code></td><td>The request&#39;s validity window passed before Mio could start it.</td></tr>
+<tr><td><code>unauthorized</code></td><td><code>rejected</code></td><td>The grant or approval checks failed, once those checks exist.</td></tr>
+<tr><td><code>policy_denied</code></td><td><code>rejected</code></td><td>Rupes&#39;s local maximum refuses the request, for example limits above the local maximum or read-write access.</td></tr>
+<tr><td><code>workspace_unavailable</code></td><td><code>rejected</code></td><td>The workspace is not registered, or it failed revalidation (ADR-004).</td></tr>
+<tr><td><code>containment_unavailable</code></td><td><code>rejected</code></td><td>Rootless containment is not available, so Mio fails closed.</td></tr>
+<tr><td><code>busy</code></td><td><code>rejected</code></td><td>Mio&#39;s concurrency limit is reached. Version 1 has no queue.</td></tr>
+<tr><td><code>start_failed</code></td><td><code>errored</code></td><td>The command could not start, for example because the executable was not found in the sandbox.</td></tr>
+<tr><td><code>containment_failed</code></td><td><code>errored</code></td><td>The sandbox failed while the command ran.</td></tr>
+<tr><td><code>internal</code></td><td><code>errored</code></td><td>Any other failure.</td></tr>
+</tbody></table></div>
+<h3 id="delivery">Delivery</h3>
+<p>Retries and acknowledgements belong to the relay and reconnect ADR. This ADR fixes the keys that make repeated messages idempotent:</p>
+<ul>
+<li><code>execution.started</code> and <code>execution.result</code> are keyed by execution ID;</li>
+<li><code>execution.output</code> is keyed by execution ID and sequence number.</li>
+</ul>
+<h2 id="consequences">Consequences</h2>
+<ul>
+<li>The cloud can report each state that the MCP tools must distinguish: denial (<code>rejected</code>, with <code>unauthorized</code> or <code>policy_denied</code>), timeout (<code>timed_out</code>), and failure (<code>failed</code> or <code>errored</code>). Approval and offline remain cloud states.</li>
+<li>Results carry only metadata and byte counts. Output travels only in chunks, so it can be retained, redacted, and deleted separately, and it never enters logs or Catena metadata.</li>
+<li>Cursor-based reads can use the sequence number. Missing chunks are detectable from <code>output.chunks</code>.</li>
+<li>Per-state key sets keep decoding strict without optional fields. An <code>errored</code> result carries no timestamps.</li>
+<li>Mio must store each execution&#39;s result until delivery is acknowledged, so that a repeated request does not run again.</li>
+</ul>
+<h2 id="security-considerations">Security Considerations</h2>
+<ul>
+<li>Output and error messages are untrusted and may hold secrets. They must never be logged, never be used for authorization (PRD invariant 6), and always be displayed escaped.</li>
+<li>Base64url keeps arbitrary output bytes exact without breaking ADR-007&#39;s text rules.</li>
+<li>Not replying to undecodable or unauthenticated requests avoids becoming an oracle for forged envelopes.</li>
+<li>The action hash in every daemon-to-cloud message lets Caloris detect a result for a different request than the one it dispatched.</li>
+<li>Every bound stays under the envelope&#39;s 512 KiB payload limit. The largest chunk encodes to 87,382 characters.</li>
+</ul>
+<h2 id="alternatives">Alternatives</h2>
+<ul>
+<li><strong>One <code>execution.result</code> message for both progress and the final result:</strong> rejected. It makes &#34;exactly once&#34; ambiguous, and it mixes output into metadata.</li>
+<li><strong>Output as UTF-8 text:</strong> rejected. Output is arbitrary bytes.</li>
+<li><strong>Optional fields instead of per-state key sets:</strong> rejected for the same reason as ADR-007: they bring missing-versus-empty ambiguity.</li>
+<li><strong>Separate sequence numbers for each stream:</strong> rejected. One sequence keeps the interleaving order needed to replay output faithfully.</li>
+</ul>
+<h2 id="implementation-plan">Implementation plan</h2>
+<p>Each step is test-first, as before:</p>
+<ol>
+<li>Generalize ADR-007&#39;s strict-document helpers so that any payload can use them, with no change in behaviour. Then implement <code>execution.result</code>: its states, per-state key sets, and errors, with a strict decoder and a canonical encoder.</li>
+<li>Implement <code>execution.started</code> and <code>execution.output</code>, and add both types to the envelope&#39;s closed set.</li>
+<li>Implement <code>execution.cancel</code>.</li>
+</ol>
+<p><strong>Implementation status (2026-10-17):</strong> all three steps are implemented in <code>packages/protocol</code> (Steps 18 to 20 in <code>progress.md</code>). Mio does not yet produce or act on these messages; that needs the relay and containment.</p>
+</article><p class="edit-link"><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/docs/decisions/009-execution-lifecycle-messages.md" rel="noopener noreferrer">Edit this page on GitHub</a></p></main><aside class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#context">Context</a></li><li><a href="#decision">Decision</a></li><li class="toc-sub"><a href="#messages">Messages</a></li><li class="toc-sub"><a href="#states">States</a></li><li class="toc-sub"><a href="#payloads">Payloads</a></li><li class="toc-sub"><a href="#field-rules">Field rules</a></li><li class="toc-sub"><a href="#error-codes">Error codes</a></li><li class="toc-sub"><a href="#delivery">Delivery</a></li><li><a href="#consequences">Consequences</a></li><li><a href="#security-considerations">Security Considerations</a></li><li><a href="#alternatives">Alternatives</a></li><li><a href="#implementation-plan">Implementation plan</a></li></ul></aside></div><footer class="site-footer">
+  <div class="footer-inner">
+    <p><strong>Scopra</strong> — controlled execution for AI agents. Free and open source under the <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE">MIT License</a>.</p>
+    <p class="muted">No pricing model, no telemetry, no account. Generated from the Markdown in <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">the repository</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

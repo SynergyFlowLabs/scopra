@@ -5,18 +5,30 @@ already in this repository, so the website can never drift from the docs.
 
 - **Generator:** `tools/docsite` (Go standard library only)
 - **Styles:** `static/styles.css` (hand-written, no framework)
-- **Output:** `dist/` (generated, git-ignored)
+- **Published output:** `public/` (generated, committed, served as-is)
 - **Host:** Vercel, project `scopra`, configured by `vercel.json` at the repository root
 
 ## Build locally
 
 ```console
 $ make site
-$ python3 -m http.server -d apps/docs-site/dist 8080
+$ python3 -m http.server -d apps/docs-site/public 8080
 ```
 
 Then open <http://localhost:8080>. There is nothing to install: the generator is
 part of the module.
+
+## Why the output is committed
+
+Vercel's build image does not ship a Go toolchain, and this project will not add
+a second language or download a compiler during a deploy. `public/` is therefore
+built locally, reviewed like any other change, and served as a pure static
+artifact: no build step, no framework detection, nothing to fail in production.
+
+The output is a pure function of the Markdown, so the committed copy can be
+verified. `TestCommittedSiteIsUpToDate` rebuilds the site and fails `go test ./...`
+when `public/` no longer matches the docs. If you change any published Markdown,
+run `make site` and commit the result.
 
 ## What is published
 

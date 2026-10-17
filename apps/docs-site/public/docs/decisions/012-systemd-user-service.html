@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADR-012: Mio as a systemd User Service — Scopra</title>
+<meta name="description" content="ADR-012: Mio as a systemd User Service — Scopra documentation.">
+<link rel="canonical" href="https://scopra-gulzaibs-projects-347c279f.vercel.app/docs/decisions/012-systemd-user-service.html">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0b0e14">
+<meta property="og:type" content="website">
+<meta property="og:title" content="ADR-012: Mio as a systemd User Service — Scopra">
+<meta property="og:description" content="ADR-012: Mio as a systemd User Service — Scopra documentation.">
+<meta property="og:url" content="https://scopra-gulzaibs-projects-347c279f.vercel.app/docs/decisions/012-systemd-user-service.html">
+<meta property="og:site_name" content="Scopra">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>Scopra</a>
+  <nav aria-label="Main">
+    <a href="/docs/">Docs</a>
+    <a href="/docs/overview.html">Overview</a>
+    <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">GitHub</a>
+  </nav>
+</header>
+<div class="layout"><nav class="sidebar" aria-label="Documentation"><p class="group">Overview</p><ul><li><a href="/docs/overview.html">Overview</a></li><li><a href="/docs/changelog.html">Changelog</a></li></ul><p class="group">Product</p><ul><li><a href="/docs/prd.html">Product Requirements</a></li><li><a href="/docs/product/alpha-scope.html">Alpha Scope</a></li><li><a href="/docs/product/naming.html">Naming</a></li></ul><p class="group">Architecture</p><ul><li><a href="/docs/architecture/system-overview.html">System Overview</a></li><li><a href="/docs/architecture/domain-model.html">Domain Model</a></li><li><a href="/docs/architecture/protocol.html">Protocol</a></li></ul><p class="group">Security</p><ul><li><a href="/docs/security/threat-model.html">Threat Model</a></li><li><a href="/docs/security/risk-register.html">Risk Register</a></li><li><a href="/docs/security/security-architecture.html">Security Architecture</a></li></ul><p class="group">Decisions</p><ul><li><a href="/docs/decisions/000-template.html">ADR-000: Title</a></li><li><a href="/docs/decisions/001-go-module-layout.html">ADR-001: Initial Go Module Layout</a></li><li><a href="/docs/decisions/002-messenger-envelope-v1.html">ADR-002: Scopra Messenger Envelope v1 Structural Contract</a></li><li><a href="/docs/decisions/003-local-status-ipc.html">ADR-003: Mio Foreground Status Daemon and Local IPC v1</a></li><li><a href="/docs/decisions/004-workspace-validation.html">ADR-004: Workspace Path Validation and Fingerprint v1</a></li><li><a href="/docs/decisions/005-workspace-registry-storage.html">ADR-005: Workspace Registry Storage v1</a></li><li><a href="/docs/decisions/006-local-workspace-commands.html">ADR-006: Local Workspace Commands over IPC v1</a></li><li><a href="/docs/decisions/007-execution-request-v1.html">ADR-007: Execution Request v1 Structural Contract</a></li><li><a href="/docs/decisions/008-canonical-execution-request.html">ADR-008: Canonical Execution Request and Action Hash</a></li><li><a href="/docs/decisions/009-execution-lifecycle-messages.html">ADR-009: Execution States, Results, Output, Errors, and Cancellation</a></li><li><a href="/docs/decisions/010-hollow-rootless-podman.html">ADR-010: Hollow Containment Backend: Rootless Podman</a></li><li><a href="/docs/decisions/011-local-execution.html">ADR-011: Local Execution over the Mio Socket</a></li><li><a href="/docs/decisions/012-systemd-user-service.html" class="current" aria-current="page">ADR-012: Mio as a systemd User Service</a></li><li><a href="/docs/decisions/013-run-journal.html">ADR-013: Bounded Local Run Journal and `scopra logs`</a></li><li><a href="/docs/decisions/014-open-source-no-pricing.html">ADR-014: MIT License and No Pricing Model</a></li><li><a href="/docs/decisions.html">Architecture Decision Records</a></li></ul><p class="group">Planning</p><ul><li><a href="/docs/plan/implementation-plan.html">Implementation Plan</a></li></ul><p class="group">API</p><ul><li><a href="/docs/api/mcp-tools.html">MCP Tools</a></li></ul><p class="group">Operations</p><ul><li><a href="/docs/operations/runbooks.html">Runbooks</a></li></ul><p class="group">Community</p><ul><li><a href="/docs/community/security-policy.html">Security Policy</a></li><li><a href="/docs/community/contributing.html">Contributing</a></li><li><a href="/docs/community/code-of-conduct.html">Code of Conduct</a></li></ul></nav><main id="main" class="content"><nav class="breadcrumb" aria-label="Breadcrumb"><a href="/docs/">Docs</a> <span aria-hidden="true">/</span> Decisions</nav><article class="prose"><h1 id="adr-012-mio-as-a-systemd-user-service">ADR-012: Mio as a systemd User Service</h1>
+<p><strong>Status:</strong> Accepted (proposed, then accepted as written by the maintainer) <strong>Date:</strong> 2026-10-17</p>
+<h2 id="context">Context</h2>
+<p>Mio (<code>scoprad</code>) runs in the foreground. The plan asks for a Linux service so that Mio starts with the user&#39;s session and survives a terminal closing, and ADR-010 deferred the durable home of <code>--sandbox-image</code> to &#34;the Linux service installation ... which get their own decision then&#34;.</p>
+<p>Two facts constrain the design:</p>
+<ul>
+<li><strong>The user&#39;s own authority.</strong> Mio already runs with the user&#39;s UID and can do anything that user can do. A service changes durability, not authority, but a unit file that another user can edit would let them choose what runs as this user, so its path must be private.</li>
+<li><strong>Rootless Podman needs its helpers.</strong> <code>podman</code> relies on setuid <code>newuidmap</code>/<code>newgidmap</code> (unless the host uses a different mapping arrangement) and mounts workspaces from the home directory. Unit hardening such as <code>NoNewPrivileges=yes</code>, <code>ProtectHome=yes</code>, or <code>ProtectSystem=strict</code> would break rootless execution or workspace access, so the unit cannot use it.</li>
+</ul>
+<h2 id="decision">Decision</h2>
+<p><strong>Mio is installed as a systemd <em>user</em> service, never a system service.</strong></p>
+<p><code>scopra service install</code> writes one unit, <code>scoprad.service</code>, to <code>$XDG_CONFIG_HOME/systemd/user/</code> (default <code>~/.config/systemd/user/</code>), then runs:</p>
+<pre><code class="language-text">systemctl --user daemon-reload
+systemctl --user enable --now scoprad.service
+</code></pre>
+<p><code>scopra service uninstall</code> reverses it: <code>systemctl --user disable --now scoprad.service</code>, remove the unit, <code>systemctl --user daemon-reload</code>. <code>scopra service status</code> is read-only and runs only <code>systemctl --user is-enabled</code> and <code>is-active</code>.</p>
+<h3 id="the-unit-is-the-durable-configuration">The unit is the durable configuration</h3>
+<p><code>ExecStart</code> holds the absolute path of <code>scoprad</code>, an explicit <code>--state-dir</code>, and <code>--sandbox-image</code> when one is given:</p>
+<pre><code class="language-ini"># Managed by scopra: `scopra service install` rewrites this file.
+[Unit]
+Description=Scopra Mio local execution daemon
+Documentation=https://github.com/SynergyFlowLabs/scopra
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+ExecStart=/path/to/scoprad --state-dir=/home/alice/.local/state/scopra --sandbox-image=name@sha256:...
+Restart=on-failure
+RestartSec=2
+UMask=0077
+
+[Install]
+WantedBy=default.target
+</code></pre>
+<p>This settles ADR-010&#39;s deferred question: <strong>there is no separate configuration file and no environment variable.</strong> The image is visible in the unit, changing it means reinstalling, and <code>scoprad</code> itself is unchanged. The first line marks the file as Scopra&#39;s; <code>install</code> and <code>uninstall</code> refuse a different unit at that path, and <code>install --force</code> replaces it.</p>
+<h3 id="fail-closed-no-half-install">Fail closed, no half-install</h3>
+<ul>
+<li>Every value that can be checked without the filesystem is checked first: the image must satisfy ADR-010&#39;s digest rule, the state directory is resolved exactly as <code>scoprad</code> resolves it, and <code>systemctl</code> and an executable <code>scoprad</code> (explicit, then <code>PATH</code>, then beside <code>scopra</code>) must be found. A missing <code>systemctl</code> or <code>scoprad</code> therefore writes nothing.</li>
+<li>The directory chain must consist of real directories that other users cannot write to (a root-owned sticky directory such as <code>/tmp</code> is allowed), and the final directory must be owned by the user. The unit is written by temp file, <code>fsync</code>, and rename, with mode 0600. A symlink at the unit path is refused, so a write cannot be redirected.</li>
+<li>If <code>daemon-reload</code> or <code>enable --now</code> fails, the previous file content (or its absence) is restored and systemd is reloaded again before the error is returned.</li>
+<li>Every <code>systemctl</code> call is a fixed argument vector with a 30-second deadline. There is no shell.</li>
+</ul>
+<h3 id="escaping">Escaping</h3>
+<p><code>ExecStart</code> is parsed by systemd, not by a shell. <code>%</code> starts a specifier and <code>$</code> a variable, so both are doubled. Arguments containing whitespace, quotes, or backslashes are double-quoted with backslash escapes. Control characters are refused. A test pins the exact line for a path containing a space, <code>%</code>, <code>$</code>, and a quote.</p>
+<h3 id="platforms">Platforms</h3>
+<p>Systemd user services are Linux-only. Other platforms fail closed with a clear error; the package still cross-compiles.</p>
+<h2 id="consequences">Consequences</h2>
+<ul>
+<li>Mio starts with the user&#39;s session and is visible to <code>systemctl --user</code>; <code>scopra service status</code> reports installed, managed, enabled, and active.</li>
+<li>The unit cannot enable <code>NoNewPrivileges</code>, <code>ProtectHome</code>, or <code>ProtectSystem</code>. The containment boundary remains Hollow&#39;s container, not systemd&#39;s sandbox.</li>
+<li>The image cannot be changed without reinstalling. That is deliberate: one place, visible and auditable.</li>
+<li>Reinstalling is idempotent; a failed reinstall restores the previous unit.</li>
+<li>Real systemd behaviour was not exercised in this environment, where no user manager runs. The commands are tested against a fake <code>systemctl</code> that scripts every call and state; verifying on a real systemd host remains an open item, together with ADR-010&#39;s real-host verification.</li>
+<li>Lingering, socket activation, and starting at boot without a login session are out of scope; they need a separate decision because they extend when Mio runs without the user present.</li>
+</ul>
+<h2 id="security-considerations">Security Considerations</h2>
+<ul>
+<li>The service runs with the user&#39;s rights, like the foreground daemon; it grants nothing new.</li>
+<li>A unit file editable by another user would let them choose what runs as this user, which is why the directory chain must be private and the file is 0600.</li>
+<li><code>systemctl</code> is resolved from <code>PATH</code>; the install command then invokes that absolute path. A hostile <code>PATH</code> can already run programs as the user, so this adds no authority.</li>
+<li>The unit passes no environment beyond systemd&#39;s defaults; <code>scoprad</code> reads no configuration from the unit except its arguments.</li>
+<li>The state directory and image in <code>ExecStart</code> are not secret. The unit contains no credentials.</li>
+<li>A failed enable leaves no unit behind unless a previous one was restored; uninstall refuses a unit Scopra did not write, so it can never disable an unrelated service that happens to share the name.</li>
+</ul>
+<h2 id="alternatives">Alternatives</h2>
+<ul>
+<li><strong>A system (root) service or a <code>--system</code> install.</strong> Rejected: Mio needs the user&#39;s files, Podman rootless session, and user socket; running it as root would expand authority instead of containing it.</li>
+<li><strong>A configuration file (<code>~/.config/scopra/config.json</code>) plus a generic unit.</strong> Rejected for now: it adds a format, parsing, permission rules, and another place to get the image wrong. The unit already is a durable, visible file.</li>
+<li><strong>An environment variable in the unit or the user environment.</strong> Rejected: it is invisible in <code>systemctl status</code>, inherited unpredictably, and easy to override.</li>
+<li><strong>A template unit with <code>%h</code> specifiers.</strong> Rejected: it assumes a standard home layout, cannot express an arbitrary <code>--state-dir</code>, and still needs escaping for the image.</li>
+<li><strong>Running <code>systemctl</code> through a shell.</strong> Rejected: it adds an injection surface for paths and image names.</li>
+</ul>
+</article><p class="edit-link"><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/docs/decisions/012-systemd-user-service.md" rel="noopener noreferrer">Edit this page on GitHub</a></p></main><aside class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#context">Context</a></li><li><a href="#decision">Decision</a></li><li class="toc-sub"><a href="#the-unit-is-the-durable-configuration">The unit is the durable configuration</a></li><li class="toc-sub"><a href="#fail-closed-no-half-install">Fail closed, no half-install</a></li><li class="toc-sub"><a href="#escaping">Escaping</a></li><li class="toc-sub"><a href="#platforms">Platforms</a></li><li><a href="#consequences">Consequences</a></li><li><a href="#security-considerations">Security Considerations</a></li><li><a href="#alternatives">Alternatives</a></li></ul></aside></div><footer class="site-footer">
+  <div class="footer-inner">
+    <p><strong>Scopra</strong> — controlled execution for AI agents. Free and open source under the <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE">MIT License</a>.</p>
+    <p class="muted">No pricing model, no telemetry, no account. Generated from the Markdown in <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">the repository</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

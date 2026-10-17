@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contributing — Scopra</title>
+<meta name="description" content="Contributing — Scopra documentation.">
+<link rel="canonical" href="https://scopra-gulzaibs-projects-347c279f.vercel.app/docs/community/contributing.html">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0b0e14">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Contributing — Scopra">
+<meta property="og:description" content="Contributing — Scopra documentation.">
+<meta property="og:url" content="https://scopra-gulzaibs-projects-347c279f.vercel.app/docs/community/contributing.html">
+<meta property="og:site_name" content="Scopra">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>Scopra</a>
+  <nav aria-label="Main">
+    <a href="/docs/">Docs</a>
+    <a href="/docs/overview.html">Overview</a>
+    <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">GitHub</a>
+  </nav>
+</header>
+<div class="layout"><nav class="sidebar" aria-label="Documentation"><p class="group">Overview</p><ul><li><a href="/docs/overview.html">Overview</a></li><li><a href="/docs/changelog.html">Changelog</a></li></ul><p class="group">Product</p><ul><li><a href="/docs/prd.html">Product Requirements</a></li><li><a href="/docs/product/alpha-scope.html">Alpha Scope</a></li><li><a href="/docs/product/naming.html">Naming</a></li></ul><p class="group">Architecture</p><ul><li><a href="/docs/architecture/system-overview.html">System Overview</a></li><li><a href="/docs/architecture/domain-model.html">Domain Model</a></li><li><a href="/docs/architecture/protocol.html">Protocol</a></li></ul><p class="group">Security</p><ul><li><a href="/docs/security/threat-model.html">Threat Model</a></li><li><a href="/docs/security/risk-register.html">Risk Register</a></li><li><a href="/docs/security/security-architecture.html">Security Architecture</a></li></ul><p class="group">Decisions</p><ul><li><a href="/docs/decisions/000-template.html">ADR-000: Title</a></li><li><a href="/docs/decisions/001-go-module-layout.html">ADR-001: Initial Go Module Layout</a></li><li><a href="/docs/decisions/002-messenger-envelope-v1.html">ADR-002: Scopra Messenger Envelope v1 Structural Contract</a></li><li><a href="/docs/decisions/003-local-status-ipc.html">ADR-003: Mio Foreground Status Daemon and Local IPC v1</a></li><li><a href="/docs/decisions/004-workspace-validation.html">ADR-004: Workspace Path Validation and Fingerprint v1</a></li><li><a href="/docs/decisions/005-workspace-registry-storage.html">ADR-005: Workspace Registry Storage v1</a></li><li><a href="/docs/decisions/006-local-workspace-commands.html">ADR-006: Local Workspace Commands over IPC v1</a></li><li><a href="/docs/decisions/007-execution-request-v1.html">ADR-007: Execution Request v1 Structural Contract</a></li><li><a href="/docs/decisions/008-canonical-execution-request.html">ADR-008: Canonical Execution Request and Action Hash</a></li><li><a href="/docs/decisions/009-execution-lifecycle-messages.html">ADR-009: Execution States, Results, Output, Errors, and Cancellation</a></li><li><a href="/docs/decisions/010-hollow-rootless-podman.html">ADR-010: Hollow Containment Backend: Rootless Podman</a></li><li><a href="/docs/decisions/011-local-execution.html">ADR-011: Local Execution over the Mio Socket</a></li><li><a href="/docs/decisions/012-systemd-user-service.html">ADR-012: Mio as a systemd User Service</a></li><li><a href="/docs/decisions/013-run-journal.html">ADR-013: Bounded Local Run Journal and `scopra logs`</a></li><li><a href="/docs/decisions/014-open-source-no-pricing.html">ADR-014: MIT License and No Pricing Model</a></li><li><a href="/docs/decisions.html">Architecture Decision Records</a></li></ul><p class="group">Planning</p><ul><li><a href="/docs/plan/implementation-plan.html">Implementation Plan</a></li></ul><p class="group">API</p><ul><li><a href="/docs/api/mcp-tools.html">MCP Tools</a></li></ul><p class="group">Operations</p><ul><li><a href="/docs/operations/runbooks.html">Runbooks</a></li></ul><p class="group">Community</p><ul><li><a href="/docs/community/security-policy.html">Security Policy</a></li><li><a href="/docs/community/contributing.html" class="current" aria-current="page">Contributing</a></li><li><a href="/docs/community/code-of-conduct.html">Code of Conduct</a></li></ul></nav><main id="main" class="content"><nav class="breadcrumb" aria-label="Breadcrumb"><a href="/docs/">Docs</a> <span aria-hidden="true">/</span> Community</nav><article class="prose"><h1 id="contributing-to-scopra">Contributing to Scopra</h1>
+<p>Thanks for helping. Scopra is a security-sensitive, local-first project: a small change to path handling, IPC, or container arguments can remove the boundary that protects a user&#39;s machine. This guide explains how to propose, build, test, and land a change.</p>
+<p>By contributing, you agree to follow the <a href="/docs/community/code-of-conduct.html">Code of Conduct</a> and to license your contribution under the project&#39;s <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE">MIT License</a>.</p>
+<h2 id="ways-to-contribute">Ways to contribute</h2>
+<ul>
+<li><strong>Bug reports</strong> — use the <a href="https://github.com/SynergyFlowLabs/scopra/issues/new?template=bug.md" rel="noopener noreferrer">bug report template</a>.</li>
+<li><strong>Feature proposals</strong> — use the <a href="https://github.com/SynergyFlowLabs/scopra/issues/new?template=feature.md" rel="noopener noreferrer">feature template</a> and describe the problem before the solution.</li>
+<li><strong>Security review</strong> — use the <a href="https://github.com/SynergyFlowLabs/scopra/issues/new?template=security-review.md" rel="noopener noreferrer">security review template</a> for design-level concerns, or report vulnerabilities privately as described in <a href="/docs/community/security-policy.html"><code>SECURITY.md</code></a>.</li>
+<li><strong>Documentation, tests, and threat-model work</strong> count as first-class contributions.</li>
+<li><strong>Code</strong> — start with an issue for anything larger than a typo or a one-line fix, so the design can be agreed before you spend time.</li>
+</ul>
+<p>Look for <a href="https://github.com/SynergyFlowLabs/scopra/labels/good%20first%20issue" rel="noopener noreferrer"><code>good first issue</code></a> and <a href="https://github.com/SynergyFlowLabs/scopra/labels/help%20wanted" rel="noopener noreferrer"><code>help wanted</code></a> labels.</p>
+<h2 id="before-you-start">Before you start</h2>
+<p>Read, in this order:</p>
+<ol>
+<li><a href="/docs/overview.html"><code>README.md</code></a> — what exists and what does not.</li>
+<li><a href="/docs/prd.html"><code>PRD.md</code></a> — product rules, including the alpha non-goals.</li>
+<li><a href="/docs/plan/implementation-plan.html"><code>docs/plans/00-full-implementation-plan.md</code></a> — milestones.</li>
+<li><a href="/docs/security/threat-model.html"><code>docs/security/threat-model.md</code></a> and <a href="/docs/security/risk-register.html"><code>docs/security/risk-register.md</code></a>.</li>
+<li>The ADRs relevant to your change in <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/docs/decisions"><code>docs/decisions/</code></a>.</li>
+</ol>
+<p>If your change contradicts an ADR, propose a new ADR in the pull request rather than silently diverging.</p>
+<h2 id="development-setup">Development setup</h2>
+<p>Scopra needs <strong>Go 1.26.9</strong> on Linux. Podman is only needed to exercise real execution; the test suite uses fakes.</p>
+<pre><code class="language-sh">git clone https://github.com/SynergyFlowLabs/scopra.git
+cd scopra
+make bootstrap   # verify the toolchain and download modules
+make lint        # gofmt -l must be empty, then go vet ./...
+make test        # go test -race ./...
+make security-test
+</code></pre>
+<p>Build the binaries when you want to try a change end to end:</p>
+<pre><code class="language-sh">go build -o bin/scopra ./cmd/scopra
+go build -o bin/scoprad ./cmd/scoprad
+./bin/scoprad --state-dir /tmp/scopra-state
+./bin/scopra doctor --state-dir /tmp/scopra-state
+</code></pre>
+<p>The repository has <strong>no external Go dependencies</strong>. Prefer the standard library; a new dependency needs a justification in the pull request (maintenance, supply chain, and audit surface all count against it).</p>
+<h2 id="project-conventions">Project conventions</h2>
+<ul>
+<li><strong>Test first.</strong> Write the failing test, then the code. Tests are part of the change, never a follow-up.</li>
+<li><strong>Security-sensitive changes</strong> need an issue, cross-review, positive and negative tests, secret-safe logs, and documentation in the same pull request.</li>
+<li><strong>Fail closed.</strong> When a check cannot be completed, refuse the operation. Never add a native fallback, an unrestricted shell, a PTY, or a &#34;just this once&#34; bypass.</li>
+<li><strong>Bounded everything.</strong> Bound new files, frames, reads, and helper calls, and validate lengths before allocating.</li>
+<li><strong>Strict decoding.</strong> New wire formats use exact keys, no duplicates, no nulls, no trailing data, and typed errors.</li>
+<li><strong>Small, reviewable commits.</strong> One logical change per commit; keep formatting-only changes separate.</li>
+<li><strong>Formatting.</strong> <code>gofmt</code> is mandatory. <code>go vet</code> must be clean. New code needs tests, and exported identifiers need doc comments.</li>
+<li><strong>ADRs and the log.</strong> A durable design decision gets an ADR in <code>docs/decisions/</code> and an index entry. Each increment gets an entry in <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/progress.md"><code>progress.md</code></a> with its acceptance checklist, test-first record, and verification evidence.</li>
+<li><strong>No secrets, no raw output.</strong> Do not log command output, credentials, tokens, or user data. The run journal is metadata-only by design; keep it that way.</li>
+<li><strong>No pricing machinery.</strong> Scopra is free and open source. Do not add license keys, entitlement checks, plan gating, payment code, telemetry, or &#34;upgrade&#34; prompts (ADR-014).</li>
+</ul>
+<h2 id="commit-messages">Commit messages</h2>
+<p>Use a short imperative subject line, optionally with a conventional prefix:</p>
+<pre><code class="language-text">feat(run): add --workdir validation before dialing
+fix(journal): refuse a torn tail before parsing
+docs(adr): record ADR-014
+test(ipc): cover a duplicate key in a logs reply
+</code></pre>
+<p>Explain <em>why</em> in the body, not just <em>what</em>. Reference the issue (<code>Fixes #123</code>) and the ADR when relevant.</p>
+<h2 id="pull-request-process">Pull request process</h2>
+<ol>
+<li>Fork the repository and create a topic branch from <code>main</code>.</li>
+<li>Make the change test-first, update the docs and <code>progress.md</code>, and run the local checks:<pre><code class="language-sh">make lint &amp;&amp; make test &amp;&amp; make security-test
+git diff --check
+</code></pre>
+</li>
+<li>Open a pull request using the template. Fill in the summary, security impact, testing, and documentation sections. Do not leave checklist items unticked without an explanation.</li>
+<li>Keep the pull request focused. Unrelated refactors belong in a separate change.</li>
+<li>CI runs formatting, <code>go vet</code>, and the race-enabled test suite. If CI is unavailable, paste the local output in the pull request.</li>
+<li>A maintainer reviews. Security-sensitive changes need a second reviewer and an explicit &#34;no unresolved finding&#34; statement before merge.</li>
+<li>Squash or merge is the maintainer&#39;s choice; keep the history readable either way.</li>
+</ol>
+<p>Reviewers look for: correct failure behavior, bounded inputs, no new authority, tests that would fail if the fix were removed, and documentation that matches the code.</p>
+<h2 id="reporting-security-issues">Reporting security issues</h2>
+<p>Do <strong>not</strong> open a public issue for a suspected vulnerability. Follow <a href="/docs/community/security-policy.html"><code>SECURITY.md</code></a> so a fix can be prepared before disclosure.</p>
+<h2 id="license-of-contributions">License of contributions</h2>
+<p>Scopra is licensed under the MIT License. By submitting a contribution you confirm you have the right to do so and agree that it is licensed under the same terms. No separate contributor license agreement is required.</p>
+</article><p class="edit-link"><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/CONTRIBUTING.md" rel="noopener noreferrer">Edit this page on GitHub</a></p></main><aside class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#ways-to-contribute">Ways to contribute</a></li><li><a href="#before-you-start">Before you start</a></li><li><a href="#development-setup">Development setup</a></li><li><a href="#project-conventions">Project conventions</a></li><li><a href="#commit-messages">Commit messages</a></li><li><a href="#pull-request-process">Pull request process</a></li><li><a href="#reporting-security-issues">Reporting security issues</a></li><li><a href="#license-of-contributions">License of contributions</a></li></ul></aside></div><footer class="site-footer">
+  <div class="footer-inner">
+    <p><strong>Scopra</strong> — controlled execution for AI agents. Free and open source under the <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE">MIT License</a>.</p>
+    <p class="muted">No pricing model, no telemetry, no account. Generated from the Markdown in <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">the repository</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

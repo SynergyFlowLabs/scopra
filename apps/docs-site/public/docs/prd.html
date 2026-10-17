@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Product Requirements — Scopra</title>
+<meta name="description" content="Product Requirements — Scopra documentation.">
+<link rel="canonical" href="https://scopra-gulzaibs-projects-347c279f.vercel.app/docs/prd.html">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0b0e14">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Product Requirements — Scopra">
+<meta property="og:description" content="Product Requirements — Scopra documentation.">
+<meta property="og:url" content="https://scopra-gulzaibs-projects-347c279f.vercel.app/docs/prd.html">
+<meta property="og:site_name" content="Scopra">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>Scopra</a>
+  <nav aria-label="Main">
+    <a href="/docs/">Docs</a>
+    <a href="/docs/overview.html">Overview</a>
+    <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">GitHub</a>
+  </nav>
+</header>
+<div class="layout"><nav class="sidebar" aria-label="Documentation"><p class="group">Overview</p><ul><li><a href="/docs/overview.html">Overview</a></li><li><a href="/docs/changelog.html">Changelog</a></li></ul><p class="group">Product</p><ul><li><a href="/docs/prd.html" class="current" aria-current="page">Product Requirements</a></li><li><a href="/docs/product/alpha-scope.html">Alpha Scope</a></li><li><a href="/docs/product/naming.html">Naming</a></li></ul><p class="group">Architecture</p><ul><li><a href="/docs/architecture/system-overview.html">System Overview</a></li><li><a href="/docs/architecture/domain-model.html">Domain Model</a></li><li><a href="/docs/architecture/protocol.html">Protocol</a></li></ul><p class="group">Security</p><ul><li><a href="/docs/security/threat-model.html">Threat Model</a></li><li><a href="/docs/security/risk-register.html">Risk Register</a></li><li><a href="/docs/security/security-architecture.html">Security Architecture</a></li></ul><p class="group">Decisions</p><ul><li><a href="/docs/decisions/000-template.html">ADR-000: Title</a></li><li><a href="/docs/decisions/001-go-module-layout.html">ADR-001: Initial Go Module Layout</a></li><li><a href="/docs/decisions/002-messenger-envelope-v1.html">ADR-002: Scopra Messenger Envelope v1 Structural Contract</a></li><li><a href="/docs/decisions/003-local-status-ipc.html">ADR-003: Mio Foreground Status Daemon and Local IPC v1</a></li><li><a href="/docs/decisions/004-workspace-validation.html">ADR-004: Workspace Path Validation and Fingerprint v1</a></li><li><a href="/docs/decisions/005-workspace-registry-storage.html">ADR-005: Workspace Registry Storage v1</a></li><li><a href="/docs/decisions/006-local-workspace-commands.html">ADR-006: Local Workspace Commands over IPC v1</a></li><li><a href="/docs/decisions/007-execution-request-v1.html">ADR-007: Execution Request v1 Structural Contract</a></li><li><a href="/docs/decisions/008-canonical-execution-request.html">ADR-008: Canonical Execution Request and Action Hash</a></li><li><a href="/docs/decisions/009-execution-lifecycle-messages.html">ADR-009: Execution States, Results, Output, Errors, and Cancellation</a></li><li><a href="/docs/decisions/010-hollow-rootless-podman.html">ADR-010: Hollow Containment Backend: Rootless Podman</a></li><li><a href="/docs/decisions/011-local-execution.html">ADR-011: Local Execution over the Mio Socket</a></li><li><a href="/docs/decisions/012-systemd-user-service.html">ADR-012: Mio as a systemd User Service</a></li><li><a href="/docs/decisions/013-run-journal.html">ADR-013: Bounded Local Run Journal and `scopra logs`</a></li><li><a href="/docs/decisions/014-open-source-no-pricing.html">ADR-014: MIT License and No Pricing Model</a></li><li><a href="/docs/decisions.html">Architecture Decision Records</a></li></ul><p class="group">Planning</p><ul><li><a href="/docs/plan/implementation-plan.html">Implementation Plan</a></li></ul><p class="group">API</p><ul><li><a href="/docs/api/mcp-tools.html">MCP Tools</a></li></ul><p class="group">Operations</p><ul><li><a href="/docs/operations/runbooks.html">Runbooks</a></li></ul><p class="group">Community</p><ul><li><a href="/docs/community/security-policy.html">Security Policy</a></li><li><a href="/docs/community/contributing.html">Contributing</a></li><li><a href="/docs/community/code-of-conduct.html">Code of Conduct</a></li></ul></nav><main id="main" class="content"><nav class="breadcrumb" aria-label="Breadcrumb"><a href="/docs/">Docs</a> <span aria-hidden="true">/</span> Product</nav><article class="prose"><h1 id="scopra-product-requirements-document">Scopra Product Requirements Document</h1>
+<p><strong>Status:</strong> Draft v1.0<br><strong>Product:</strong> Scopra<br><strong>Category:</strong> Controlled execution infrastructure for AI agents<br><strong>Initial target:</strong> Linux private alpha<br><strong>Last updated:</strong> 2026-10-17</p>
+<p><strong>License:</strong> MIT, free for everyone, with no pricing model (ADR-014)</p>
+<h2 id="executive-summary">Executive Summary</h2>
+<p>Scopra is a secure execution gateway that lets AI agents interact with approved developer environments without unrestricted machine access. <strong>Scopra Mariner</strong> provides CLI/TUI onboarding and machine enrollment. <strong>Scopra Mio</strong>, the local daemon, registers workspaces and connects outbound to <strong>Scopra Caloris</strong>, the cloud control plane, over <strong>Scopra Goldstone</strong>, the machine relay, using the <strong>Scopra Messenger Protocol</strong>. <strong>Scopra Resolution</strong> evaluates policy and <strong>Scopra Rupes</strong> is the local enforcement boundary; authorized operations run in <strong>Scopra Hollow</strong>, a rootless isolated environment, and attributable events are recorded in <strong>Scopra Catena</strong>. <strong>Scopra Facula</strong> is the planned security-signal and anomaly-detection layer.</p>
+<blockquote>
+<p>Give agents enough access to complete the task, never unlimited access to the machine.</p>
+</blockquote>
+<h2 id="problem">Problem</h2>
+<p>Developers repeatedly copy commands from browser AI tools into terminals and paste output back. This causes context switching, weak execution continuity, error-prone transfer, and pressure to grant unsafe broad access.</p>
+<h2 id="vision">Vision</h2>
+<p>Scopra becomes the trusted execution layer between AI agents and real computing environments: local machines, development servers, containers, Git, tests, databases, cloud systems, deployments, browsers, and internal tools.</p>
+<h2 id="goals">Goals</h2>
+<ol>
+<li>Eliminate manual command/output relay loops.</li>
+<li>Provide machine-, workspace-, capability-, and time-scoped access.</li>
+<li>Keep local policy as final authority.</li>
+<li>Require exact-action approval for sensitive operations.</li>
+<li>Return structured execution results.</li>
+<li>Produce attributable audit records.</li>
+<li>Support MCP and future integration methods.</li>
+<li>Reach first successful execution in under five minutes.</li>
+</ol>
+<h2 id="alpha-non-goals">Alpha Non-Goals</h2>
+<ul>
+<li>Unrestricted shell or remote desktop</li>
+<li>Root or administrator execution</li>
+<li>Production infrastructure administration</li>
+<li>Interactive PTY</li>
+<li>Browser extension</li>
+<li>Windows</li>
+<li>Multi-agent delegation</li>
+<li>Secret injection</li>
+<li>Team RBAC, SSO, or self-hosting</li>
+<li>Pricing, paid plans, billing, usage charges, and feature gating</li>
+</ul>
+<h2 id="users">Users</h2>
+<h3 id="ai-assisted-developer">AI-assisted developer</h3>
+<p>Runs tests, builds, linting, debugging, and project commands while controlling writes, network use, and sensitive actions.</p>
+<h3 id="technical-founder">Technical founder</h3>
+<p>Operates multiple products and machines and needs resource selection, approvals, revocation, and auditability.</p>
+<h3 id="future-administrator">Future administrator</h3>
+<p>Governs shared machines, agents, policies, approvals, identity lifecycle, and retention.</p>
+<h2 id="product-principles">Product Principles</h2>
+<ol>
+<li>Least authority by default.</li>
+<li>Local enforcement is authoritative.</li>
+<li>Structured execution before shell strings or PTY.</li>
+<li>Approval binds to exact effect.</li>
+<li>Repository and process output are untrusted.</li>
+<li>Security remains usable.</li>
+<li>Auditability is part of execution.</li>
+<li>Escalation is narrow and explicit.</li>
+<li>Free and open source, with no pricing model: every capability is released under the MIT License, and there are no paid tiers, usage-based charges, plan limits, or feature gates.</li>
+</ol>
+<h2 id="alpha-scope">Alpha Scope</h2>
+<ul>
+<li>Linux x86_64</li>
+<li>Go Scopra Mio local daemon and Scopra Mariner CLI/TUI</li>
+<li>Short-lived device enrollment</li>
+<li>Authenticated outbound machine channel</li>
+<li>Workspace registration</li>
+<li>Rootless Podman execution</li>
+<li>Structured command execution</li>
+<li>Process status, streaming, and cancellation</li>
+<li>Scoped grants</li>
+<li>Exact-action approvals</li>
+<li>Minimal environment</li>
+<li>Network disabled by default</li>
+<li>Cloud and local policy</li>
+<li>Remote MCP</li>
+<li>Dashboard and audit timeline</li>
+<li>Grant and machine revocation</li>
+</ul>
+<h2 id="domain-model">Domain Model</h2>
+<ul>
+<li>User</li>
+<li>Machine</li>
+<li>Workspace</li>
+<li>Agent</li>
+<li>Client</li>
+<li>Grant</li>
+<li>Session</li>
+<li>Execution</li>
+<li>Approval</li>
+<li>Policy and PolicyVersion</li>
+<li>Artifact</li>
+<li>AuditEvent</li>
+<li>Revocation</li>
+</ul>
+<h2 id="functional-requirements">Functional Requirements</h2>
+<h3 id="installation-and-lifecycle">Installation and lifecycle</h3>
+<ul>
+<li>Signed packages and checksums</li>
+<li>Guided TUI onboarding</li>
+<li>Device-generated asymmetric key</li>
+<li>Single-use browser activation code</li>
+<li>Machine inspection, rotation, and revocation</li>
+<li>Signed updates with rollback protection</li>
+</ul>
+<h3 id="workspaces">Workspaces</h3>
+<ul>
+<li>Register and remove an existing directory</li>
+<li>Canonical path and repository fingerprint</li>
+<li>Read-only and authorized read-write modes</li>
+<li>Local maximum policy</li>
+<li>Removing authorization never deletes source files</li>
+</ul>
+<h3 id="grants">Grants</h3>
+<ul>
+<li>Scope by user, agent, client, machine, workspace, capability, constraints, and expiration</li>
+<li>Short-lived access tokens</li>
+<li>Prompt revocation for online machines</li>
+<li>Mandatory cloud and local authorization</li>
+<li>Default deny for unknown operations and fields</li>
+</ul>
+<h3 id="execution">Execution</h3>
+<ul>
+<li>Executable plus typed argument array</li>
+<li>Workspace-relative working directory</li>
+<li>Runtime, CPU, memory, PID, output, artifact, and concurrency limits</li>
+<li>Structured stdout, stderr, status, exit code, timing, truncation, and artifacts</li>
+<li>Cursor-based output reads</li>
+<li>Cancellation terminates descendants</li>
+</ul>
+<h3 id="approvals">Approvals</h3>
+<ul>
+<li>Freeze canonical request</li>
+<li>Bind approval to action hash, principals, resources, policy versions, expiry, and use count</li>
+<li>Display exact command and independent risk explanation</li>
+<li>Support Reject and Allow once</li>
+<li>Invalidate after material changes or revocation</li>
+</ul>
+<h3 id="environment-and-network">Environment and network</h3>
+<ul>
+<li>Start from an empty environment</li>
+<li>No inherited SSH, GPG, browser, cloud, Docker, or Kubernetes credentials</li>
+<li>Network disabled by default and represented as a separate capability</li>
+<li>Block cloud metadata and sensitive link-local endpoints</li>
+</ul>
+<h3 id="mcp-tools">MCP tools</h3>
+<ul>
+<li><code>list_machines</code></li>
+<li><code>list_workspaces</code></li>
+<li><code>get_workspace</code></li>
+<li><code>execute_command</code></li>
+<li><code>get_execution</code></li>
+<li><code>read_execution_output</code></li>
+<li><code>cancel_execution</code></li>
+<li><code>request_capability</code></li>
+<li><code>get_approval_status</code></li>
+</ul>
+<h3 id="dashboard">Dashboard</h3>
+<ul>
+<li>Overview</li>
+<li>Machines and workspaces</li>
+<li>Grants</li>
+<li>Approvals</li>
+<li>Sessions and executions</li>
+<li>Integrations</li>
+<li>Account and security</li>
+</ul>
+<h3 id="audit">Audit</h3>
+<ul>
+<li>Attributable security events</li>
+<li>Append-only history</li>
+<li>Local buffering and reconciliation</li>
+<li>Separate retention for metadata, output, and artifacts</li>
+<li>No bearer tokens or raw secrets in audit metadata</li>
+</ul>
+<h2 id="non-functional-requirements">Non-Functional Requirements</h2>
+<h3 id="security">Security</h3>
+<ul>
+<li>Rootless containment</li>
+<li>No privilege elevation</li>
+<li>No host Docker socket</li>
+<li>No permanent master terminal credential</li>
+<li>Signed installer and update chain</li>
+<li>Encryption in transit and at rest</li>
+<li>Negative authorization tests for every resource</li>
+</ul>
+<h3 id="performance-targets">Performance Targets</h3>
+<ul>
+<li>Local policy p95 below 50 ms</li>
+<li>Cloud authorization p95 below 150 ms excluding network latency</li>
+<li>Request-to-local-start overhead p95 below 500 ms for online daemon</li>
+<li>Output streaming p95 below 500 ms</li>
+<li>Approval propagation p95 below 2 seconds</li>
+</ul>
+<h3 id="reliability">Reliability</h3>
+<ul>
+<li>Idempotent creation</li>
+<li>Reconnection without duplicate execution</li>
+<li>Every accepted execution reaches a terminal state</li>
+<li>Audit gap detection and reconciliation</li>
+</ul>
+<h2 id="security-invariants">Security Invariants</h2>
+<ol>
+<li>No anonymous execution.</li>
+<li>Every action is attributable.</li>
+<li>Cloud cannot broaden local authority.</li>
+<li>Agents cannot approve themselves.</li>
+<li>Material changes invalidate approval.</li>
+<li>Output cannot modify authorization.</li>
+<li>Revocation has a defined objective.</li>
+<li>Workers cannot modify Scopra security components.</li>
+<li>Unknown capabilities are denied.</li>
+<li>High-risk operations fail closed when required auditability is unavailable.</li>
+</ol>
+<h2 id="success-metrics">Success Metrics</h2>
+<p><strong>North star:</strong> Successful agent execution loops completed without manual terminal copy-paste.</p>
+<p>Track installation, activation, workspace creation, integration connection, first execution, approval outcomes, revocation latency, resource-limit events, duplicate or lost executions, and audit gaps.</p>
+<h2 id="alpha-acceptance-criteria">Alpha Acceptance Criteria</h2>
+<p>A new user can install Scopra, activate a machine, register a workspace, connect an MCP client, issue a scoped grant, run a bounded command in rootless isolation, receive structured output, approve a sensitive action, cancel a process, inspect the timeline, and revoke access without exposing the home directory, host credentials, network, or Docker socket.</p>
+</article><p class="edit-link"><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/PRD.md" rel="noopener noreferrer">Edit this page on GitHub</a></p></main><aside class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#executive-summary">Executive Summary</a></li><li><a href="#problem">Problem</a></li><li><a href="#vision">Vision</a></li><li><a href="#goals">Goals</a></li><li><a href="#alpha-non-goals">Alpha Non-Goals</a></li><li><a href="#users">Users</a></li><li class="toc-sub"><a href="#ai-assisted-developer">AI-assisted developer</a></li><li class="toc-sub"><a href="#technical-founder">Technical founder</a></li><li class="toc-sub"><a href="#future-administrator">Future administrator</a></li><li><a href="#product-principles">Product Principles</a></li><li><a href="#alpha-scope">Alpha Scope</a></li><li><a href="#domain-model">Domain Model</a></li><li><a href="#functional-requirements">Functional Requirements</a></li><li class="toc-sub"><a href="#installation-and-lifecycle">Installation and lifecycle</a></li><li class="toc-sub"><a href="#workspaces">Workspaces</a></li><li class="toc-sub"><a href="#grants">Grants</a></li><li class="toc-sub"><a href="#execution">Execution</a></li><li class="toc-sub"><a href="#approvals">Approvals</a></li><li class="toc-sub"><a href="#environment-and-network">Environment and network</a></li><li class="toc-sub"><a href="#mcp-tools">MCP tools</a></li><li class="toc-sub"><a href="#dashboard">Dashboard</a></li><li class="toc-sub"><a href="#audit">Audit</a></li><li><a href="#non-functional-requirements">Non-Functional Requirements</a></li><li class="toc-sub"><a href="#security">Security</a></li><li class="toc-sub"><a href="#performance-targets">Performance Targets</a></li><li class="toc-sub"><a href="#reliability">Reliability</a></li><li><a href="#security-invariants">Security Invariants</a></li><li><a href="#success-metrics">Success Metrics</a></li><li><a href="#alpha-acceptance-criteria">Alpha Acceptance Criteria</a></li></ul></aside></div><footer class="site-footer">
+  <div class="footer-inner">
+    <p><strong>Scopra</strong> — controlled execution for AI agents. Free and open source under the <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE">MIT License</a>.</p>
+    <p class="muted">No pricing model, no telemetry, no account. Generated from the Markdown in <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">the repository</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

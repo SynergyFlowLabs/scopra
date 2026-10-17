@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Implementation Plan — Scopra</title>
+<meta name="description" content="Implementation Plan — Scopra documentation.">
+<link rel="canonical" href="https://scopra-gulzaibs-projects-347c279f.vercel.app/docs/plan/implementation-plan.html">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0b0e14">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Implementation Plan — Scopra">
+<meta property="og:description" content="Implementation Plan — Scopra documentation.">
+<meta property="og:url" content="https://scopra-gulzaibs-projects-347c279f.vercel.app/docs/plan/implementation-plan.html">
+<meta property="og:site_name" content="Scopra">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>Scopra</a>
+  <nav aria-label="Main">
+    <a href="/docs/">Docs</a>
+    <a href="/docs/overview.html">Overview</a>
+    <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">GitHub</a>
+  </nav>
+</header>
+<div class="layout"><nav class="sidebar" aria-label="Documentation"><p class="group">Overview</p><ul><li><a href="/docs/overview.html">Overview</a></li><li><a href="/docs/changelog.html">Changelog</a></li></ul><p class="group">Product</p><ul><li><a href="/docs/prd.html">Product Requirements</a></li><li><a href="/docs/product/alpha-scope.html">Alpha Scope</a></li><li><a href="/docs/product/naming.html">Naming</a></li></ul><p class="group">Architecture</p><ul><li><a href="/docs/architecture/system-overview.html">System Overview</a></li><li><a href="/docs/architecture/domain-model.html">Domain Model</a></li><li><a href="/docs/architecture/protocol.html">Protocol</a></li></ul><p class="group">Security</p><ul><li><a href="/docs/security/threat-model.html">Threat Model</a></li><li><a href="/docs/security/risk-register.html">Risk Register</a></li><li><a href="/docs/security/security-architecture.html">Security Architecture</a></li></ul><p class="group">Decisions</p><ul><li><a href="/docs/decisions/000-template.html">ADR-000: Title</a></li><li><a href="/docs/decisions/001-go-module-layout.html">ADR-001: Initial Go Module Layout</a></li><li><a href="/docs/decisions/002-messenger-envelope-v1.html">ADR-002: Scopra Messenger Envelope v1 Structural Contract</a></li><li><a href="/docs/decisions/003-local-status-ipc.html">ADR-003: Mio Foreground Status Daemon and Local IPC v1</a></li><li><a href="/docs/decisions/004-workspace-validation.html">ADR-004: Workspace Path Validation and Fingerprint v1</a></li><li><a href="/docs/decisions/005-workspace-registry-storage.html">ADR-005: Workspace Registry Storage v1</a></li><li><a href="/docs/decisions/006-local-workspace-commands.html">ADR-006: Local Workspace Commands over IPC v1</a></li><li><a href="/docs/decisions/007-execution-request-v1.html">ADR-007: Execution Request v1 Structural Contract</a></li><li><a href="/docs/decisions/008-canonical-execution-request.html">ADR-008: Canonical Execution Request and Action Hash</a></li><li><a href="/docs/decisions/009-execution-lifecycle-messages.html">ADR-009: Execution States, Results, Output, Errors, and Cancellation</a></li><li><a href="/docs/decisions/010-hollow-rootless-podman.html">ADR-010: Hollow Containment Backend: Rootless Podman</a></li><li><a href="/docs/decisions/011-local-execution.html">ADR-011: Local Execution over the Mio Socket</a></li><li><a href="/docs/decisions/012-systemd-user-service.html">ADR-012: Mio as a systemd User Service</a></li><li><a href="/docs/decisions/013-run-journal.html">ADR-013: Bounded Local Run Journal and `scopra logs`</a></li><li><a href="/docs/decisions/014-open-source-no-pricing.html">ADR-014: MIT License and No Pricing Model</a></li><li><a href="/docs/decisions.html">Architecture Decision Records</a></li></ul><p class="group">Planning</p><ul><li><a href="/docs/plan/implementation-plan.html" class="current" aria-current="page">Implementation Plan</a></li></ul><p class="group">API</p><ul><li><a href="/docs/api/mcp-tools.html">MCP Tools</a></li></ul><p class="group">Operations</p><ul><li><a href="/docs/operations/runbooks.html">Runbooks</a></li></ul><p class="group">Community</p><ul><li><a href="/docs/community/security-policy.html">Security Policy</a></li><li><a href="/docs/community/contributing.html">Contributing</a></li><li><a href="/docs/community/code-of-conduct.html">Code of Conduct</a></li></ul></nav><main id="main" class="content"><nav class="breadcrumb" aria-label="Breadcrumb"><a href="/docs/">Docs</a> <span aria-hidden="true">/</span> Planning</nav><article class="prose"><h1 id="scopra-full-implementation-plan">Scopra Full Implementation Plan</h1>
+<p><strong>Status:</strong> Execution-ready draft v1.1<br><strong>Target:</strong> Linux private alpha<br><strong>Last updated:</strong> 2026-10-17</p>
+<p><strong>License:</strong> MIT, free for everyone, with no pricing model (ADR-014)</p>
+<h2 id="implementation-rule">Implementation Rule</h2>
+<p>The smallest valid Scopra loop is:</p>
+<pre><code class="language-text">authenticated agent request
+  -&gt; scoped grant
+  -&gt; cloud authorization
+  -&gt; authenticated machine dispatch
+  -&gt; local authorization
+  -&gt; exact approval when required
+  -&gt; isolated bounded execution
+  -&gt; structured result
+  -&gt; attributable audit record
+</code></pre>
+<p>If any mandatory stage is unavailable or invalid, deny the request. Never add unrestricted terminal access as an MVP shortcut.</p>
+<h2 id="technical-baseline">Technical Baseline</h2>
+<ul>
+<li>Monorepo</li>
+<li>Go Scopra Mio daemon, Scopra Mariner CLI, Scopra Goldstone relay, and security-sensitive services</li>
+<li>TypeScript, React, and Next.js dashboard</li>
+<li>PostgreSQL system of record</li>
+<li>Redis for ephemeral coordination</li>
+<li>Encrypted object storage for optional artifacts</li>
+<li>Scopra Goldstone outbound TLS WebSocket machine relay carrying authenticated Scopra Messenger Protocol envelopes</li>
+<li>Rootless Podman behind a containment interface for Scopra Hollow</li>
+<li>MIT-licensed open source, with no pricing model, paid tiers, or feature gates (ADR-014)</li>
+<li>OpenTelemetry-compatible observability</li>
+<li>Canonical component names are defined in <code>docs/product/naming.md</code>; retain <code>scopra</code> and <code>scoprad</code> executable names unless a separate compatibility decision changes them.</li>
+</ul>
+<h2 id="milestone-summary">Milestone Summary</h2>
+<ol>
+<li>Discovery and architecture baseline</li>
+<li>Local secure execution foundation</li>
+<li>Cloud identity, enrollment, and relay</li>
+<li>Grants, authorization, approvals, and audit</li>
+<li>Remote MCP and dashboard alpha</li>
+<li>Private alpha readiness and launch</li>
+<li>Public beta hardening</li>
+<li>General availability and team governance</li>
+</ol>
+<h1 id="milestone-by-milestone-task-checklist">Milestone-by-Milestone Task Checklist</h1>
+<h2 id="milestone-0-discovery-and-architecture-baseline">Milestone 0: Discovery and Architecture Baseline</h2>
+<h3 id="product-validation">Product validation</h3>
+<ul>
+<li><input type="checkbox" disabled> Recruit 15–20 target developers.</li>
+<li><input type="checkbox" disabled> Observe at least 10 real relay workflows.</li>
+<li><input type="checkbox" disabled> Measure commands, application switches, approval decisions, output size, and elapsed time.</li>
+<li><input type="checkbox" disabled> Identify the three highest-frequency and highest-cost workflows.</li>
+<li><input type="checkbox" disabled> Test willingness to install a daemon and grant workspace access.</li>
+<li><input type="checkbox" disabled> Compare approval preferences.</li>
+<li><input type="checkbox" disabled> Document trust objections.</li>
+<li><input type="checkbox" disabled> Select one remote MCP client and one local test client.</li>
+<li><input type="checkbox" disabled> Build a compatibility matrix.</li>
+<li><input type="checkbox" disabled> Establish the manual workflow baseline.</li>
+</ul>
+<h3 id="scope-and-architecture">Scope and architecture</h3>
+<ul>
+<li><input type="checkbox" disabled> Freeze alpha goals and non-goals.</li>
+<li><input type="checkbox" disabled> Confirm Linux x86_64, rootless containment, structured execution, and network-off defaults.</li>
+<li><input type="checkbox" disabled> Defer PTY, browser extension, production administration, and native unrestricted execution.</li>
+<li><input type="checkbox" disabled> Create system, component, execution, enrollment, approval, revocation, and audit diagrams.</li>
+<li><input type="checkbox" disabled> Document cloud outage, reconnect, offline, output, and retention behavior.</li>
+</ul>
+<h3 id="adrs">ADRs</h3>
+<ul>
+<li><input type="checkbox" disabled> Monorepo and languages.</li>
+<li><input type="checkbox" disabled> Device identity and enrollment.</li>
+<li><input type="checkbox" disabled> Relay transport and reconnect.</li>
+<li><input type="checkbox" disabled> Containment backend.</li>
+<li><input type="checkbox" disabled> Canonical request.</li>
+<li><input type="checkbox" disabled> Audit integrity.</li>
+<li><input type="checkbox" disabled> MCP authorization.</li>
+<li><input type="checkbox" disabled> Output storage and redaction.</li>
+<li><input type="checkbox" disabled> Token revocation.</li>
+<li><input type="checkbox" disabled> Update signing.</li>
+</ul>
+<h3 id="security">Security</h3>
+<ul>
+<li><input type="checkbox" disabled> Publish threat model and risk register.</li>
+<li><input type="checkbox" disabled> Assign owners to critical and high risks.</li>
+<li><input type="checkbox" disabled> Map invariants to negative tests.</li>
+<li><input type="checkbox" disabled> Document guarantees and non-guarantees.</li>
+<li><input type="checkbox" disabled> Define incident severity, retention, deletion, and vulnerability reporting.</li>
+</ul>
+<h3 id="exit-gate">Exit gate</h3>
+<ul>
+<li><input type="checkbox" disabled> Six qualified users agree to install a prototype.</li>
+<li><input type="checkbox" disabled> Selected integration can invoke tools.</li>
+<li><input type="checkbox" disabled> P0 ADRs are approved.</li>
+<li><input type="checkbox" disabled> Critical risks have owners and treatments.</li>
+<li><input type="checkbox" disabled> Team can explain the complete path and boundaries.</li>
+</ul>
+<hr>
+<h2 id="milestone-1-local-secure-execution-foundation">Milestone 1: Local Secure Execution Foundation</h2>
+<h3 id="engineering-platform">Engineering platform</h3>
+<ul>
+<li><input type="checkbox" disabled> Initialize monorepo, branch protection, CODEOWNERS, CI, linting, testing, secret scanning, dependency checks, SBOM, schemas, and templates.</li>
+<li><input type="checkbox" disabled> Create one-command local development setup.</li>
+</ul>
+<h3 id="scopra-messenger-protocol">Scopra Messenger Protocol</h3>
+<p><strong>Initial increments implemented:</strong></p>
+<ul>
+<li>envelope v1 structural validation (ADR-002);</li>
+<li>strict decoding and validation of the <code>execution.request</code> v1 payload (ADR-007);</li>
+<li>the canonical request (RFC 8785) and the action hash that approvals bind to (ADR-008);</li>
+<li>every execution lifecycle message (ADR-009): the terminal <code>execution.result</code> with its states and error codes, <code>execution.started</code>, output chunks, and <code>execution.cancel</code>.</li>
+</ul>
+<p>Together these define every part of the first task below, which is therefore checked.</p>
+<p>For the second task, validation tests exist, and the reference payloads in <code>packages/test-fixtures/messenger/v1</code> now pin the version 1 wire format for every implementation. It stays open until a second protocol version makes cross-version tests possible. Approval records are still pending.</p>
+<ul>
+<li><input type="checkbox" checked disabled> Define protocol versions, IDs, canonical request, results, output chunks, errors, and execution states.</li>
+<li><input type="checkbox" disabled> Add validation and compatibility tests.</li>
+</ul>
+<h3 id="scopra-mio-daemon-and-scopra-mariner-cli">Scopra Mio daemon and Scopra Mariner CLI</h3>
+<p><strong>Initial increments implemented:</strong> foreground <code>scoprad</code> with a persistent per-user state directory (<code>$XDG_STATE_HOME/scopra</code>, by default <code>~/.local/state/scopra</code>) and an exclusive state-directory lock (single daemon per state directory), <code>scopra status</code>, a read-only <code>scopra doctor</code> (platform, state-directory, workspace-registry, registered-workspace revalidation, Mio status, and containment-readiness checks), <code>scopra workspace add/list/remove</code>, local version reporting, context-driven shutdown, strict same-UID Unix-socket status IPC, a startup check of the workspace registry, and workspace registration commands over that IPC (ADR-006) are in place. Local execution is now wired end to end: <code>scoprad</code> resolves Podman, removes leftover containers, revalidates the workspace, and runs the request in Hollow (ADR-011 increment 2), so a run executes through the sandbox when the host has rootless Podman and a pinned image. <code>scopra run</code> runs a command in a registered workspace through Mio and Hollow, with human and <code>--json</code> output and the exit statuses of ADR-011. <code>scopra service install/uninstall/status</code> manages Mio as a systemd user service whose unit carries the durable configuration (ADR-012), tested against a fake <code>systemctl</code>. Mio also keeps a bounded, metadata-only journal of answered runs (ADR-013), which <code>scopra logs</code> reads over the read-only <code>execution.logs</code> command as text or schema-v1 JSON; the journal stores no command line or output. Real systemd verification, broader doctor checks (such as service and enrollment readiness), output capture, and the rest of the CLI remain pending; the checklist items below describe those larger milestones and are intentionally unchecked.</p>
+<ul>
+<li><input type="checkbox" disabled> Implement Scopra Mio (<code>scoprad</code>), foreground mode, Linux service, state directory, lock, shutdown, health, logging, and versioning.</li>
+<li><input type="checkbox" disabled> Implement Scopra Mariner commands, including <code>scopra doctor</code>, daemon status, workspace CRUD, local execution, status, logs, cancellation, JSON output, and TTY output.</li>
+<li><input type="checkbox" disabled> Implement authenticated bounded Unix-socket IPC and malformed-message tests.</li>
+</ul>
+<h3 id="workspace-and-containment">Workspace and containment</h3>
+<p><strong>Initial increment implemented:</strong> <code>internal/workspace</code> canonicalizes and fingerprints workspace roots, rejects the filesystem root and any directory that is or contains a home directory or another protected directory, and revalidates recorded workspaces (ADR-004). <code>internal/workspace/registry</code> stores registrations atomically, with no duplicate or overlapping workspaces (ADR-005). Mio opens the registry at startup, refuses to serve if it is unusable, and serves <code>add</code>, <code>list</code>, and <code>remove</code> over local IPC (ADR-006), which <code>scopra workspace add/list/remove</code> uses. <code>scopra doctor</code> revalidates registrations read-only and reports stale ones as a warning. The checklist items below stay unchecked until workspace registration and execution-time revalidation exist.</p>
+<ul>
+<li><input type="checkbox" disabled> Canonicalize workspace and record repository fingerprint.</li>
+<li><input type="checkbox" disabled> Reject root and complete home directory.</li>
+<li><input type="checkbox" disabled> Revalidate workspace before execution.</li>
+</ul>
+<p><strong>Hollow, first increments implemented (ADR-010):</strong></p>
+<ul>
+<li><code>internal/hollow</code> builds the exact rootless <code>podman run</code> argument vector for a validated request: no network, no capabilities, <code>no-new-privileges</code>, a read-only root, the workspace as the only mount, an empty environment, and limits with no swap.</li>
+<li>Its preflight check parses <code>podman info --format json</code> and fails closed unless Podman is 4.0 or later, rootless, on cgroups v2, with the <code>cpu</code>, <code>memory</code>, and <code>pids</code> controllers delegated.</li>
+<li><code>scoprad --sandbox-image</code> takes the image, pinned by digest, and rejects a malformed value at startup.</li>
+<li><code>hollow.Runner</code> runs one request through <code>podman run</code>, sending the start notice and chunked, truncated output (ADR-009). It derives the result from <code>podman inspect</code> and removes the container. Its own timer and context cancellation kill the container with <code>podman kill</code>. It checks the host and the image before each run, bounds every helper call, and can remove leftover containers. It is tested only against a fake Podman, and Mio now uses it for local runs (ADR-011 increment 2).</li>
+</ul>
+<p>Mio now runs Podman for local runs, but no host with rootless Podman has been used yet, so the containment tasks below stay unchecked until the runner has been verified on such a host.</p>
+<ul>
+<li><input type="checkbox" disabled> Implement the Scopra Hollow rootless Podman adapter behind the containment interface.</li>
+<li><input type="checkbox" disabled> Mount only workspace; default read-only.</li>
+<li><input type="checkbox" disabled> Disable network, devices, privileged mode, Docker socket, and host PID namespace.</li>
+<li><input type="checkbox" disabled> Drop capabilities and enable <code>no-new-privileges</code>.</li>
+<li><input type="checkbox" disabled> Enforce CPU, memory, PID, runtime, temporary storage, and output limits.</li>
+<li><input type="checkbox" disabled> Fail closed without containment.</li>
+</ul>
+<h3 id="execution-and-policy">Execution and policy</h3>
+<ul>
+<li><input type="checkbox" disabled> Invoke direct executable plus argument array.</li>
+<li><input type="checkbox" disabled> Construct an empty environment and ephemeral home.</li>
+<li><input type="checkbox" disabled> Exclude credential sockets and host secrets.</li>
+<li><input type="checkbox" disabled> Capture stdout and stderr with sequence, limits, backpressure, and truncation.</li>
+<li><input type="checkbox" disabled> Track status, timing, exit code, cancellation, descendants, and cleanup.</li>
+<li><input type="checkbox" disabled> Implement Scopra Resolution default-deny evaluation and initial policy profiles; enforce the local maximum through Scopra Rupes.</li>
+</ul>
+<h3 id="adversarial-tests">Adversarial tests</h3>
+<ul>
+<li><input type="checkbox" disabled> Path traversal, symlinks, hard links, <code>/proc</code>, <code>/sys</code>, metadata endpoints, sockets, environment leakage, fork bomb, output flood, disk exhaustion, orphan process, setuid, <code>sudo</code>, terminal controls, and runtime failure.</li>
+</ul>
+<h3 id="exit-gate-1">Exit gate</h3>
+<ul>
+<li><input type="checkbox" disabled> Direct execution works in rootless containment.</li>
+<li><input type="checkbox" disabled> Workspace is the only approved mount.</li>
+<li><input type="checkbox" disabled> Home, network, and credential sockets are unavailable.</li>
+<li><input type="checkbox" disabled> Limits and cancellation work.</li>
+<li><input type="checkbox" disabled> No native fallback exists.</li>
+<li><input type="checkbox" disabled> Adversarial tests pass.</li>
+</ul>
+<hr>
+<h2 id="milestone-2-cloud-identity-enrollment-and-relay">Milestone 2: Cloud Identity, Enrollment, and Relay</h2>
+<h3 id="foundation-and-authentication">Foundation and authentication</h3>
+<ul>
+<li><input type="checkbox" disabled> Provision development, staging, PostgreSQL, Redis, secrets, identities, TLS, DNS, migrations, logs, metrics, and traces.</li>
+<li><input type="checkbox" disabled> Implement account creation, sign-in, secure sessions, recent authentication, listing, revocation, and enrollment notices.</li>
+</ul>
+<h3 id="scopra-mariner-device-enrollment">Scopra Mariner device enrollment</h3>
+<ul>
+<li><input type="checkbox" disabled> Generate key locally and store securely.</li>
+<li><input type="checkbox" disabled> Define machine credential, expiry, rotation, and revocation.</li>
+<li><input type="checkbox" disabled> Implement short-lived, single-use, public-key-bound activation.</li>
+<li><input type="checkbox" disabled> Display machine characteristics and fingerprint in browser.</li>
+<li><input type="checkbox" disabled> Audit and notify enrollment.</li>
+</ul>
+<h3 id="scopra-goldstone-relay">Scopra Goldstone relay</h3>
+<ul>
+<li><input type="checkbox" disabled> Implement authenticated outbound connection.</li>
+<li><input type="checkbox" disabled> Validate revocation and minimum version.</li>
+<li><input type="checkbox" disabled> Add presence leases, heartbeat, stale cleanup, bounded queues, frame limits, and rates.</li>
+<li><input type="checkbox" disabled> Route by authenticated machine identity.</li>
+<li><input type="checkbox" disabled> Add message IDs, sequences, acknowledgements, connection epochs, duplicate prevention, reconciliation, and lost-state behavior.</li>
+<li><input type="checkbox" disabled> Add machine list, detail, presence, and revocation UI.</li>
+</ul>
+<h3 id="security-tests">Security tests</h3>
+<ul>
+<li><input type="checkbox" disabled> Code reuse, key substitution, expiry, activation race, wrong user, response replay, wrong machine routing, revoked reconnect, oversized frames, and invalid sequence.</li>
+</ul>
+<h3 id="exit-gate-2">Exit gate</h3>
+<ul>
+<li><input type="checkbox" disabled> Clean daemon activates without bearer token in URL.</li>
+<li><input type="checkbox" disabled> Enrollment is bound, single-use, and expiring.</li>
+<li><input type="checkbox" disabled> Presence is accurate.</li>
+<li><input type="checkbox" disabled> Message reaches only intended daemon.</li>
+<li><input type="checkbox" disabled> Revoked daemon cannot reconnect.</li>
+</ul>
+<hr>
+<h2 id="milestone-3-grants-authorization-approvals-and-audit">Milestone 3: Grants, Authorization, Approvals, and Audit</h2>
+<h3 id="data-and-identity">Data and identity</h3>
+<ul>
+<li><input type="checkbox" disabled> Create schemas for users, sessions, machines, credentials, workspaces, agents, clients, grants, capabilities, executions, transitions, approvals, policies, revocations, and audit.</li>
+<li><input type="checkbox" disabled> Add ownership and idempotency constraints.</li>
+<li><input type="checkbox" disabled> Keep human, agent, and client identities separate.</li>
+</ul>
+<h3 id="grants-and-tokens">Grants and tokens</h3>
+<ul>
+<li><input type="checkbox" disabled> Implement grant creation, inspection, narrowing, and revocation.</li>
+<li><input type="checkbox" disabled> Require resource, principal, capability, execution, network, environment, limit, expiration, and approval constraints.</li>
+<li><input type="checkbox" disabled> Issue short-lived audience-bound tokens and store opaque tokens as hashes.</li>
+</ul>
+<h3 id="authorization">Authorization</h3>
+<ul>
+<li><input type="checkbox" disabled> Authenticate client and resolve all principals.</li>
+<li><input type="checkbox" disabled> Validate grant, scope, capability, and limits.</li>
+<li><input type="checkbox" disabled> Apply cloud policy and create canonical request.</li>
+<li><input type="checkbox" disabled> Sign dispatch envelope.</li>
+<li><input type="checkbox" disabled> Locally verify issuer, audience, signature, time, nonce, replay, payload hash, resource, local maximum policy, and effective limits.</li>
+<li><input type="checkbox" disabled> Deny if any layer denies.</li>
+</ul>
+<h3 id="revocation">Revocation</h3>
+<ul>
+<li><input type="checkbox" disabled> Revoke users, clients, grants, workspaces, machines, sessions, and pending executions.</li>
+<li><input type="checkbox" disabled> Push revocation to online daemons.</li>
+<li><input type="checkbox" disabled> Maintain local revocation high-water mark and reject stale dispatches.</li>
+<li><input type="checkbox" disabled> Measure propagation and define offline behavior.</li>
+</ul>
+<h3 id="approval">Approval</h3>
+<ul>
+<li><input type="checkbox" disabled> Freeze request and compute action hash.</li>
+<li><input type="checkbox" disabled> Bind principals, resources, policies, expiry, nonce, and use count.</li>
+<li><input type="checkbox" disabled> Generate independent risk reasons.</li>
+<li><input type="checkbox" disabled> Show exact request and separate agent explanation.</li>
+<li><input type="checkbox" disabled> Provide Reject and Allow once; no global always-allow.</li>
+<li><input type="checkbox" disabled> Verify approver, integrity-protect decision, recompute locally, and consume atomically.</li>
+<li><input type="checkbox" disabled> Invalidate after change or revocation.</li>
+</ul>
+<h3 id="scopra-catena-audit">Scopra Catena audit</h3>
+<ul>
+<li><input type="checkbox" disabled> Emit versioned Scopra Catena events for all identity, grant, session, execution, policy, approval, revocation, timeout, cancellation, truncation, and resource-limit actions.</li>
+<li><input type="checkbox" disabled> Persist the Catena event chain append-only with sequence integrity, buffering, and reconciliation.</li>
+<li><input type="checkbox" disabled> Exclude tokens, secrets, and raw output from metadata.</li>
+</ul>
+<h3 id="negative-tests-and-exit-gate">Negative tests and exit gate</h3>
+<ul>
+<li><input type="checkbox" disabled> Wrong client, machine, workspace, audience, capability, limits, expired grant, revoked grant, replay, modified action, reused approval, expired approval, post-revocation approval, double submit, cloud allow/local deny, and cross-user object access all fail safely.</li>
+<li><input type="checkbox" disabled> Grant authorizes only exact scope.</li>
+<li><input type="checkbox" disabled> Revocation meets target.</li>
+<li><input type="checkbox" disabled> Audit timeline is complete.</li>
+</ul>
+<hr>
+<h2 id="milestone-4-remote-mcp-and-dashboard-alpha">Milestone 4: Remote MCP and Dashboard Alpha</h2>
+<h3 id="mcp">MCP</h3>
+<ul>
+<li><input type="checkbox" disabled> Implement protected-resource metadata and delegated authorization with exact redirects and PKCE where applicable.</li>
+<li><input type="checkbox" disabled> Bind authorization to a grant and support revocation.</li>
+<li><input type="checkbox" disabled> Implement all initial MCP tools.</li>
+<li><input type="checkbox" disabled> Bound output, use cursors, return execution IDs, and distinguish denial, approval, offline, timeout, and failure.</li>
+<li><input type="checkbox" disabled> Label output as untrusted and version tool schemas.</li>
+<li><input type="checkbox" disabled> Publish agent instructions for resources, direct execution, polling, approvals, capabilities, untrusted content, and artifacts.</li>
+</ul>
+<h3 id="dashboard">Dashboard</h3>
+<ul>
+<li><input type="checkbox" disabled> Build overview, machine, workspace, grant, approval, session, execution, integration, and security surfaces.</li>
+<li><input type="checkbox" disabled> Keep approval UI separate from output and render command as untrusted text.</li>
+<li><input type="checkbox" disabled> Never display a reusable master key for chat copy-paste.</li>
+</ul>
+<h3 id="compatibility-and-exit-gate">Compatibility and exit gate</h3>
+<ul>
+<li><input type="checkbox" disabled> Test authorization, discovery, safe execution, approval, streaming, cancellation, offline behavior, revocation, and refresh.</li>
+<li><input type="checkbox" disabled> Client sees only authorized resources.</li>
+<li><input type="checkbox" disabled> End-to-end command and approval complete.</li>
+<li><input type="checkbox" disabled> Structured result returns through MCP.</li>
+<li><input type="checkbox" disabled> Dashboard timeline is complete.</li>
+</ul>
+<hr>
+<h2 id="milestone-5-private-alpha-readiness-and-launch">Milestone 5: Private Alpha Readiness and Launch</h2>
+<h3 id="release-and-updates">Release and updates</h3>
+<ul>
+<li><input type="checkbox" disabled> Controlled builds, separate signing identities, Linux artifacts, checksums, signatures, SBOM, scans, notes, and clean-machine verification.</li>
+<li><input type="checkbox" disabled> Installer detects platform, verifies package, uses minimum privilege, rolls back partial install, and documents removal.</li>
+<li><input type="checkbox" disabled> Add channels, signed updates, staged rollout, minimum safe version, rollback protection, and emergency revocation.</li>
+</ul>
+<h3 id="security-reliability-and-operations">Security, reliability, and operations</h3>
+<ul>
+<li><input type="checkbox" disabled> Run all auth, authorization, enrollment, replay, approval, escape, leakage, exhaustion, and audit suites.</li>
+<li><input type="checkbox" disabled> Fuzz protocol and security parsers.</li>
+<li><input type="checkbox" disabled> Review crypto, tokens, daemon, containment, and approval UX.</li>
+<li><input type="checkbox" disabled> Resolve critical findings.</li>
+<li><input type="checkbox" disabled> Test reconnect, duplication, terminal states, audit reconciliation, scale, latency, backpressure, approvals, and revocation.</li>
+<li><input type="checkbox" disabled> Add dashboards, alerts, backups, restore, and runbooks.</li>
+</ul>
+<h3 id="documentation-metrics-and-cohort">Documentation, metrics, and cohort</h3>
+<ul>
+<li><input type="checkbox" disabled> Publish installation, activation, workspace, policies, MCP, approvals, naming, troubleshooting, removal, limitations, security, and data handling.</li>
+<li><input type="checkbox" disabled> Instrument activation and execution funnels without commands, raw output, secrets, or full paths.</li>
+<li><input type="checkbox" disabled> Recruit 20–50 qualified users and establish onboarding, support, diagnostics, triage, patching, and emergency communication.</li>
+</ul>
+<h3 id="exit-gate-3">Exit gate</h3>
+<ul>
+<li><input type="checkbox" disabled> Clean install works.</li>
+<li><input type="checkbox" disabled> Median setup is under five minutes.</li>
+<li><input type="checkbox" disabled> End-to-end flow passes.</li>
+<li><input type="checkbox" disabled> No critical finding remains.</li>
+<li><input type="checkbox" disabled> Execution loss and revocation meet targets.</li>
+<li><input type="checkbox" disabled> Restore and runbooks are verified.</li>
+</ul>
+<hr>
+<h2 id="milestone-6-public-beta-hardening">Milestone 6: Public Beta Hardening</h2>
+<ul>
+<li><input type="checkbox" disabled> Analyze alpha activation, approvals, failures, unmet workflows, remaining manual relay, trust, and churn.</li>
+<li><input type="checkbox" disabled> Add local redaction, destination profiles, egress records, encrypted artifacts, retention, custom policy, simulation, and improved integrations.</li>
+<li><input type="checkbox" disabled> Decide Linux ARM64 and macOS based on evidence.</li>
+<li><input type="checkbox" disabled> Commission penetration test and remediate serious findings.</li>
+<li><input type="checkbox" disabled> Verify audit integrity, stronger approval, anomaly detection, key rotation, incident response, recovery, and deletion.</li>
+<li><input type="checkbox" disabled> Redundantly run services, load-balance relay, validate database capacity and failover, quotas, reconciliation, and status communication.</li>
+<li><input type="checkbox" disabled> Publish OpenAPI and TypeScript SDK.</li>
+<li><input type="checkbox" disabled> Decide browser extension from measured unmet demand; if built, require separate threat model, explicit gesture, trusted UI, restricted origins, isolated credentials, no remote code, and no silent execution.</li>
+<li><input type="checkbox" disabled> Public beta requires redaction, retention, cross-boundary tests, replay tests, prompt-injection-safe policy behavior, tested incident response, and documented capacity.</li>
+</ul>
+<hr>
+<h2 id="milestone-7-general-availability-and-team-governance">Milestone 7: General Availability and Team Governance</h2>
+<ul>
+<li><input type="checkbox" disabled> Add organizations, memberships, roles, shared machines, workspaces, team agents, approval routing, central policies, and audit export.</li>
+<li><input type="checkbox" disabled> Add SSO, lifecycle provisioning, authentication policy, and just-in-time administration.</li>
+<li><input type="checkbox" disabled> Add policy-as-code validation, simulation, review, signed bundles, local pinning, rollback, and audit.</li>
+<li><input type="checkbox" disabled> Add private networking, private/self-hosted options, customer-managed encryption where needed, data residency, SIEM, customer retention, and advanced isolation.</li>
+<li><input type="checkbox" disabled> Remove standing operator terminal access and require customer-authorized time-limited support grants with named operators and complete audit.</li>
+<li><input type="checkbox" disabled> Establish service objectives, on-call, support escalation, recovery exercises, capacity review, terms, privacy, security questionnaires, procurement material, and customer success.</li>
+<li><input type="checkbox" disabled> GA requires measured service objectives, demonstrated disaster recovery, operating security disclosure and patching, verified retention/deletion, audited JIT administration, and capacity headroom.</li>
+</ul>
+<h2 id="critical-path">Critical Path</h2>
+<pre><code class="language-text">protocol
+ -&gt; Scopra Mio daemon and IPC
+ -&gt; Scopra Hollow containment
+ -&gt; Scopra Mariner enrollment
+ -&gt; Scopra Goldstone relay
+ -&gt; grants and authorization
+ -&gt; Scopra Rupes local policy enforcement
+ -&gt; approval
+ -&gt; Scopra Catena audit
+ -&gt; remote MCP
+ -&gt; end-to-end tests
+ -&gt; signed release
+</code></pre>
+<h2 id="first-30-days">First 30 Days</h2>
+<h3 id="week-1">Week 1</h3>
+<ul>
+<li><input type="checkbox" disabled> Freeze alpha workflows.</li>
+<li><input type="checkbox" disabled> Complete five observations.</li>
+<li><input type="checkbox" disabled> Bootstrap repo and CI.</li>
+<li><input type="checkbox" disabled> Approve core ADRs.</li>
+<li><input type="checkbox" disabled> Build Scopra Mio daemon and Scopra Mariner doctor spike.</li>
+<li><input type="checkbox" disabled> Validate rootless Podman.</li>
+<li><input type="checkbox" disabled> Draft protocol.</li>
+</ul>
+<h3 id="week-2">Week 2</h3>
+<ul>
+<li><input type="checkbox" disabled> Build workspace registry.</li>
+<li><input type="checkbox" disabled> Execute direct commands in containment.</li>
+<li><input type="checkbox" disabled> Add limits and cancellation.</li>
+<li><input type="checkbox" disabled> Start policy schema.</li>
+<li><input type="checkbox" disabled> Prototype key dashboard screens.</li>
+</ul>
+<h3 id="week-3">Week 3</h3>
+<ul>
+<li><input type="checkbox" disabled> Add local IPC and CLI.</li>
+<li><input type="checkbox" disabled> Add structured output and state machine.</li>
+<li><input type="checkbox" disabled> Add adversarial harness.</li>
+<li><input type="checkbox" disabled> Begin identity and device-code service.</li>
+<li><input type="checkbox" disabled> Generate machine key and fingerprint.</li>
+</ul>
+<h3 id="week-4">Week 4</h3>
+<ul>
+<li><input type="checkbox" disabled> Complete development enrollment.</li>
+<li><input type="checkbox" disabled> Establish authenticated Scopra Goldstone relay.</li>
+<li><input type="checkbox" disabled> Show presence.</li>
+<li><input type="checkbox" disabled> Route signed no-op.</li>
+<li><input type="checkbox" disabled> Review risks and estimates.</li>
+<li><input type="checkbox" disabled> Demonstrate walking skeleton from clean VM.</li>
+</ul>
+<h2 id="checklist-rules">Checklist Rules</h2>
+<ul>
+<li><input type="checkbox" disabled> Every item has an owner before work begins.</li>
+<li><input type="checkbox" disabled> Every active item links to implementation evidence.</li>
+<li><input type="checkbox" disabled> Blocked work records dependencies and decision dates.</li>
+<li><input type="checkbox" disabled> Security gates cannot be waived only for schedule.</li>
+<li><input type="checkbox" disabled> Deferred work records rationale.</li>
+<li><input type="checkbox" disabled> Architecture changes update ADRs.</li>
+<li><input type="checkbox" disabled> Exit gates have recorded sign-off.</li>
+<li><input type="checkbox" disabled> Review checklist weekly and after each retrospective.</li>
+</ul>
+</article><p class="edit-link"><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/docs/plans/00-full-implementation-plan.md" rel="noopener noreferrer">Edit this page on GitHub</a></p></main><aside class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#implementation-rule">Implementation Rule</a></li><li><a href="#technical-baseline">Technical Baseline</a></li><li><a href="#milestone-summary">Milestone Summary</a></li><li><a href="#milestone-0-discovery-and-architecture-baseline">Milestone 0: Discovery and Architecture Baseline</a></li><li class="toc-sub"><a href="#product-validation">Product validation</a></li><li class="toc-sub"><a href="#scope-and-architecture">Scope and architecture</a></li><li class="toc-sub"><a href="#adrs">ADRs</a></li><li class="toc-sub"><a href="#security">Security</a></li><li class="toc-sub"><a href="#exit-gate">Exit gate</a></li><li><a href="#milestone-1-local-secure-execution-foundation">Milestone 1: Local Secure Execution Foundation</a></li><li class="toc-sub"><a href="#engineering-platform">Engineering platform</a></li><li class="toc-sub"><a href="#scopra-messenger-protocol">Scopra Messenger Protocol</a></li><li class="toc-sub"><a href="#scopra-mio-daemon-and-scopra-mariner-cli">Scopra Mio daemon and Scopra Mariner CLI</a></li><li class="toc-sub"><a href="#workspace-and-containment">Workspace and containment</a></li><li class="toc-sub"><a href="#execution-and-policy">Execution and policy</a></li><li class="toc-sub"><a href="#adversarial-tests">Adversarial tests</a></li><li class="toc-sub"><a href="#exit-gate-1">Exit gate</a></li><li><a href="#milestone-2-cloud-identity-enrollment-and-relay">Milestone 2: Cloud Identity, Enrollment, and Relay</a></li><li class="toc-sub"><a href="#foundation-and-authentication">Foundation and authentication</a></li><li class="toc-sub"><a href="#scopra-mariner-device-enrollment">Scopra Mariner device enrollment</a></li><li class="toc-sub"><a href="#scopra-goldstone-relay">Scopra Goldstone relay</a></li><li class="toc-sub"><a href="#security-tests">Security tests</a></li><li class="toc-sub"><a href="#exit-gate-2">Exit gate</a></li><li><a href="#milestone-3-grants-authorization-approvals-and-audit">Milestone 3: Grants, Authorization, Approvals, and Audit</a></li><li class="toc-sub"><a href="#data-and-identity">Data and identity</a></li><li class="toc-sub"><a href="#grants-and-tokens">Grants and tokens</a></li><li class="toc-sub"><a href="#authorization">Authorization</a></li><li class="toc-sub"><a href="#revocation">Revocation</a></li><li class="toc-sub"><a href="#approval">Approval</a></li><li class="toc-sub"><a href="#scopra-catena-audit">Scopra Catena audit</a></li><li class="toc-sub"><a href="#negative-tests-and-exit-gate">Negative tests and exit gate</a></li><li><a href="#milestone-4-remote-mcp-and-dashboard-alpha">Milestone 4: Remote MCP and Dashboard Alpha</a></li><li class="toc-sub"><a href="#mcp">MCP</a></li><li class="toc-sub"><a href="#dashboard">Dashboard</a></li><li class="toc-sub"><a href="#compatibility-and-exit-gate">Compatibility and exit gate</a></li><li><a href="#milestone-5-private-alpha-readiness-and-launch">Milestone 5: Private Alpha Readiness and Launch</a></li><li class="toc-sub"><a href="#release-and-updates">Release and updates</a></li><li class="toc-sub"><a href="#security-reliability-and-operations">Security, reliability, and operations</a></li><li class="toc-sub"><a href="#documentation-metrics-and-cohort">Documentation, metrics, and cohort</a></li><li class="toc-sub"><a href="#exit-gate-3">Exit gate</a></li><li><a href="#milestone-6-public-beta-hardening">Milestone 6: Public Beta Hardening</a></li><li><a href="#milestone-7-general-availability-and-team-governance">Milestone 7: General Availability and Team Governance</a></li><li><a href="#critical-path">Critical Path</a></li><li><a href="#first-30-days">First 30 Days</a></li><li class="toc-sub"><a href="#week-1">Week 1</a></li><li class="toc-sub"><a href="#week-2">Week 2</a></li><li class="toc-sub"><a href="#week-3">Week 3</a></li><li class="toc-sub"><a href="#week-4">Week 4</a></li><li><a href="#checklist-rules">Checklist Rules</a></li></ul></aside></div><footer class="site-footer">
+  <div class="footer-inner">
+    <p><strong>Scopra</strong> — controlled execution for AI agents. Free and open source under the <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE">MIT License</a>.</p>
+    <p class="muted">No pricing model, no telemetry, no account. Generated from the Markdown in <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">the repository</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

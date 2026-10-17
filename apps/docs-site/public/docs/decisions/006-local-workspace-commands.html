@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADR-006: Local Workspace Commands over IPC v1 — Scopra</title>
+<meta name="description" content="ADR-006: Local Workspace Commands over IPC v1 — Scopra documentation.">
+<link rel="canonical" href="https://scopra-gulzaibs-projects-347c279f.vercel.app/docs/decisions/006-local-workspace-commands.html">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0b0e14">
+<meta property="og:type" content="website">
+<meta property="og:title" content="ADR-006: Local Workspace Commands over IPC v1 — Scopra">
+<meta property="og:description" content="ADR-006: Local Workspace Commands over IPC v1 — Scopra documentation.">
+<meta property="og:url" content="https://scopra-gulzaibs-projects-347c279f.vercel.app/docs/decisions/006-local-workspace-commands.html">
+<meta property="og:site_name" content="Scopra">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>Scopra</a>
+  <nav aria-label="Main">
+    <a href="/docs/">Docs</a>
+    <a href="/docs/overview.html">Overview</a>
+    <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">GitHub</a>
+  </nav>
+</header>
+<div class="layout"><nav class="sidebar" aria-label="Documentation"><p class="group">Overview</p><ul><li><a href="/docs/overview.html">Overview</a></li><li><a href="/docs/changelog.html">Changelog</a></li></ul><p class="group">Product</p><ul><li><a href="/docs/prd.html">Product Requirements</a></li><li><a href="/docs/product/alpha-scope.html">Alpha Scope</a></li><li><a href="/docs/product/naming.html">Naming</a></li></ul><p class="group">Architecture</p><ul><li><a href="/docs/architecture/system-overview.html">System Overview</a></li><li><a href="/docs/architecture/domain-model.html">Domain Model</a></li><li><a href="/docs/architecture/protocol.html">Protocol</a></li></ul><p class="group">Security</p><ul><li><a href="/docs/security/threat-model.html">Threat Model</a></li><li><a href="/docs/security/risk-register.html">Risk Register</a></li><li><a href="/docs/security/security-architecture.html">Security Architecture</a></li></ul><p class="group">Decisions</p><ul><li><a href="/docs/decisions/000-template.html">ADR-000: Title</a></li><li><a href="/docs/decisions/001-go-module-layout.html">ADR-001: Initial Go Module Layout</a></li><li><a href="/docs/decisions/002-messenger-envelope-v1.html">ADR-002: Scopra Messenger Envelope v1 Structural Contract</a></li><li><a href="/docs/decisions/003-local-status-ipc.html">ADR-003: Mio Foreground Status Daemon and Local IPC v1</a></li><li><a href="/docs/decisions/004-workspace-validation.html">ADR-004: Workspace Path Validation and Fingerprint v1</a></li><li><a href="/docs/decisions/005-workspace-registry-storage.html">ADR-005: Workspace Registry Storage v1</a></li><li><a href="/docs/decisions/006-local-workspace-commands.html" class="current" aria-current="page">ADR-006: Local Workspace Commands over IPC v1</a></li><li><a href="/docs/decisions/007-execution-request-v1.html">ADR-007: Execution Request v1 Structural Contract</a></li><li><a href="/docs/decisions/008-canonical-execution-request.html">ADR-008: Canonical Execution Request and Action Hash</a></li><li><a href="/docs/decisions/009-execution-lifecycle-messages.html">ADR-009: Execution States, Results, Output, Errors, and Cancellation</a></li><li><a href="/docs/decisions/010-hollow-rootless-podman.html">ADR-010: Hollow Containment Backend: Rootless Podman</a></li><li><a href="/docs/decisions/011-local-execution.html">ADR-011: Local Execution over the Mio Socket</a></li><li><a href="/docs/decisions/012-systemd-user-service.html">ADR-012: Mio as a systemd User Service</a></li><li><a href="/docs/decisions/013-run-journal.html">ADR-013: Bounded Local Run Journal and `scopra logs`</a></li><li><a href="/docs/decisions/014-open-source-no-pricing.html">ADR-014: MIT License and No Pricing Model</a></li><li><a href="/docs/decisions.html">Architecture Decision Records</a></li></ul><p class="group">Planning</p><ul><li><a href="/docs/plan/implementation-plan.html">Implementation Plan</a></li></ul><p class="group">API</p><ul><li><a href="/docs/api/mcp-tools.html">MCP Tools</a></li></ul><p class="group">Operations</p><ul><li><a href="/docs/operations/runbooks.html">Runbooks</a></li></ul><p class="group">Community</p><ul><li><a href="/docs/community/security-policy.html">Security Policy</a></li><li><a href="/docs/community/contributing.html">Contributing</a></li><li><a href="/docs/community/code-of-conduct.html">Code of Conduct</a></li></ul></nav><main id="main" class="content"><nav class="breadcrumb" aria-label="Breadcrumb"><a href="/docs/">Docs</a> <span aria-hidden="true">/</span> Decisions</nav><article class="prose"><h1 id="adr-006-local-workspace-commands-over-ipc-v1">ADR-006: Local Workspace Commands over IPC v1</h1>
+<p><strong>Status:</strong> Accepted <strong>Date:</strong> 2026-10-16</p>
+<h2 id="context">Context</h2>
+<p>Mio opens its workspace registry at startup (ADR-005, Mio integration amendment), but nothing can register, list, or remove workspaces. The <code>scopra workspace</code> CLI needs commands on Mio&#39;s local socket.</p>
+<p>ADR-003 sets three constraints. IPC v1 serves only <code>status</code>. New commands need compatibility and security tests before dispatch is enabled. State-changing commands need more than same-UID IPC. IPC v1 also has no error replies: the daemon closes the connection on any invalid request. That is not enough for registration, which can fail in many distinct ways.</p>
+<p>The threat model routes agents through Scopra Caloris and Scopra Goldstone, never through Mio&#39;s local socket, and requires that agents cannot approve themselves. A registered path can be up to 4095 bytes (Linux <code>PATH_MAX</code> without its terminating NUL) and can grow sixfold when escaped as JSON. A full registry of 256 such paths is therefore far larger than one 64 KiB frame.</p>
+<h2 id="decision">Decision</h2>
+<ul>
+<li><strong>IPC v1 is extended, not replaced.</strong> Framing, the 64 KiB frame limit, one request per connection, timeouts, the connection cap, peer credentials, and <code>protocolVersion</code> 1 are unchanged. The status request and reply are byte-for-byte unchanged, so older clients keep working.</li>
+<li><p><strong>Commands.</strong> Each request has an exact key set: <code>protocolVersion</code>, <code>requestId</code>, and <code>command</code>, plus the command&#39;s single field.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Command</th><th>Field</th><th>Success reply (besides <code>protocolVersion</code> and <code>requestId</code>)</th></tr></thead>
+<tbody>
+<tr><td><code>workspace.add</code></td><td><code>path</code></td><td><code>workspace: {id, path}</code> with the canonical path that was registered</td></tr>
+<tr><td><code>workspace.list</code></td><td><code>cursor</code></td><td><code>workspaces: [{id, path}, ...]</code> and <code>nextCursor</code></td></tr>
+<tr><td><code>workspace.remove</code></td><td><code>id</code></td><td><code>workspace: {id, path}</code> of the removed registration; the directory is never touched</td></tr>
+</tbody></table></div>
+</li>
+</ul>
+<ul>
+<li><strong>Field rules.</strong> <code>path</code> is non-empty, valid UTF-8, and at most 4095 bytes. <code>id</code> is 32 lowercase hexadecimal characters, the registry&#39;s ID format. <code>cursor</code> is empty for the first page, or a previous <code>nextCursor</code>. Whole frames must be valid UTF-8, because the JSON decoder would otherwise silently replace invalid bytes and could name a different directory. Fields must have their exact JSON type; <code>null</code> is rejected. A JSON escape for an unpaired surrogate decodes to U+FFFD, as in Go, and the reply always carries the path that Mio resolved. Mio never resolves a relative path: the ADR-004 validator rejects it before any lookup.</li>
+<li><p><strong>Error replies.</strong> A well-formed workspace request that fails gets <code>{protocolVersion, requestId, error: {code, message}}</code>, with a code from this set:</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Code</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>invalid_path</code></td><td>not absolute or not valid UTF-8</td></tr>
+<tr><td><code>unresolvable_path</code></td><td>missing, or not resolvable (new <code>workspace.ErrUnresolvable</code>)</td></tr>
+<tr><td><code>not_directory</code></td><td>does not resolve to a directory</td></tr>
+<tr><td><code>protected_path</code></td><td>the root, a home directory, or Mio&#39;s state directory, or a directory containing one; or a directory inside the state directory</td></tr>
+<tr><td><code>not_owned</code></td><td>not owned by the user running Mio</td></tr>
+<tr><td><code>already_registered</code></td><td>the same directory, by path or fingerprint</td></tr>
+<tr><td><code>overlap</code></td><td>inside, or containing, a registered workspace</td></tr>
+<tr><td><code>registry_full</code></td><td>256 workspaces, or a file larger than 1 MiB</td></tr>
+<tr><td><code>not_found</code></td><td>no workspace has that ID</td></tr>
+<tr><td><code>internal</code></td><td>any other failure, such as an I/O error; the change may still have taken effect</td></tr>
+</tbody></table></div>
+<p>Malformed requests still get no reply. These include bad framing, JSON, keys, version, request ID, field values, and unknown commands. Clients must accept unknown well-formed codes (<code>[a-z][a-z_]*</code>, at most 32 bytes) as errors, so that codes can be added. <code>message</code> is diagnostic text of 1 to 1024 bytes of valid UTF-8. Mio truncates longer messages on a character boundary. Clients must treat the message as untrusted text and escape control characters before display.</p>
+</li>
+<li><strong>Paging.</strong> Mio orders a listing by ID and fills each page with the records after <code>cursor</code> while their encoded size stays within the frame, less a margin for the rest of the reply. A page holds at least one record while any remain. <code>nextCursor</code> is the page&#39;s last ID, or empty after the last page. The cursor is therefore fixed-size and stateless. A listing is not a snapshot: records added or removed between pages may be missed or included. Clients reject pages whose IDs do not ascend after the cursor or whose <code>nextCursor</code> is not the last ID. They stop after 256 records, sort the result by path, and validate every record (a lowercase-hexadecimal ID and a canonical absolute path of at most 4095 bytes).</li>
+<li><strong>Registry bound.</strong> <code>registry.Open</code> rejects paths longer than 4095 bytes as invalid. <code>Add</code> cannot produce such paths, and the bound guarantees that every record fits in a page.</li>
+<li><strong>Dispatch.</strong> Mio enables workspace commands only after opening its registry, by calling <code>Daemon.EnableWorkspaces</code> before <code>Serve</code>. A daemon without a registry treats workspace commands as unknown.</li>
+<li><strong>Authorization (qualifies ADR-003).</strong> Same-UID peer credentials authorize the workspace commands; the local socket is the user&#39;s administrative channel.<ul>
+<li>Registration is accepted only on this socket, never through Caloris, Goldstone, or Messenger.</li>
+<li>Registering a workspace authorizes nothing by itself. Any execution will also need a grant, policy evaluation, approval where policy requires it, and enforcement by Rupes.</li>
+<li>Any process running as the user can already read and write the registry file and every file the user owns, so a stronger check on this channel would not stop same-UID code.</li>
+<li>ADR-003&#39;s rule still holds for commands that approve or authorize actions. They must not use this trust level, because agents cannot approve themselves; they need a separate decision, such as proof of user presence.</li>
+</ul>
+</li>
+</ul>
+<h2 id="consequences">Consequences</h2>
+<ul>
+<li><strong>The CLI can be built.</strong> Mariner can implement <code>scopra workspace add/list/remove</code> on tested client functions (<code>AddWorkspace</code>, <code>ListWorkspaces</code>, and <code>RemoveWorkspace</code>), with typed errors (<code>*WorkspaceError</code>).</li>
+<li><strong>Same-UID processes can change registrations.</strong> This includes local agents running as the user outside a sandbox, which can already act as the user.</li>
+<li><strong>The sandbox must not expose Mio.</strong> Hollow must keep workspace processes from reaching Mio&#39;s socket: no state directory in the sandbox and no inherited descriptors. The registry&#39;s rules already keep the state directory out of every workspace.</li>
+<li><strong>Lost replies.</strong> A request and its reply share the 2-second connection timeout. If a reply is lost after Mio committed a change, the change stands; listing shows the outcome, and adding again reports <code>already_registered</code> with the existing ID.</li>
+<li><strong>Version skew.</strong> An older Mio closes the connection on workspace commands, so a newer client reports that Mio did not answer, not a typed error.</li>
+<li><strong>Unchanged.</strong> <code>scopra status</code>, <code>scopra doctor</code>, and the status wire format are unchanged.</li>
+</ul>
+<h2 id="alternatives-considered">Alternatives considered</h2>
+<ul>
+<li><strong>Raise the frame limit for listings:</strong> rejected. A full registry can encode to about 6 MiB, and bounded frames are a core defense of the IPC.</li>
+<li><strong>Page by path:</strong> rejected. Path cursors could be about 24 KiB; ID cursors are fixed-size and easy to validate.</li>
+<li><strong>Close the connection on application errors:</strong> rejected. Users need to know why <code>add</code> failed.</li>
+<li><strong><code>protocolVersion</code> 2:</strong> rejected. The commands are additive, and a new version would break status between versions.</li>
+<li><strong>A separate admin socket or an access token:</strong> rejected for now. Same-UID code can read any token the user can, so neither would add a boundary.</li>
+</ul>
+<h2 id="note-2026-10-17-local-execution">Note — 2026-10-17: local execution</h2>
+<p>ADR-011 qualifies the sentence above that every execution needs a grant, policy evaluation, approval where policy requires it, and Rupes. A <strong>local</strong> run is the user&#39;s own action on the local socket, contained in Hollow, so it needs no grant or approval. Delegated execution through Caloris still needs everything that sentence lists, and the local maximum policy will apply to local runs once Resolution and Rupes exist.</p>
+</article><p class="edit-link"><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/docs/decisions/006-local-workspace-commands.md" rel="noopener noreferrer">Edit this page on GitHub</a></p></main><aside class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#context">Context</a></li><li><a href="#decision">Decision</a></li><li><a href="#consequences">Consequences</a></li><li><a href="#alternatives-considered">Alternatives considered</a></li><li><a href="#note-2026-10-17-local-execution">Note — 2026-10-17: local execution</a></li></ul></aside></div><footer class="site-footer">
+  <div class="footer-inner">
+    <p><strong>Scopra</strong> — controlled execution for AI agents. Free and open source under the <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE">MIT License</a>.</p>
+    <p class="muted">No pricing model, no telemetry, no account. Generated from the Markdown in <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">the repository</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

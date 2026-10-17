@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scopra — controlled execution for AI agents</title>
+<meta name="description" content="Scopra runs commands from AI agents in approved workspaces inside rootless containers, with limits and a metadata-only journal. Free and open source under the MIT License.">
+<link rel="canonical" href="https://scopra-gulzaibs-projects-347c279f.vercel.app/">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0b0e14">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Scopra — controlled execution for AI agents">
+<meta property="og:description" content="Scopra runs commands from AI agents in approved workspaces inside rootless containers, with limits and a metadata-only journal. Free and open source under the MIT License.">
+<meta property="og:url" content="https://scopra-gulzaibs-projects-347c279f.vercel.app/">
+<meta property="og:site_name" content="Scopra">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>Scopra</a>
+  <nav aria-label="Main">
+    <a href="/docs/">Docs</a>
+    <a href="/docs/overview.html">Overview</a>
+    <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">GitHub</a>
+  </nav>
+</header>
+<main id="main">
+<section class="hero">
+  <div class="hero-inner">
+    <p class="eyebrow">Pre-alpha · Linux · MIT</p>
+    <h1>Controlled execution<br>for AI agents</h1>
+    <p class="lede">Give agents enough access to complete the task — never unlimited access to the machine. Scopra runs commands in an approved workspace, inside a rootless container, with limits, and never stores what ran.</p>
+    <div class="actions">
+      <a class="button primary" href="/docs/overview.html">Read the docs</a>
+      <a class="button" href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">GitHub</a>
+    </div>
+    <pre class="terminal"><code>git clone https://github.com/SynergyFlowLabs/scopra
+cd scopra &amp;&amp; make bootstrap &amp;&amp; make test
+go build -o bin/scopra ./cmd/scopra
+go build -o bin/scoprad ./cmd/scoprad</code></pre>
+  </div>
+</section>
+
+<section class="strip" aria-label="Properties">
+  <p><strong>Free and open source</strong> · MIT, no pricing model</p>
+  <p><strong>No telemetry</strong> · no account, no phone-home</p>
+  <p><strong>Local-first</strong> · decisions run on your machine</p>
+</section>
+
+<section class="section">
+  <h2>Why Scopra</h2>
+  <div class="grid">
+    <article class="feature">
+      <h3>Least authority by default</h3>
+      <p>An agent gets a workspace, not a shell. Network is off, the mount is read-only unless asked otherwise, the environment is empty, and every run is bounded.</p>
+    </article>
+    <article class="feature">
+      <h3>Local enforcement</h3>
+      <p>The decision and the sandbox live on the machine that runs the command. A cloud service can narrow authority; it cannot broaden it.</p>
+    </article>
+    <article class="feature">
+      <h3>Structured, not stringly</h3>
+      <p>A request is an executable plus arguments. No shell strings, no PTY, no native fallback, and a canonical hash that binds to the exact action.</p>
+    </article>
+    <article class="feature">
+      <h3>Honest about data</h3>
+      <p>The run journal records metadata only: which workspace, which state, how many bytes. Never the command line, never the output.</p>
+    </article>
+    <article class="feature">
+      <h3>Fail closed</h3>
+      <p>An unusable registry, journal, socket, or containment setup refuses the operation. Scopra never degrades into something less safe.</p>
+    </article>
+    <article class="feature">
+      <h3>Small by construction</h3>
+      <p>One Go module, no external dependencies, two binaries, and a static documentation site with no JavaScript at all.</p>
+    </article>
+  </div>
+</section>
+
+<section class="section alt">
+  <h2>How it works</h2>
+  <div class="split">
+    <pre class="diagram"><code>  you / an agent
+        │  scopra run …
+        ▼
+  ┌─────────────┐   authenticated    ┌─────────────┐
+  │   scopra    │   Unix socket      │   scoprad   │
+  │  (Mariner)  │ ─────────────────▶ │    (Mio)    │
+  └─────────────┘                    └──────┬──────┘
+                                            │ rootless Podman
+                                            ▼
+                                     ┌─────────────┐
+                                     │   Hollow    │
+                                     │   sandbox   │
+                                     └─────────────┘</code></pre>
+    <div>
+      <p><strong>Mariner</strong> is the CLI: it resolves a workspace, builds the request, streams output, and returns the command's own exit status.</p>
+      <p><strong>Mio</strong> is the daemon: it revalidates the workspace immediately before use, runs exactly one container, and records metadata about the result.</p>
+      <p><strong>Hollow</strong> is the boundary: rootless Podman, no network, no capabilities, no-new-privileges, a read-only root, one bind mount, and explicit limits.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <h2>Quick start</h2>
+  <ol class="steps">
+    <li>
+      <h3>Check the host</h3>
+      <pre><code>./bin/scopra doctor --sandbox-image alpine@sha256:&lt;digest&gt;</code></pre>
+      <p>Doctor is read-only. It reports the platform, state directory, workspace registry, registered workspaces, Mio's endpoint, and whether rootless Podman meets the requirements.</p>
+    </li>
+    <li>
+      <h3>Start Mio</h3>
+      <pre><code>./bin/scoprad --sandbox-image alpine@sha256:&lt;digest&gt;</code></pre>
+      <p>The image must already be in local storage and pinned by digest. Mio never pulls.</p>
+    </li>
+    <li>
+      <h3>Run something</h3>
+      <pre><code>./bin/scopra workspace add ~/src/project
+./bin/scopra run --workspace &lt;id&gt; -- uname -a
+./bin/scopra logs</code></pre>
+    </li>
+  </ol>
+</section>
+
+<section class="section alt">
+  <h2>Status</h2>
+  <p class="lede">Scopra is pre-alpha. This table is the same one the README keeps, and it is deliberately unflattering.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Area</th><th>State</th></tr></thead>
+    <tbody>
+      <tr><td>Protocol, IPC, workspace registry, journal, CLI</td><td><span class="pill ok">tested</span></td></tr>
+      <tr><td>Hollow runner and <code>scopra run</code></td><td><span class="pill ok">tested against a fake Podman</span></td></tr>
+      <tr><td>Real rootless Podman container execution</td><td><span class="pill warn">not verified</span></td></tr>
+      <tr><td>Real systemd user session</td><td><span class="pill warn">not verified</span></td></tr>
+      <tr><td>Policy, grants, approvals, audit chain</td><td><span class="pill muted">not implemented</span></td></tr>
+      <tr><td>Enrollment, relay, cloud control plane, dashboard</td><td><span class="pill muted">not implemented</span></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section class="section">
+  <h2>Security, stated plainly</h2>
+  <div class="split">
+    <ul class="checks">
+      <li>Any process running as you can use the socket — exactly as it can already run commands.</li>
+      <li>A local run is your own action. It grants nothing and approves nothing.</li>
+      <li>Containment is Hollow's container, not systemd's sandbox.</li>
+      <li>The journal is not an audit trail: it is owner-only, bounded, and you can delete it.</li>
+      <li>No telemetry, no account, no license key, no feature gate.</li>
+    </ul>
+    <div>
+      <p>Those limits are documented rather than hidden. The <a href="/docs/security/threat-model.html">threat model</a>, <a href="/docs/security/risk-register.html">risk register</a>, and <a href="/docs/security/security-architecture.html">security architecture</a> are part of the repository, and every design decision has an <a href="/docs/decisions.html">ADR</a>.</p>
+      <p>To report a vulnerability, follow the <a href="/docs/community/security-policy.html">security policy</a>. Please do not open a public issue.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section alt">
+  <h2>Start reading</h2>
+  <div class="cards">
+    <a class="card" href="/docs/overview.html"><strong>Overview</strong><span class="muted">What exists, what does not, and what is unverified</span></a>
+    <a class="card" href="/docs/architecture/system-overview.html"><strong>Architecture</strong><span class="muted">How Mariner, Mio, and Hollow fit together</span></a>
+    <a class="card" href="/docs/security/threat-model.html"><strong>Threat model</strong><span class="muted">Assets, boundaries, and what is out of scope</span></a>
+    <a class="card" href="/docs/decisions.html"><strong>Decisions</strong><span class="muted">Fourteen ADRs, from module layout to licensing</span></a>
+    <a class="card" href="/docs/community/contributing.html"><strong>Contributing</strong><span class="muted">Setup, conventions, and the review process</span></a>
+    <a class="card" href="/docs/changelog.html"><strong>Changelog</strong><span class="muted">What changed, in Keep a Changelog form</span></a>
+  </div>
+</section>
+</main><footer class="site-footer">
+  <div class="footer-inner">
+    <p><strong>Scopra</strong> — controlled execution for AI agents. Free and open source under the <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE">MIT License</a>.</p>
+    <p class="muted">No pricing model, no telemetry, no account. Generated from the Markdown in <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">the repository</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

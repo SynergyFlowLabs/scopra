@@ -29,7 +29,6 @@ func buildRealSite(t *testing.T) string {
 		Root:    root,
 		Out:     out,
 		BaseURL: "https://scopra.example",
-		Commit:  "0123456789abcdef",
 		Static:  filepath.Join(root, "apps", "docs-site", "static"),
 	}
 	if err := buildSite(options); err != nil {
@@ -154,6 +153,81 @@ func TestBuildSiteLeavesNoUnrenderedMarkdown(t *testing.T) {
 			t.Errorf("%s still contains an unrendered Markdown link", shortName(out, page))
 		}
 	}
+}
+
+// TestCommittedSiteIsUpToDate keeps apps/docs-site/public honest: the deployed
+// artifact is committed, so a documentation change without a rebuild would
+// otherwise ship stale pages.
+func TestCommittedSiteIsUpToDate(t *testing.T) {
+	root := repoRoot(t)
+	committed := filepath.Join(root, "apps", "docs-site", "public")
+	if _, err := os.Stat(filepath.Join(committed, "index.html")); err != nil {
+		t.Fatalf("apps/docs-site/public is missing; run `make site` and commit it: %v", err)
+	}
+	fresh := t.TempDir()
+	options := siteOptions{
+		Root:    root,
+		Out:     fresh,
+		BaseURL: defaultBaseURL,
+		Static:  filepath.Join(root, "apps", "docs-site", "static"),
+	}
+	if err := buildSite(options); err != nil {
+		t.Fatalf("buildSite: %v", err)
+	}
+	generated, err := relativeFiles(fresh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	published, err := relativeFiles(committed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name := range generated {
+		if _, ok := published[name]; !ok {
+			t.Errorf("%s is generated but not committed", name)
+		}
+	}
+	for name := range published {
+		if _, ok := generated[name]; !ok {
+			t.Errorf("%s is committed but no longer generated", name)
+		}
+	}
+	for name := range generated {
+		if _, ok := published[name]; !ok {
+			continue
+		}
+		want, err := os.ReadFile(filepath.Join(fresh, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(filepath.Join(committed, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(want) != string(got) {
+			t.Errorf("%s is stale; run `make site` and commit the result", name)
+		}
+	}
+}
+
+// relativeFiles lists every regular file below root, keyed by slash path.
+func relativeFiles(root string) (map[string]bool, error) {
+	files := map[string]bool{}
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		files[filepath.ToSlash(relative)] = true
+		return nil
+	})
+	return files, err
 }
 
 func TestBuildSiteUsesTheConfiguredCanonicalURL(t *testing.T) {

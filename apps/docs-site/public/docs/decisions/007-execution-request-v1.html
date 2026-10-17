@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADR-007: Execution Request v1 Structural Contract — Scopra</title>
+<meta name="description" content="ADR-007: Execution Request v1 Structural Contract — Scopra documentation.">
+<link rel="canonical" href="https://scopra-gulzaibs-projects-347c279f.vercel.app/docs/decisions/007-execution-request-v1.html">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0b0e14">
+<meta property="og:type" content="website">
+<meta property="og:title" content="ADR-007: Execution Request v1 Structural Contract — Scopra">
+<meta property="og:description" content="ADR-007: Execution Request v1 Structural Contract — Scopra documentation.">
+<meta property="og:url" content="https://scopra-gulzaibs-projects-347c279f.vercel.app/docs/decisions/007-execution-request-v1.html">
+<meta property="og:site_name" content="Scopra">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>Scopra</a>
+  <nav aria-label="Main">
+    <a href="/docs/">Docs</a>
+    <a href="/docs/overview.html">Overview</a>
+    <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">GitHub</a>
+  </nav>
+</header>
+<div class="layout"><nav class="sidebar" aria-label="Documentation"><p class="group">Overview</p><ul><li><a href="/docs/overview.html">Overview</a></li><li><a href="/docs/changelog.html">Changelog</a></li></ul><p class="group">Product</p><ul><li><a href="/docs/prd.html">Product Requirements</a></li><li><a href="/docs/product/alpha-scope.html">Alpha Scope</a></li><li><a href="/docs/product/naming.html">Naming</a></li></ul><p class="group">Architecture</p><ul><li><a href="/docs/architecture/system-overview.html">System Overview</a></li><li><a href="/docs/architecture/domain-model.html">Domain Model</a></li><li><a href="/docs/architecture/protocol.html">Protocol</a></li></ul><p class="group">Security</p><ul><li><a href="/docs/security/threat-model.html">Threat Model</a></li><li><a href="/docs/security/risk-register.html">Risk Register</a></li><li><a href="/docs/security/security-architecture.html">Security Architecture</a></li></ul><p class="group">Decisions</p><ul><li><a href="/docs/decisions/000-template.html">ADR-000: Title</a></li><li><a href="/docs/decisions/001-go-module-layout.html">ADR-001: Initial Go Module Layout</a></li><li><a href="/docs/decisions/002-messenger-envelope-v1.html">ADR-002: Scopra Messenger Envelope v1 Structural Contract</a></li><li><a href="/docs/decisions/003-local-status-ipc.html">ADR-003: Mio Foreground Status Daemon and Local IPC v1</a></li><li><a href="/docs/decisions/004-workspace-validation.html">ADR-004: Workspace Path Validation and Fingerprint v1</a></li><li><a href="/docs/decisions/005-workspace-registry-storage.html">ADR-005: Workspace Registry Storage v1</a></li><li><a href="/docs/decisions/006-local-workspace-commands.html">ADR-006: Local Workspace Commands over IPC v1</a></li><li><a href="/docs/decisions/007-execution-request-v1.html" class="current" aria-current="page">ADR-007: Execution Request v1 Structural Contract</a></li><li><a href="/docs/decisions/008-canonical-execution-request.html">ADR-008: Canonical Execution Request and Action Hash</a></li><li><a href="/docs/decisions/009-execution-lifecycle-messages.html">ADR-009: Execution States, Results, Output, Errors, and Cancellation</a></li><li><a href="/docs/decisions/010-hollow-rootless-podman.html">ADR-010: Hollow Containment Backend: Rootless Podman</a></li><li><a href="/docs/decisions/011-local-execution.html">ADR-011: Local Execution over the Mio Socket</a></li><li><a href="/docs/decisions/012-systemd-user-service.html">ADR-012: Mio as a systemd User Service</a></li><li><a href="/docs/decisions/013-run-journal.html">ADR-013: Bounded Local Run Journal and `scopra logs`</a></li><li><a href="/docs/decisions/014-open-source-no-pricing.html">ADR-014: MIT License and No Pricing Model</a></li><li><a href="/docs/decisions.html">Architecture Decision Records</a></li></ul><p class="group">Planning</p><ul><li><a href="/docs/plan/implementation-plan.html">Implementation Plan</a></li></ul><p class="group">API</p><ul><li><a href="/docs/api/mcp-tools.html">MCP Tools</a></li></ul><p class="group">Operations</p><ul><li><a href="/docs/operations/runbooks.html">Runbooks</a></li></ul><p class="group">Community</p><ul><li><a href="/docs/community/security-policy.html">Security Policy</a></li><li><a href="/docs/community/contributing.html">Contributing</a></li><li><a href="/docs/community/code-of-conduct.html">Code of Conduct</a></li></ul></nav><main id="main" class="content"><nav class="breadcrumb" aria-label="Breadcrumb"><a href="/docs/">Docs</a> <span aria-hidden="true">/</span> Decisions</nav><article class="prose"><h1 id="adr-007-execution-request-v1-structural-contract">ADR-007: Execution Request v1 Structural Contract</h1>
+<p><strong>Status:</strong> Accepted (proposed, then accepted as written by the maintainer) <strong>Date:</strong> 2026-10-16</p>
+<h2 id="context">Context</h2>
+<p>ADR-002 defines the Messenger envelope and reserves the <code>execution.request</code> message type, but leaves payload-specific validation to the receiver. The architecture lists what an execution request carries (<code>docs/architecture/protocol.md</code>): principals, resources, grant and session IDs, executable, arguments, an explicit shell flag, working directory, profiles, resource limits, output policy, reason, timestamps, and nonce. The PRD adds five requirements:</p>
+<ul>
+<li>an executable plus a typed argument array;</li>
+<li>a workspace-relative working directory;</li>
+<li>an empty environment;</li>
+<li>network disabled by default and represented as a separate capability;</li>
+<li>default deny for unknown operations and fields.</li>
+</ul>
+<p>Approvals must later bind to the exact request, so its decoded meaning must equal what was transmitted. A JSON detail matters here: Go&#39;s decoder silently replaces invalid UTF-8 and lone surrogate escapes with U+FFFD, and it accepts <code>null</code> or a missing field as a zero value. Either would let a displayed or hashed request differ from the transmitted one.</p>
+<h2 id="decision">Decision</h2>
+<h3 id="shape">Shape</h3>
+<p>The <code>execution.request</code> payload is one JSON object. Every field is required, each object must have exactly the listed keys, and <code>null</code> is never allowed:</p>
+<pre><code class="language-json">{
+  &#34;executionId&#34;: &#34;exe_01HZX3&#34;,
+  &#34;principals&#34;: {&#34;userId&#34;: &#34;usr_1&#34;, &#34;agentId&#34;: &#34;agt_1&#34;, &#34;clientId&#34;: &#34;cli_1&#34;},
+  &#34;resources&#34;: {&#34;machineId&#34;: &#34;mch_1&#34;, &#34;workspaceId&#34;: &#34;3f2a9c0b7d1e4f6a8b5c2d0e1f3a4b6c&#34;},
+  &#34;grantId&#34;: &#34;grt_1&#34;,
+  &#34;sessionId&#34;: &#34;ses_1&#34;,
+  &#34;command&#34;: {
+    &#34;executable&#34;: &#34;go&#34;,
+    &#34;arguments&#34;: [&#34;test&#34;, &#34;./...&#34;],
+    &#34;shell&#34;: false,
+    &#34;workingDirectory&#34;: &#34;.&#34;
+  },
+  &#34;workspaceAccess&#34;: &#34;read-only&#34;,
+  &#34;network&#34;: &#34;none&#34;,
+  &#34;limits&#34;: {
+    &#34;timeoutSeconds&#34;: 600,
+    &#34;cpuMillicores&#34;: 2000,
+    &#34;memoryBytes&#34;: 2147483648,
+    &#34;pids&#34;: 512,
+    &#34;outputBytes&#34;: 1048576
+  },
+  &#34;reason&#34;: &#34;Run the unit tests after the fix&#34;,
+  &#34;createdAt&#34;: &#34;2026-10-16T12:00:00Z&#34;,
+  &#34;expiresAt&#34;: &#34;2026-10-16T12:15:00Z&#34;,
+  &#34;nonce&#34;: &#34;kJ3b9sR0cT1uV2wX3yZ4aA&#34;
+}
+</code></pre>
+<h3 id="field-rules">Field rules</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Field</th><th>Rule</th></tr></thead>
+<tbody>
+<tr><td><code>executionId</code>, <code>principals.*</code>, <code>resources.machineId</code>, <code>grantId</code>, <code>sessionId</code></td><td>Envelope identifier syntax (ADR-002): 1–128 bytes of <code>A–Z a–z 0–9 - _ . :</code>. <code>executionId</code> names the execution for idempotency: a receiver must not start the same ID twice.</td></tr>
+<tr><td><code>resources.workspaceId</code></td><td>A Mio registration ID: 32 lowercase hexadecimal characters (ADR-005). Mio looks the workspace up locally and must revalidate it before use (ADR-004).</td></tr>
+<tr><td><code>command.executable</code></td><td>1–4095 bytes with no control (Cc) or format (Cf) characters, in one of three forms:&lt;br&gt;(1) a bare name without <code>/</code>, other than <code>.</code> and <code>..</code>, looked up in a fixed search path set by the sandbox, never by the request;&lt;br&gt;(2) an absolute path inside the sandbox, in clean form;&lt;br&gt;(3) <code>./</code> followed by a clean relative path with no <code>..</code> component, resolved against the working directory (for example <code>./gradlew</code>).</td></tr>
+<tr><td><code>command.arguments</code></td><td>An array, possibly empty, of at most 4096 strings, each at most 131072 bytes (Linux <code>MAX_ARG_STRLEN</code>). Any character except NUL is allowed, because tabs and newlines are legitimate arguments.</td></tr>
+<tr><td><code>command.shell</code></td><td>A boolean. Version 1 accepts only <code>false</code>: shell strings are deferred (PRD principle 3), and the field keeps any future shell use explicit.</td></tr>
+<tr><td><code>command.workingDirectory</code></td><td><code>.</code> or a clean relative path with no <code>..</code> component and no control or format characters, at most 4095 bytes. It is resolved inside the workspace.</td></tr>
+<tr><td><code>workspaceAccess</code></td><td><code>read-only</code> or <code>read-write</code>. The wire format has no default, so an approval shows any write access.</td></tr>
+<tr><td><code>network</code></td><td>Only <code>none</code> in version 1. Network access is a separate capability that is not designed yet.</td></tr>
+<tr><td><code>limits.timeoutSeconds</code></td><td>1–86400.</td></tr>
+<tr><td><code>limits.cpuMillicores</code></td><td>1–1000000.</td></tr>
+<tr><td><code>limits.memoryBytes</code></td><td>1 MiB–1 TiB.</td></tr>
+<tr><td><code>limits.pids</code></td><td>1–65536.</td></tr>
+<tr><td><code>limits.outputBytes</code></td><td>1–1 GiB, for stdout and stderr combined.</td></tr>
+<tr><td><code>reason</code></td><td>The agent&#39;s untrusted explanation: 1–1024 bytes with no control or format characters. It is displayed apart from the exact command and grants nothing.</td></tr>
+<tr><td><code>createdAt</code>, <code>expiresAt</code></td><td>RFC 3339 in UTC with second precision (<code>YYYY-MM-DDTHH:MM:SSZ</code>). <code>expiresAt</code> must be after <code>createdAt</code> and at most 1 hour later.</td></tr>
+<tr><td><code>nonce</code></td><td>Envelope nonce syntax: unpadded base64url encoding 16–128 bytes.</td></tr>
+</tbody></table></div>
+<p>The limit ranges are protocol sanity bounds, not policy. Effective limits are the minimum of the request, the grant, and Rupes&#39;s local maximum.</p>
+<h3 id="strict-decoding">Strict decoding</h3>
+<p><code>protocol.DecodeExecutionRequest(payload)</code> must:</p>
+<ul>
+<li>reject a payload over <code>MaxPayloadBytes</code>, trailing data, duplicate keys at any depth, a <code>null</code> anywhere, invalid UTF-8, and any <code>\u</code> escape that does not form a valid Unicode scalar value (including lone surrogates and an escaped NUL);</li>
+<li>require each object to have exactly the listed keys, and accept integers only (no fraction, exponent, or sign) for limits;</li>
+<li>return a typed <code>ExecutionRequest</code> or an error that names the offending field, and never a partially valid request.</li>
+</ul>
+<p><code>Envelope.ExecutionRequest()</code> decodes the payload only when the envelope&#39;s type is <code>execution.request</code>. <code>ExecutionRequest.ValidateAt(now)</code> enforces the request&#39;s own validity window: <code>createdAt</code> may be at most 30 seconds in the future (ADR-002&#39;s allowed skew), and expiry is strict. This window is separate from the envelope&#39;s lifetime of at most 5 minutes. A request may wait for approval for up to an hour, but each envelope that carries it must be fresh.</p>
+<h3 id="deferred-and-absent-from-version-1">Deferred, and absent from version 1</h3>
+<ul>
+<li><strong>Environment variables.</strong> The command runs with an empty environment plus the fixed variables that the sandbox profile defines, such as <code>PATH</code> and an ephemeral <code>HOME</code>. Request-chosen variables need a policy on allowed names (R-15).</li>
+<li><strong>Standard input.</strong> It is always empty.</li>
+<li><strong>Named profiles and output policy.</strong> <code>protocol.md</code> lists them, but version 1 states the concrete effects directly (<code>workspaceAccess</code>, <code>network</code>, and <code>limits.outputBytes</code>). Named policy profiles, output retention, and redaction come with Resolution and the output ADR.</li>
+<li><strong>Artifacts and concurrency limits.</strong> No artifact design exists yet, and concurrency is a grant or session limit, not a per-request one.</li>
+<li><strong>The canonical form and action hash used for approval binding.</strong> These need their own decision (the &#34;canonical execution requests&#34; follow-up). This contract is designed to make that possible: there are no defaults, nulls, or ambiguous paths, and decoded text equals transmitted text.</li>
+</ul>
+<h2 id="consequences">Consequences</h2>
+<ul>
+<li>Hollow, Rupes, and approvals get one strictly typed request with explicit effects (mount mode, network, limits) and no defaults that could change meaning later.</li>
+<li>Strict decoding rejects some harmless documents, such as a field with a <code>null</code> value or a timestamp with a numeric offset. Senders must emit the exact form.</li>
+<li>Until the alpha freeze nothing depends on this payload, so incompatible changes before then amend this ADR. After the freeze, ADR-002&#39;s rule applies: such changes need a protocol-version decision and compatibility tests.</li>
+</ul>
+<h2 id="security-considerations">Security Considerations</h2>
+<p>Decoding proves only structure. It does not authenticate the envelope, check replay state, authorize any principal, evaluate policy, or permit execution. Every check in the security architecture remains mandatory, and Rupes must still enforce the local maximum and revalidate the workspace.</p>
+<p>Rejecting silent Unicode replacement and requiring clean paths and explicit fields keep the displayed, approved, and executed request identical. Rejecting format characters in the executable, working directory, and reason closes bidirectional-text spoofing in those fields. Arguments may contain any character except NUL, so approval displays must escape control and format characters in arguments.</p>
+<h2 id="alternatives">Alternatives</h2>
+<ul>
+<li><strong>Generic JSON with optional fields and defaults:</strong> rejected, because defaults and missing-versus-empty ambiguity break exact approval binding.</li>
+<li><strong>Accepting shell strings now:</strong> rejected for version 1 by PRD principle 3. The explicit field avoids a silent future change.</li>
+<li><strong>Cloud-side workspace IDs:</strong> rejected for version 1. Registration is local (ADR-006), and Rupes must resolve the workspace from Mio&#39;s registry.</li>
+</ul>
+<h2 id="amendment-2026-10-16-line-and-paragraph-separators">Amendment — 2026-10-16: line and paragraph separators</h2>
+<p><code>command.executable</code>, <code>command.workingDirectory</code>, and <code>reason</code> also reject the line separator U+2028 (category Zl) and the paragraph separator U+2029 (Zp). Neither is a control or format character, so the rule as first accepted let them through. Many renderers break lines at them, so they could fake a line in an approval display, as a newline could. <code>command.arguments</code> is unchanged: any character except NUL, so approval displays must escape control, format, and separator characters there. This tightens the contract before anything depends on it, as the Consequences section allows.</p>
+</article><p class="edit-link"><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/docs/decisions/007-execution-request-v1.md" rel="noopener noreferrer">Edit this page on GitHub</a></p></main><aside class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#context">Context</a></li><li><a href="#decision">Decision</a></li><li class="toc-sub"><a href="#shape">Shape</a></li><li class="toc-sub"><a href="#field-rules">Field rules</a></li><li class="toc-sub"><a href="#strict-decoding">Strict decoding</a></li><li class="toc-sub"><a href="#deferred-and-absent-from-version-1">Deferred, and absent from version 1</a></li><li><a href="#consequences">Consequences</a></li><li><a href="#security-considerations">Security Considerations</a></li><li><a href="#alternatives">Alternatives</a></li><li><a href="#amendment-2026-10-16-line-and-paragraph-separators">Amendment — 2026-10-16: line and paragraph separators</a></li></ul></aside></div><footer class="site-footer">
+  <div class="footer-inner">
+    <p><strong>Scopra</strong> — controlled execution for AI agents. Free and open source under the <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE">MIT License</a>.</p>
+    <p class="muted">No pricing model, no telemetry, no account. Generated from the Markdown in <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">the repository</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,8 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "buildCommand": "make site",
-  "outputDirectory": "apps/docs-site/dist",
+  "installCommand": "echo 'static site: no build dependencies'",
+  "buildCommand": "echo 'static site: apps/docs-site/public is prebuilt'",
+  "outputDirectory": "apps/docs-site/public",
   "cleanUrls": false,
   "trailingSlash": false,
   "headers": [
