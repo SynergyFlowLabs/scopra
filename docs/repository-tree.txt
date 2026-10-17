@@ -152,6 +152,8 @@
 ./internal/hollow/podman_test.go
 ./internal/hollow/preflight.go
 ./internal/hollow/preflight_test.go
+./internal/hollow/runner.go
+./internal/hollow/runner_test.go
 ./internal/hollow/testdata
 ./internal/hollow/testdata/README.md
 ./internal/hollow/testdata/podman-info-v4.0.0-docs.json

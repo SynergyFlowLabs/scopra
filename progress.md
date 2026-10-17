@@ -2,8 +2,8 @@
 
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
-**Current increment:** The `scoprad --sandbox-image` setting (Step 24, increment 3a-1 of ADR-010 as amended)
-**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
+**Current increment:** The Hollow runner against a fake Podman (Step 25, increment 3a-2 of ADR-010 as amended)
+**Status:** In progress on `arena/c7a368c1-scopra`: acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -1870,3 +1870,60 @@ Non-goals:
   - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64.
   - The tree is unchanged.
 - Pushes to `arena/c7a368c1-scopra`: the proposal `4be6635`, test checkpoint `918183b` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.
+
+### 2026-10-17 — Step 25: the Hollow runner against a fake Podman (ADR-010 amendment, increment 3a-2)
+
+- Selection: the amendment's next increment. After Step 24, "continue" was stated to start it, and the maintainer replied "continue".
+- Scope adjustment, stated up front: the amendment lists the out-of-memory and start-failure mapping under 3a-3. The mapping from `podman inspect` to a result is one function, so this step implements all of it (`succeeded`, `failed`, `out_of_memory`, and `errored` with `start_failed`). Increment 3a-3 keeps the timeout, cancellation, the image-presence check, and startup cleanup.
+
+#### Acceptance checklist (agreed before implementation)
+
+- [ ] `hollow.Runner` (with the absolute path of `podman` and the pinned image) runs one validated request in a workspace and reports `execution.started` and `execution.output` through callbacks. It returns the terminal `execution.result`, or an error only for an invalid request or runner configuration.
+- [ ] **Launch:** `podman run` with exactly `PodmanRunArgs`, standard input from `/dev/null`, and stdout and stderr on separate pipes. If `PodmanRunArgs` refuses the workspace or image, the result is `rejected` (`workspace_unavailable` or `containment_unavailable`) and Podman is never run.
+- [ ] **Start notice:** `execution.started` is sent at most once, with `State.StartedAt` from `podman inspect` truncated to milliseconds, and before any output. Output readers wait, which keeps memory bounded and applies backpressure through the pipes. A container that never starts gets no start notice.
+- [ ] **Output (ADR-009):**
+  - chunks hold 1 to 65536 bytes and are numbered in one sequence, in the order they are read;
+  - once `limits.outputBytes` is reached, output is read and discarded and marked truncated;
+  - the result's byte and chunk counts match what was sent.
+- [ ] **Result and cleanup:**
+  - the result comes from `podman inspect`, never from `podman run`'s exit status: never started is `start_failed`, `OOMKilled` is `out_of_memory`, exit code 0 is `succeeded`, and 1 to 255 is `failed`, so a command's own exit code of 125 is `failed`;
+  - times are truncated to milliseconds;
+  - the result passes `ValidateAgainst(request)`;
+  - `podman rm --force` removes the container in every case.
+- [ ] **Tests:** a fake Podman, implemented as the test binary re-executed with scripted scenarios, covers each outcome, the exact arguments, ordering, chunking and truncation, the rejections, and removal. The race detector is on, and full verification passes.
+
+Non-goals (3a-3 and later):
+- the timeout and cancellation (`podman kill`);
+- preflight and the image-presence check before each run;
+- startup cleanup of labelled containers;
+- wiring the runner into Mio or the protocol;
+- real Podman (3b).
+
+#### Test-first record
+
+1. **The fake Podman** (`internal/hollow/runner_test.go`): when `HOLLOW_FAKE_PODMAN` names a scenario directory, `TestMain` makes the test binary act as `podman`.
+   - It logs every invocation's arguments.
+   - `run` records `StartedAt` (after an optional delay) and then `FinishedAt`, `ExitCode`, and `OOMKilled`. It writes state atomically, writes the scripted output in a stream-specific pattern, and exits with the container's code, or with Podman's own code for a container that never starts.
+   - `inspect --type container --format json NAME` prints Podman's `State` field names.
+   - `rm --force NAME` records the removal.
+   - Any other `inspect` or `rm` shape is refused, so the runner must call Podman exactly as designed.
+2. **Tests written first**, all sharing `checkRun`, which requires:
+   - the exact `PodmanRunArgs` as the first call, and `rm --force` of the container as the last;
+   - exactly one removal;
+   - a result valid for the request, with byte and chunk counts that match the chunks;
+   - contiguous sequence numbers, and chunks of 1 to 65536 bytes;
+   - the start notice before any output.
+
+   The tests themselves:
+   - a successful run: exact start notice and result, times truncated to milliseconds;
+   - a failed run;
+   - a command that itself exits with 125, which must be `failed`;
+   - out of memory;
+   - a start failure: exit status 127, no start notice, `start_failed` mentioning 127, and Podman's message in stderr;
+   - a delayed start, with the start notice before the output;
+   - 220,001 bytes over interleaved writes, all received exactly;
+   - `TestSecurity_RunnerTruncatesOutputAtTheLimit`: exactly 100,000 bytes sent, marked truncated, each stream a prefix of what was written, and the command still `succeeded`;
+   - rejections for an unmountable workspace or an undigested image, with no Podman call and no events;
+   - an invalid request (`ErrInvalidExecutionRequest`), and an empty or relative Podman path (`ErrInvalidRunner`).
+3. **Build failure.** `Runner`, `Events`, and `ErrInvalidRunner` were undefined.
+4. **Declarations-only skeleton.** `Run` refuses everything. Runtime red: all 10 runner tests failed. The package's existing tests still passed under the new `TestMain`.
