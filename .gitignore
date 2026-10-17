@@ -24,6 +24,9 @@ coverage/
 tmp/
 artifacts/
 
+# Generated documentation site (rebuilt by `make site`)
+apps/docs-site/dist/
+
 # Local Scopra state and journals (never commit run data)
 runs.jsonl
 .scopra/
