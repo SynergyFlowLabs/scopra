@@ -6,7 +6,7 @@ Scopra Mariner is the CLI/TUI for onboarding and machine enrollment. The executa
 
 ```text
 scopra status [--state-dir PATH] [--json]
-scopra doctor [--state-dir PATH] [--json]
+scopra doctor [--state-dir PATH] [--sandbox-image IMAGE] [--json]
 scopra workspace add [--state-dir PATH] [--json] PATH
 scopra workspace list [--state-dir PATH] [--json]
 scopra workspace remove [--state-dir PATH] [--json] ID
@@ -33,8 +33,9 @@ By default both binaries use `$XDG_STATE_HOME/scopra`, or `~/.local/state/scopra
 | `workspace-registry` | Mio's `workspaces.json` is missing, or is an owner-only regular file with valid content, as `scoprad` requires at startup. The detail gives the number of registrations. | `fail`, with a hint naming the file, when it is unsafe, invalid, or unreadable: `scoprad` will not start until it is fixed or removed, and removing it unregisters every workspace without changing any directory. `workspaces` is then skipped. |
 | `workspaces` | No workspaces are registered, or every registration still qualifies under ADR-004. Each one is revalidated with the validator configuration that Mio uses. Its directory must still be at the recorded canonical path, have the filesystem identity recorded at registration, and be owned by you. It must not be, or contain, a protected location such as your home directory or Mio's state directory. | `warn` naming up to five stale registrations, each with its ID, path, and reason (missing, not a directory, not owned by you, is or contains a protected location, or changed since it was registered), and counting the rest. The hint says to restore the directory or run `scopra workspace remove ID`, which does not change the directory. `fail` if validation cannot be prepared because no home directory is known; `scoprad` would not start either. |
 | `daemon` | Mio's local IPC endpoint answers the existing authenticated `status` request. | `fail`, with a hint, when Mio is not running, its socket is unsafe, or its response is invalid. If Mio is not running and the `workspace-registry` check failed, the hint says to fix the registry first, because `scoprad` would refuse to start. |
+| `containment` | `podman` is on `PATH`, `podman info` meets ADR-010 (rootless, cgroups v2, the `cpu`, `memory`, and `pids` controllers, Podman 4.0 or later), and, with `--sandbox-image`, the image is pinned by digest and present in local storage. | `warn` when `podman` is not installed, or when no `--sandbox-image` was given: status and workspaces still work, but Mio refuses every run. `fail` when `podman info` fails or the host does not meet ADR-010, or when the configured image is invalid or not in local storage: the configured execution setup cannot run. |
 
-Doctor never creates or repairs the state directory, removes stale sockets, starts Mio, or contacts a socket with unsafe ownership or permissions. It never opens or locks Mio's lock file, so it cannot make a concurrent `scoprad` start fail. It reads the workspace registry without changing it, which is safe while Mio runs because Mio replaces the file atomically. Revalidation inspects only the metadata of registered directories; it changes neither the registry nor any workspace. It sends only the existing `status` request. A passing result means only that the local platform, state directory, workspace registry, registered workspaces, and Mio IPC endpoint look healthy. Enrollment, relay, policy, containment, and execution are not checked because they are not implemented. A pass does not mean Scopra can authorize or execute commands.
+Doctor never creates or repairs the state directory, removes stale sockets, starts Mio, or contacts a socket with unsafe ownership or permissions. It never opens or locks Mio's lock file, so it cannot make a concurrent `scoprad` start fail. It reads the workspace registry without changing it, which is safe while Mio runs because Mio replaces the file atomically. Revalidation inspects only the metadata of registered directories; it changes neither the registry nor any workspace. It sends only the existing `status` request. The containment check runs `podman info --format json` and, when `--sandbox-image` is given, `podman image exists IMAGE`: both are read-only, each is bounded by a 10-second deadline, and doctor never pulls, starts, or removes a container. It does not ask Mio which image is configured, so it checks the image it is given. A passing result means only that the local platform, state directory, workspace registry, registered workspaces, Mio IPC endpoint, and the requested containment setup look healthy. Enrollment, relay, policy, and execution are not checked because they are not implemented. A pass does not mean Scopra has authorized anything or run a command.
 
 Revalidation is a point-in-time diagnostic: a workspace can change after doctor runs, so a later check by Mio is still needed before any use. A directory that is deleted and recreated at the same path can reuse its inode number and go unnoticed (ADR-004). A stale registration is a warning, not a failure, so on its own it leaves the exit status `0`:
 
@@ -80,7 +81,7 @@ The human-readable report goes to stdout, with control characters in paths and e
       "hint": "Start Mio in the foreground with `scoprad` (pass the same --state-dir, if any)."
     }
   ],
-  "notChecked": ["enrollment", "relay", "policy", "containment", "execution"]
+  "notChecked": ["enrollment", "relay", "policy", "execution"]
 }
 ```
 

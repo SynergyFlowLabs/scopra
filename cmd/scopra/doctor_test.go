@@ -47,9 +47,9 @@ func TestRunDoctorReportsRespondingDaemon(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run(doctor) error = %v, want nil", err)
 	}
-	assertChecks(t, report, "platform=pass", "state-directory=pass", "workspace-registry=pass", "workspaces=pass", "daemon=pass")
-	if report.Result != "pass" {
-		t.Fatalf("doctor result = %q, want pass", report.Result)
+	assertChecks(t, report, "platform=pass", "state-directory=pass", "workspace-registry=pass", "workspaces=pass", "daemon=pass", "containment=warn")
+	if report.Result != "warn" {
+		t.Fatalf("doctor result = %q, want warn because no podman is on PATH", report.Result)
 	}
 	if report.StateDir != stateDir {
 		t.Fatalf("doctor stateDir = %q, want %q", report.StateDir, stateDir)
@@ -81,15 +81,20 @@ func TestRunDoctorHumanReportStatesItsLimits(t *testing.T) {
 		"[pass] workspace-registry",
 		"[pass] workspaces",
 		"[pass] daemon",
+		"[warn] containment",
 		"test-version",
 		stateDir,
-		"Result: pass",
+		"Result: warn",
+		"has authorized anything or run a command",
 		"Not checked",
 		"execution",
 	} {
 		if !strings.Contains(output, want) {
 			t.Errorf("human doctor report is missing %q:\n%s", want, output)
 		}
+	}
+	if strings.Contains(output, "can authorize or execute commands") {
+		t.Errorf("human doctor report still claims a pass says nothing can execute:\n%s", output)
 	}
 	if strings.Contains(output, "revalidation") {
 		t.Errorf("human doctor report still lists workspace revalidation as not checked:\n%s", output)
@@ -101,7 +106,7 @@ func TestRunDoctorFailsWhenDaemonIsNotRunning(t *testing.T) {
 
 	report, err := runDoctorJSON(t, "--state-dir", stateDir)
 	requireCheckFailure(t, err)
-	assertChecks(t, report, "platform=pass", "state-directory=pass", "workspace-registry=pass", "workspaces=pass", "daemon=fail")
+	assertChecks(t, report, "platform=pass", "state-directory=pass", "workspace-registry=pass", "workspaces=pass", "daemon=fail", "containment=warn")
 	if report.Result != "fail" {
 		t.Fatalf("doctor result = %q, want fail", report.Result)
 	}
@@ -117,7 +122,7 @@ func TestSecurity_DoctorDoesNotCreateMissingStateDirectory(t *testing.T) {
 
 	report, err := runDoctorJSON(t, "--state-dir", stateDir)
 	requireCheckFailure(t, err)
-	assertChecks(t, report, "platform=pass", "state-directory=warn", "workspace-registry=pass", "workspaces=pass", "daemon=fail")
+	assertChecks(t, report, "platform=pass", "state-directory=warn", "workspace-registry=pass", "workspaces=pass", "daemon=fail", "containment=warn")
 	if _, statErr := os.Lstat(parent); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatalf("doctor created part of the missing state directory (Lstat error = %v)", statErr)
 	}
@@ -154,7 +159,7 @@ func TestRunDoctorChecksWorkspaceRegistry(t *testing.T) {
 			report, err := runDoctorJSON(t, "--state-dir", stateDir)
 			requireCheckFailure(t, err) // Mio is not running
 			assertChecks(t, report, "platform=pass", "state-directory=pass",
-				"workspace-registry="+test.wantStatus, "workspaces="+test.wantWorkspaces, "daemon=fail")
+				"workspace-registry="+test.wantStatus, "workspaces="+test.wantWorkspaces, "daemon=fail", "containment=warn")
 			wantWorkspacesDetail := map[string]string{
 				"pass": "no workspaces are registered",
 				"skip": "not run because the workspace-registry check failed",
@@ -187,7 +192,7 @@ func TestRunDoctorChecksWorkspaceRegistry(t *testing.T) {
 					}
 				}
 			}
-			if want := []string{"enrollment", "relay", "policy", "containment", "execution"}; !slices.Equal(report.NotChecked, want) {
+			if want := []string{"enrollment", "relay", "policy", "execution"}; !slices.Equal(report.NotChecked, want) {
 				t.Fatalf("doctor notChecked = %q, want %q", report.NotChecked, want)
 			}
 			if test.content == "" {
@@ -289,7 +294,7 @@ func TestRunDoctorRevalidatesRegisteredWorkspaces(t *testing.T) {
 			report, err := runDoctorJSON(t, "--state-dir", stateDir)
 			requireCheckFailure(t, err) // Mio is not running; a warning alone exits 0
 			assertChecks(t, report, "platform=pass", "state-directory=pass", "workspace-registry=pass",
-				"workspaces="+test.wantStatus, "daemon=fail")
+				"workspaces="+test.wantStatus, "daemon=fail", "containment=warn")
 			check := findCheck(t, report, "workspaces")
 			for _, want := range test.wantDetail {
 				if !strings.Contains(check.Detail, want) {
@@ -334,7 +339,7 @@ func TestRunDoctorWarnsWithoutFailingWhenOnlyWorkspacesAreStale(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run(doctor) error = %v, want nil because a warning alone does not fail", err)
 	}
-	assertChecks(t, report, "platform=pass", "state-directory=pass", "workspace-registry=pass", "workspaces=warn", "daemon=pass")
+	assertChecks(t, report, "platform=pass", "state-directory=pass", "workspace-registry=pass", "workspaces=warn", "daemon=pass", "containment=warn")
 	if report.Result != "warn" {
 		t.Fatalf("doctor result = %q, want warn", report.Result)
 	}
@@ -372,7 +377,7 @@ func TestSecurity_DoctorReportsInsecureStateDirectoryWithoutRepairingIt(t *testi
 
 	report, err := runDoctorJSON(t, "--state-dir", stateDir)
 	requireCheckFailure(t, err)
-	assertChecks(t, report, "platform=pass", "state-directory=fail", "workspace-registry=skip", "workspaces=skip", "daemon=skip")
+	assertChecks(t, report, "platform=pass", "state-directory=fail", "workspace-registry=skip", "workspaces=skip", "daemon=skip", "containment=warn")
 	if detail := findCheck(t, report, "workspaces").Detail; detail != "not run because the state-directory check failed" {
 		t.Fatalf("workspaces detail = %q, want it skipped after the state-directory check", detail)
 	}
@@ -399,7 +404,7 @@ func TestSecurity_DoctorLeavesStaleSocketInPlace(t *testing.T) {
 
 	report, err := runDoctorJSON(t, "--state-dir", stateDir)
 	requireCheckFailure(t, err)
-	assertChecks(t, report, "platform=pass", "state-directory=pass", "workspace-registry=pass", "workspaces=pass", "daemon=fail")
+	assertChecks(t, report, "platform=pass", "state-directory=pass", "workspace-registry=pass", "workspaces=pass", "daemon=fail", "containment=warn")
 	after, err := os.Lstat(socketPath)
 	if err != nil {
 		t.Fatalf("doctor removed the stale socket: %v", err)
@@ -415,7 +420,7 @@ func TestSecurity_DoctorRefusesInsecureSocketWithoutConnecting(t *testing.T) {
 
 	report, err := runDoctorJSON(t, "--state-dir", stateDir)
 	requireCheckFailure(t, err)
-	assertChecks(t, report, "platform=pass", "state-directory=pass", "workspace-registry=pass", "workspaces=pass", "daemon=fail")
+	assertChecks(t, report, "platform=pass", "state-directory=pass", "workspace-registry=pass", "workspaces=pass", "daemon=fail", "containment=warn")
 	if daemon := findCheck(t, report, "daemon"); !strings.Contains(daemon.Detail, "unsafe") {
 		t.Fatalf("daemon detail = %q, want the socket reported as unsafe", daemon.Detail)
 	}
@@ -437,7 +442,7 @@ func TestRunDoctorKeepsUnsafeSocketHintWithBadRegistry(t *testing.T) {
 
 	report, err := runDoctorJSON(t, "--state-dir", stateDir)
 	requireCheckFailure(t, err)
-	assertChecks(t, report, "platform=pass", "state-directory=pass", "workspace-registry=fail", "workspaces=skip", "daemon=fail")
+	assertChecks(t, report, "platform=pass", "state-directory=pass", "workspace-registry=fail", "workspaces=skip", "daemon=fail", "containment=warn")
 	const want = "scoprad will not replace it. Confirm that no trusted Mio uses it, remove it, then start scoprad."
 	if hint := findCheck(t, report, "daemon").Hint; hint != want {
 		t.Fatalf("daemon hint = %q, want the unchanged unsafe-socket hint %q", hint, want)
@@ -452,7 +457,7 @@ func TestRunDoctorReportsInvalidDaemonResponse(t *testing.T) {
 
 	report, err := runDoctorJSON(t, "--state-dir", stateDir)
 	requireCheckFailure(t, err)
-	assertChecks(t, report, "platform=pass", "state-directory=pass", "workspace-registry=pass", "workspaces=pass", "daemon=fail")
+	assertChecks(t, report, "platform=pass", "state-directory=pass", "workspace-registry=pass", "workspaces=pass", "daemon=fail", "containment=warn")
 	if daemon := findCheck(t, report, "daemon"); !strings.Contains(daemon.Hint, "version") {
 		t.Fatalf("daemon hint = %q, want version guidance for an invalid response", daemon.Hint)
 	}
@@ -472,7 +477,7 @@ func TestRunDoctorChecksDefaultStateDirectory(t *testing.T) {
 	if want := filepath.Join(stateHome, "scopra"); report.StateDir != want {
 		t.Fatalf("doctor stateDir = %q, want the scoprad default %q", report.StateDir, want)
 	}
-	assertChecks(t, report, "platform=pass", "state-directory=warn", "workspace-registry=pass", "workspaces=pass", "daemon=fail")
+	assertChecks(t, report, "platform=pass", "state-directory=warn", "workspace-registry=pass", "workspaces=pass", "daemon=fail", "containment=warn")
 }
 
 func TestRunDoctorFailsWhenStateDirectoryCannotBeResolved(t *testing.T) {
@@ -494,7 +499,7 @@ func TestRunDoctorFailsWhenStateDirectoryCannotBeResolved(t *testing.T) {
 
 			report, err := runDoctorJSON(t)
 			requireCheckFailure(t, err)
-			assertChecks(t, report, "platform=pass", "state-directory=fail", "workspace-registry=skip", "workspaces=skip", "daemon=skip")
+			assertChecks(t, report, "platform=pass", "state-directory=fail", "workspace-registry=skip", "workspaces=skip", "daemon=skip", "containment=warn")
 			if report.StateDir != "" {
 				t.Fatalf("doctor stateDir = %q, want empty when it cannot be resolved", report.StateDir)
 			}
@@ -517,7 +522,7 @@ func TestRunDoctorRejectsOverlongStateDirectory(t *testing.T) {
 
 	report, err := runDoctorJSON(t, "--state-dir", stateDir)
 	requireCheckFailure(t, err)
-	assertChecks(t, report, "platform=pass", "state-directory=fail", "workspace-registry=skip", "workspaces=skip", "daemon=skip")
+	assertChecks(t, report, "platform=pass", "state-directory=fail", "workspace-registry=skip", "workspaces=skip", "daemon=skip", "containment=warn")
 	if hint := findCheck(t, report, "state-directory").Hint; !strings.Contains(hint, "shorter") {
 		t.Fatalf("state-directory hint = %q, want guidance to choose a shorter path", hint)
 	}
@@ -628,7 +633,7 @@ func TestRunDoctorEscapesControlCharactersInHumanReport(t *testing.T) {
 func TestDiagnoseFailsClosedOnUnsupportedPlatform(t *testing.T) {
 	stateDir := filepath.Join(t.TempDir(), "run")
 
-	report := diagnose(t.Context(), stateDir, platformInfo{goos: "darwin", goarch: "arm64"})
+	report := diagnose(t.Context(), stateDir, "", platformInfo{goos: "darwin", goarch: "arm64"})
 
 	encoded, err := json.Marshal(report)
 	if err != nil {
@@ -639,7 +644,7 @@ func TestDiagnoseFailsClosedOnUnsupportedPlatform(t *testing.T) {
 		t.Fatalf("json.Unmarshal(report) error = %v", err)
 	}
 	assertReportInvariants(t, decoded)
-	assertChecks(t, decoded, "platform=fail", "state-directory=skip", "workspace-registry=skip", "workspaces=skip", "daemon=skip")
+	assertChecks(t, decoded, "platform=fail", "state-directory=skip", "workspace-registry=skip", "workspaces=skip", "daemon=skip", "containment=skip")
 	if detail := findCheck(t, decoded, "workspaces").Detail; detail != "not run because the platform check failed" {
 		t.Fatalf("workspaces detail = %q, want it skipped after the platform check", detail)
 	}

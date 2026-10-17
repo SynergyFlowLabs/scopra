@@ -172,7 +172,7 @@ Proposed, then accepted as written by the maintainer.
 - A malformed value is a usage error (exit status 2) that is reported before Mio takes its lock or touches the state directory.
 - Without the flag, Mio starts as it does today and will reject every execution with `containment_unavailable`. No execution path exists yet, so nothing visible changes until then.
 - Mio never pulls the image. Whether it exists locally is checked before each run (see below).
-- **Command line only, for now.** A persisted setting needs a durable place and format, which arrive with the Linux service installation and get their own decision then. `scopra status` and `scopra doctor` do not report the setting yet, because that would change the status reply (ADR-003).
+- **Command line only, for now.** A persisted setting needs a durable place and format, which arrive with the Linux service installation and get their own decision then. `scopra status` does not report the setting, because that would change the status reply (ADR-003). `scopra doctor` checks it only when given its own `--sandbox-image`, read-only, so the status reply is unchanged.
 
 ### Splitting increment 3
 

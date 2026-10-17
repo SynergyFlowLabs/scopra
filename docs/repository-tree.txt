@@ -79,6 +79,8 @@
 ./cmd
 ./cmd/scopra
 ./cmd/scopra/README.md
+./cmd/scopra/containment.go
+./cmd/scopra/containment_test.go
 ./cmd/scopra/doctor.go
 ./cmd/scopra/doctor_test.go
 ./cmd/scopra/main.go
