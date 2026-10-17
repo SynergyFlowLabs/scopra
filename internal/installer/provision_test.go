@@ -280,3 +280,27 @@ func TestRunProvisionStagesFilesAndRemovesThem(t *testing.T) {
 		t.Fatalf("the staged file survived the run: %v", err)
 	}
 }
+
+func TestStageProvisionKeepsTheFileForAScriptedRun(t *testing.T) {
+	dir := t.TempDir()
+	staged := filepath.Join(dir, "nested", "99-scopra-delegate.conf")
+	plan := Provision{Files: []ProvisionFile{{Path: staged, Mode: 0o644, Content: "Delegate=pids\n"}}}
+	if err := StageProvision(plan); err != nil {
+		t.Fatalf("StageProvision() error = %v", err)
+	}
+	info, err := os.Stat(staged)
+	if err != nil {
+		t.Fatalf("stat the staged file: %v", err)
+	}
+	if info.Mode().Perm() != 0o644 {
+		t.Fatalf("mode = %v, want 0644", info.Mode().Perm())
+	}
+	content, err := os.ReadFile(staged)
+	if err != nil || string(content) != "Delegate=pids\n" {
+		t.Fatalf("content = %q (err %v)", content, err)
+	}
+	RemoveStaged(plan)
+	if _, err := os.Stat(staged); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("RemoveStaged() left the file: %v", err)
+	}
+}

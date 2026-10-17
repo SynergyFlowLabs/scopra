@@ -152,7 +152,7 @@ go build -o bin/scoprad ./cmd/scoprad
 <pre><code class="language-console">$ curl -fsSL https://scopra-six.vercel.app/install.sh | sh -s -- --yes
 </code></pre>
 <p><strong>Pin a version</strong> — <a href="https://scopra-six.vercel.app/releases/latest.txt" rel="noopener noreferrer"><code>/releases/latest.txt</code></a> names the current tag; setting <code>SCOPRA_VERSION</code> repeats an exact install:</p>
-<pre><code class="language-console">$ curl -fsSL https://scopra-six.vercel.app/install.sh | SCOPRA_VERSION=v0.1.0-alpha.5 sh
+<pre><code class="language-console">$ curl -fsSL https://scopra-six.vercel.app/install.sh | SCOPRA_VERSION=v0.1.0-alpha.6 sh
 </code></pre>
 <p><strong>Choose the directory and skip the service</strong> — <code>--dir</code> defaults to <code>$XDG_BIN_HOME</code> when it is absolute, otherwise <code>~/.local/bin</code>; <code>--no-service</code> installs only the command line:</p>
 <pre><code class="language-console">$ curl -fsSL https://scopra-six.vercel.app/install.sh | sh -s -- --dir ~/.local/bin --no-service

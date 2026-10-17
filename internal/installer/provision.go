@@ -227,6 +227,33 @@ func provisionCommands(prefix []string, manager string, packages []string) [][]s
 	return nil
 }
 
+// StageProvision writes the plan's files where its commands expect them. The
+// interactive installer removes them after the run; the scripted installer
+// leaves them in place, because the commands it prints are for a person to run.
+func StageProvision(plan Provision) error {
+	for _, file := range plan.Files {
+		if err := os.MkdirAll(filepath.Dir(file.Path), 0o700); err != nil {
+			return fmt.Errorf("stage %s: %w", file.Path, err)
+		}
+		if err := os.WriteFile(file.Path, []byte(file.Content), file.Mode); err != nil {
+			return fmt.Errorf("stage %s: %w", file.Path, err)
+		}
+		// WriteFile is subject to the umask; the copy must carry the mode the
+		// plan prints.
+		if err := os.Chmod(file.Path, file.Mode); err != nil {
+			return fmt.Errorf("stage %s: %w", file.Path, err)
+		}
+	}
+	return nil
+}
+
+// RemoveStaged deletes the files StageProvision wrote.
+func RemoveStaged(plan Provision) {
+	for _, file := range plan.Files {
+		_ = os.Remove(file.Path)
+	}
+}
+
 // Stdio is where a provision command reads and writes. The runner passes the
 // terminal itself, because sudo has to be able to prompt for a password.
 type Stdio struct {
@@ -242,26 +269,10 @@ func RunProvision(ctx context.Context, plan Provision, stdio Stdio) error {
 	if len(plan.Commands) == 0 {
 		return errors.New("nothing to run")
 	}
-	staged := make([]string, 0, len(plan.Files))
-	defer func() {
-		for _, path := range staged {
-			_ = os.Remove(path)
-		}
-	}()
-	for _, file := range plan.Files {
-		if err := os.MkdirAll(filepath.Dir(file.Path), 0o700); err != nil {
-			return fmt.Errorf("stage %s: %w", file.Path, err)
-		}
-		if err := os.WriteFile(file.Path, []byte(file.Content), file.Mode); err != nil {
-			return fmt.Errorf("stage %s: %w", file.Path, err)
-		}
-		// WriteFile is subject to the umask; the copy must carry the mode the
-		// plan prints.
-		if err := os.Chmod(file.Path, file.Mode); err != nil {
-			return fmt.Errorf("stage %s: %w", file.Path, err)
-		}
-		staged = append(staged, file.Path)
+	if err := StageProvision(plan); err != nil {
+		return err
 	}
+	defer RemoveStaged(plan)
 	for _, argv := range plan.Commands {
 		if len(argv) == 0 {
 			continue

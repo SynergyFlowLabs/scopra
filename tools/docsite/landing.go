@@ -157,7 +157,7 @@ func renderLanding(options siteOptions) string {
     </li>
     <li>
       <h3>Pin a version</h3>
-      <pre><code>curl -fsSL https://scopra-six.vercel.app/install.sh | SCOPRA_VERSION=v0.1.0-alpha.5 sh</code></pre>
+      <pre><code>curl -fsSL https://scopra-six.vercel.app/install.sh | SCOPRA_VERSION=v0.1.0-alpha.6 sh</code></pre>
       <p><a href="https://scopra-six.vercel.app/releases/latest.txt">/releases/latest.txt</a> names the current tag. Set <code>SCOPRA_VERSION</code> to repeat an exact install; every tag keeps its own directory of archives.</p>
     </li>
     <li>
