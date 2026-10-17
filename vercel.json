@@ -29,7 +29,19 @@
     },
     {
       "source": "/install.sh",
-      "headers": [{ "key": "Cache-Control", "value": "public, max-age=300" }]
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
+    },
+    {
+      "source": "/releases/(.*)/checksums.txt",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    },
+    {
+      "source": "/releases/(.*).tar.gz",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    },
+    {
+      "source": "/releases/latest.txt",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
     },
     {
       "source": "/favicon.svg",
