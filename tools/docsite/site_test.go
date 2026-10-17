@@ -306,3 +306,27 @@ func TestResetOutputRefusesDangerousPaths(t *testing.T) {
 		t.Fatalf("resetOutput(%q): %v", out, err)
 	}
 }
+
+func TestPageTitlesArePlainText(t *testing.T) {
+	out := buildRealSite(t)
+	pages, err := filepath.Glob(filepath.Join(out, "docs", "*", "*.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	titles := regexp.MustCompile(`<title>([^<]*)</title>`)
+	for _, page := range pages {
+		content, err := os.ReadFile(page)
+		if err != nil {
+			t.Fatal(err)
+		}
+		match := titles.FindStringSubmatch(string(content))
+		if match == nil {
+			t.Fatalf("%s has no title", shortName(out, page))
+		}
+		for _, marker := range []string{"`", "**", "]("} {
+			if strings.Contains(match[1], marker) {
+				t.Errorf("%s title %q contains Markdown %q", shortName(out, page), match[1], marker)
+			}
+		}
+	}
+}

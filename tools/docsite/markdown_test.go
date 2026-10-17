@@ -156,6 +156,13 @@ func TestRenderAutolink(t *testing.T) {
 	}
 }
 
+func TestRenderEmphasisSpansASoftBreak(t *testing.T) {
+	body := render(t, "deployed as a **pure static\nartifact**. Done.\n")
+	if !strings.Contains(body, "<strong>pure static artifact</strong>") {
+		t.Fatalf("emphasis across a line break was lost:\n%s", body)
+	}
+}
+
 func TestRenderHardBreak(t *testing.T) {
 	body := render(t, "one  \ntwo\n")
 	if !strings.Contains(body, "one<br>two") {

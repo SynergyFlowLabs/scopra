@@ -227,7 +227,7 @@ func collectDocuments(root string) ([]document, error) {
 				Source: path.Join("docs", "decisions", "README.md"),
 				Slug:   "decisions",
 				Group:  "decisions",
-				Title:  documentTitle(decision, "Decision Records"),
+				Title:  plainText(documentTitle(decision, "Decision Records")),
 			}
 			index = &entry
 			continue
@@ -238,7 +238,7 @@ func collectDocuments(root string) ([]document, error) {
 			Source: path.Join("docs", "decisions", name+".md"),
 			Slug:   path.Join("decisions", name),
 			Group:  "decisions",
-			Title:  documentTitle(decision, name),
+			Title:  plainText(documentTitle(decision, name)),
 		})
 	}
 	if index != nil {

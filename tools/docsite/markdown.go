@@ -53,6 +53,9 @@ var (
 	quotePattern     = regexp.MustCompile(`^ {0,3}>\s?(.*)$`)
 )
 
+// hardBreakToken marks an explicit line break; it cannot occur in a document.
+const hardBreakToken = "\x00"
+
 func isBlank(line string) bool { return strings.TrimSpace(line) == "" }
 
 func (r *renderer) blocks(lines []string) string {
@@ -380,18 +383,20 @@ func (r *renderer) paragraph(out *strings.Builder, lines []string, start int) in
 // paragraphText renders one paragraph, keeping a hard line break (two trailing
 // spaces or a trailing backslash) and turning every other break into a space.
 func (r *renderer) paragraphText(lines []string) string {
-	var out strings.Builder
+	// Join first, then render: emphasis and links may span a soft line break,
+	// and a hard break must survive as a marker that inline escaping ignores.
+	var joined strings.Builder
 	for index, line := range lines {
 		if index > 0 {
 			if lastHard(lines[index-1]) {
-				out.WriteString("<br>")
+				joined.WriteString(hardBreakToken)
 			} else {
-				out.WriteString(" ")
+				joined.WriteString(" ")
 			}
 		}
-		out.WriteString(r.inline(strings.TrimSpace(line)))
+		joined.WriteString(strings.TrimSpace(line))
 	}
-	return out.String()
+	return strings.ReplaceAll(r.inline(joined.String()), hardBreakToken, "<br>")
 }
 
 func lastHard(line string) bool {
