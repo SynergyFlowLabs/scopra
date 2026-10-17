@@ -2,7 +2,7 @@
 
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
-**Current increment:** bounded run journal and `scopra logs` (Step 32)
+**Current increment:** open-source license and removal of pricing (Step 33)
 **Status:** Implemented on `arena/fe74ddf7-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
@@ -2636,3 +2636,24 @@ Corrections found by the red/green cycles, kept as test or design fixes rather t
 - Not verified: a real rootless-Podman host and a real systemd user manager, neither of which exists in this sandbox; the fake `podman` scripts its answers and cannot prove parsing of real Podman output. Output capture, retention beyond the fixed bounds, and any remote log access remain out of scope and are recorded as such in ADR-013.
 
 Commit `26590a6` (`feat(journal): record run metadata and add scopra logs`) holds the implementation, the tests, ADR-013, and the documentation; a second commit records this log. The increment was pushed to `arena/fe74ddf7-scopra` as `0294819..26590a6`, so PR #3 picks it up. CI remains out of scope.
+
+### 2026-10-17 — Step 33: MIT license, no pricing model (ADR-014)
+
+- Selection: the maintainer asked that every kind of pricing model be removed and that Scopra stay open source and free for everyone. The repository had no license at all — `LICENSE` said "All rights reserved. No permission is granted until a final license is selected" — so it was not legally open source, and the plan still listed "billing, and plan limits" as Milestone 6 work.
+- Decision (ADR-014):
+  - **MIT License.** `LICENSE` now carries the standard MIT text, `Copyright (c) 2026 Scopra contributors`. Permissive, with the usual warranty disclaimer; no CLA.
+  - **No pricing model.** No paid tiers, subscriptions, usage-based billing, plan limits, feature gates, trials, account requirements, license keys, or entitlement checks. This is a product rule, not only a documentation edit, so it is recorded in the PRD, the plan, the README, and the ADR.
+  - **Third-party material keeps its own license.** `NOTICE` records the Podman documentation fixture (Apache-2.0) and the installed development skills under `.agents/skills/`.
+- Changes:
+  - `LICENSE`: MIT text; `NOTICE`: new, with the no-pricing statement and third-party attributions.
+  - `README.md`: a short free/open-source line in the introduction and a `## License` section stating that there is no pricing model.
+  - `PRD.md`: product principle 9 ("Free and open source, with no pricing model"), a pricing/billing non-goal, and a `License` header line.
+  - `docs/plans/00-full-implementation-plan.md`: Milestone 6 no longer lists "billing, and plan limits"; the technical baseline and header record the MIT/no-pricing position.
+  - `CONTRIBUTING.md`: contributions are inbound under the MIT terms.
+  - `docs/decisions/014-open-source-no-pricing.md` and its index entry.
+- No code, protocol, or test behaviour changed. The removal is of a planned commercial feature, which never had code.
+- Verification:
+  - `grep -rniE "billing|pricing|paid|subscription|plan limits|feature gate|monetiz|revenue|commercial"` over the repository (excluding `.git` and the third-party `.agents/skills`) returns only the new statements that pricing is absent, the ADR and NOTICE that define the rule, and two historical CI notes in this log that refer to GitHub Actions billing as a diagnostic for `startup_failure`. No product pricing, plan, or billing content remains.
+  - `go build ./...`, `go vet ./...`, and `go test -count=1 ./...` still pass; no Go file changed.
+  - `docs/repository-tree.txt` regenerated for the new `NOTICE` and ADR files.
+- Non-goals: relicensing third-party material, adding a CLA or DCO, hosted-service operations, and deciding whether a future hosted relay needs its own terms. Those are separate questions; the software itself stays free and complete.
