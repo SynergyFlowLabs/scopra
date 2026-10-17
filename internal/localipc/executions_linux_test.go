@@ -143,8 +143,9 @@ func TestSecurity_DaemonDropsMalformedRunRequests(t *testing.T) {
 }
 
 func TestSecurity_RunExecutionRejectsAFifthConcurrentRun(t *testing.T) {
+	const runLimit = 4 // ADR-011
 	release := make(chan struct{})
-	entered := make(chan struct{}, maxConcurrentRuns+1)
+	entered := make(chan struct{}, runLimit+1)
 	executor := &fakeExecutor{execute: func(ctx context.Context, request protocol.ExecutionRequest, _ ExecutionEvents) (protocol.ExecutionResult, error) {
 		entered <- struct{}{}
 		select {
@@ -160,14 +161,14 @@ func TestSecurity_RunExecutionRejectsAFifthConcurrentRun(t *testing.T) {
 		result protocol.ExecutionResult
 		err    error
 	}
-	outcomes := make(chan outcome, maxConcurrentRuns)
-	for range maxConcurrentRuns {
+	outcomes := make(chan outcome, runLimit)
+	for range runLimit {
 		go func() {
 			result, err := RunExecution(ctx, stateDir, testRunRequest(), RunEvents{})
 			outcomes <- outcome{result, err}
 		}()
 	}
-	for range maxConcurrentRuns {
+	for range runLimit {
 		waitFor(t, entered, "a concurrent run to reach the executor")
 	}
 
@@ -181,12 +182,12 @@ func TestSecurity_RunExecutionRejectsAFifthConcurrentRun(t *testing.T) {
 	if !strings.HasPrefix(result.ExecutionID, "local-") || result.Validate() != nil {
 		t.Fatalf("the busy result is not a valid result for a local execution: %+v", result)
 	}
-	if calls := executor.calls(); calls != maxConcurrentRuns {
-		t.Fatalf("the executor ran %d times, want %d", calls, maxConcurrentRuns)
+	if calls := executor.calls(); calls != runLimit {
+		t.Fatalf("the executor ran %d times, want %d", calls, runLimit)
 	}
 
 	close(release)
-	for range maxConcurrentRuns {
+	for range runLimit {
 		if got := <-outcomes; got.err != nil || got.result.State != protocol.StateSucceeded {
 			t.Fatalf("a concurrent run = %+v, %v; want succeeded", got.result, got.err)
 		}
@@ -369,6 +370,11 @@ func TestSecurity_RunEndsWithoutAResultWhenTheExecutorMisbehaves(t *testing.T) {
 		"output of another execution": func(_ context.Context, request protocol.ExecutionRequest, events ExecutionEvents) (protocol.ExecutionResult, error) {
 			events.Started(startedFor(request))
 			events.Output(protocol.ExecutionOutput{ExecutionID: "local-other", Sequence: 1, Stream: protocol.StreamStdout, Data: []byte("x")})
+			return succeededResult(request, 1, 0), nil
+		},
+		"an invalid output chunk": func(_ context.Context, request protocol.ExecutionRequest, events ExecutionEvents) (protocol.ExecutionResult, error) {
+			events.Started(startedFor(request))
+			events.Output(protocol.ExecutionOutput{ExecutionID: request.ExecutionID, Sequence: 0, Stream: protocol.StreamStdout, Data: []byte("x")})
 			return succeededResult(request, 1, 0), nil
 		},
 		"two start notices": func(_ context.Context, request protocol.ExecutionRequest, events ExecutionEvents) (protocol.ExecutionResult, error) {

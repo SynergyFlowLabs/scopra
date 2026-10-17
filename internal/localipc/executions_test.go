@@ -152,6 +152,58 @@ func TestSecurity_BuildExecutionRequestAppliesADR007Rules(t *testing.T) {
 	}
 }
 
+func TestDecodeRequest_ChecksTheRunObjectsKeys(t *testing.T) {
+	frame := func(run string) string { return requestPrefix + `"command":"execution.run","run":` + run + `}` }
+	message, err := decodeRequest([]byte(frame(validRunJSON)))
+	if err != nil || message.Command != runCommand || message.Run != validRunJSON {
+		t.Fatalf("decodeRequest() = %+v, %v; want the run object unchanged", message, err)
+	}
+
+	payloads := map[string]string{
+		"a network key":    frame(strings.Replace(validRunJSON, `"reason"`, `"network":"none","reason"`, 1)),
+		"a missing reason": frame(strings.Replace(validRunJSON, `,"reason":"local run by the workspace owner"`, ``, 1)),
+		"a miscased key":   frame(strings.Replace(validRunJSON, `"workspaceId"`, `"workspaceID"`, 1)),
+		"not an object":    frame(`[]`),
+		"no run":           requestPrefix + `"command":"execution.run"}`,
+	}
+	for name, payload := range payloads {
+		t.Run(name, func(t *testing.T) {
+			if message, err := decodeRequest([]byte(payload)); !errors.Is(err, ErrInvalidMessage) {
+				t.Fatalf("decodeRequest() = %+v, %v; want ErrInvalidMessage", message, err)
+			}
+		})
+	}
+}
+
+func TestSecurity_RunStaysWithItsCommand(t *testing.T) {
+	base := request{ProtocolVersion: protocolVersion, RequestID: testRequestID}
+	with := func(command string, mutate func(*request)) request {
+		message := base
+		message.Command = command
+		mutate(&message)
+		return message
+	}
+	messages := map[string]request{
+		"status with a run":           with(statusCommand, func(m *request) { m.Run = validRunJSON }),
+		"workspace.add with a run":    with(addWorkspaceCommand, func(m *request) { m.Path, m.Run = "/srv/project", validRunJSON }),
+		"workspace.list with a run":   with(listWorkspacesCommand, func(m *request) { m.Run = validRunJSON }),
+		"workspace.remove with a run": with(removeWorkspaceCommand, func(m *request) { m.ID, m.Run = testWorkspaceID, validRunJSON }),
+		"a run with a path":           with(runCommand, func(m *request) { m.Run, m.Path = validRunJSON, "/srv/project" }),
+		"a run with an ID":            with(runCommand, func(m *request) { m.Run, m.ID = validRunJSON, testWorkspaceID }),
+		"a run with a cursor":         with(runCommand, func(m *request) { m.Run, m.Cursor = validRunJSON, testWorkspaceID }),
+	}
+	for name, message := range messages {
+		t.Run(name, func(t *testing.T) {
+			if encoded, err := encodeRequest(message); !errors.Is(err, ErrInvalidMessage) {
+				t.Fatalf("encodeRequest() = %s, %v; want ErrInvalidMessage", encoded, err)
+			}
+		})
+	}
+	if _, err := encodeRequest(with(runCommand, func(m *request) { m.Run = validRunJSON })); err != nil {
+		t.Fatalf("encodeRequest() of a valid run error = %v", err)
+	}
+}
+
 func TestEncodeOutputFrame_StaysWithinTheFrameLimit(t *testing.T) {
 	data := bytes.Repeat([]byte{0xff}, maxOutputFrameData)
 	frame, err := encodeOutputFrame(testRequestID, protocol.StreamStderr, data)
@@ -170,6 +222,35 @@ func TestEncodeOutputFrame_StaysWithinTheFrameLimit(t *testing.T) {
 		if frame, err := encodeOutputFrame(testRequestID, protocol.StreamStdout, make([]byte, size)); err == nil {
 			t.Fatalf("encodeOutputFrame() with %d bytes = %d bytes, want an error", size, len(frame))
 		}
+	}
+}
+
+func TestSecurity_FrameEncodersRefuseInvalidFrames(t *testing.T) {
+	request := mustBuildRequest(t)
+	invalidNotice := startedFor(request)
+	invalidNotice.ActionHash = "not-a-hash"
+	invalidResult := succeededResult(request, 0, 0)
+	invalidResult.ExitCode = 3
+
+	tests := map[string]func() ([]byte, error){
+		"an invalid start notice": func() ([]byte, error) { return encodeStartedFrame(testRequestID, invalidNotice) },
+		"an invalid result":       func() ([]byte, error) { return encodeResultFrame(testRequestID, invalidResult) },
+		"an unknown stream": func() ([]byte, error) {
+			return encodeOutputFrame(testRequestID, protocol.OutputStream("stdin"), []byte("x"))
+		},
+		"an invalid request ID": func() ([]byte, error) {
+			return encodeResultFrame(strings.ToUpper(testRequestID), succeededResult(request, 0, 0))
+		},
+		"an oversized frame": func() ([]byte, error) {
+			return encodeRunFrame(testRequestID, resultFrame, bytes.Repeat([]byte{' '}, MaxFrameBytes))
+		},
+	}
+	for name, encode := range tests {
+		t.Run(name, func(t *testing.T) {
+			if frame, err := encode(); err == nil {
+				t.Fatalf("the encoder returned %q, want an error", frame)
+			}
+		})
 	}
 }
 
@@ -233,6 +314,9 @@ func TestSecurity_ReadRunRepliesRejectsInvalidFrames(t *testing.T) {
 	other := request
 	other.ExecutionID = "local-other"
 	otherResult := string(mustFrame(succeededResult(other, 0, 0).CanonicalJSON()))
+	sameIDOtherHash := request
+	sameIDOtherHash.Reason = "another reason"
+	otherHashResult := string(mustFrame(succeededResult(sameIDOtherHash, 0, 0).CanonicalJSON()))
 
 	tests := map[string]struct {
 		frames []string
@@ -256,11 +340,13 @@ func TestSecurity_ReadRunRepliesRejectsInvalidFrames(t *testing.T) {
 		"null output data":         {[]string{startedFrame, output(`{"stream":"stdout","data":null}`)}, ErrInvalidMessage},
 		"oversized output": {[]string{startedFrame, output(`{"stream":"stdout","data":"` +
 			base64.RawURLEncoding.EncodeToString(make([]byte, maxOutputFrameData+1)) + `"}`)}, ErrInvalidMessage},
-		"an invalid start notice":    {[]string{strings.Replace(startedFrame, `"actionHash"`, `"actionhash"`, 1)}, ErrInvalidMessage},
-		"an invalid result":          {[]string{strings.Replace(resultFrame, `"succeeded"`, `"done"`, 1)}, ErrInvalidMessage},
-		"another execution's result": {[]string{startedFrame, prefix + `"result":` + otherResult + `}`}, ErrInvalidMessage},
-		"no result":                  {[]string{startedFrame}, ErrNoRunResult},
-		"no frames":                  {nil, ErrNoRunResult},
+		"an invalid start notice":      {[]string{strings.Replace(startedFrame, `"actionHash"`, `"actionhash"`, 1)}, ErrInvalidMessage},
+		"an invalid result":            {[]string{strings.Replace(resultFrame, `"succeeded"`, `"done"`, 1)}, ErrInvalidMessage},
+		"another action hash's result": {[]string{startedFrame, prefix + `"result":` + otherHashResult + `}`}, ErrInvalidMessage},
+		"output with a newline":        {[]string{startedFrame, output(`{"stream":"stdout","data":"aG\nk"}`)}, ErrInvalidMessage},
+		"another execution's result":   {[]string{startedFrame, prefix + `"result":` + otherResult + `}`}, ErrInvalidMessage},
+		"no result":                    {[]string{startedFrame}, ErrNoRunResult},
+		"no frames":                    {nil, ErrNoRunResult},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {

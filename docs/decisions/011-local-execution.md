@@ -124,6 +124,21 @@ Ctrl-C closes the connection, which cancels the run.
 3. **`scopra run`:** flags, output, exit status, and `--json`.
 4. **Real-host verification,** together with ADR-010's increment 3b.
 
+## Implementation Status
+
+**Increment 1 (IPC protocol): implemented** in `internal/localipc`, tested against a real in-process Mio with a fake executor. `scoprad` does not enable it yet, so Mio still runs no commands.
+
+- **Server:** `Daemon.EnableExecutions(executor)`, before `Serve`, enables `execution.run`. Without it, the command gets no reply.
+- **Client:** `RunExecution(ctx, stateDir, run, events)` delivers the start notice and output frames to callbacks and returns the result. A refusal is a `rejected` result, not an error.
+- **Building the request moved into increment 1.** Applying ADR-007's rules means decoding a complete request, and the `busy` refusal must carry the request's `executionId` and `actionHash`. Mio splices the client's `run` values, unchanged, into a request with its own fields:
+  - execution IDs are `local-` plus 32 random hex digits;
+  - nonces are 16 random bytes.
+
+  It then decodes the whole request with `protocol.DecodeExecutionRequest`, so a `null` or a lone surrogate escape is rejected instead of becoming zero or U+FFFD. Increment 2 keeps the rest of its list.
+- **Faults end the run without a result.** This happens when the executor returns an error, or returns a result, start notice, or chunk that does not belong to the request, or when events arrive out of order. Mio then cancels the run and closes the connection without a `result`, so a client never shows an invented outcome. The client reports `ErrNoRunResult` for any connection that ends before the result.
+- **Shutdown cancels runs.** Each run's context ends with `Serve`'s, so stopping Mio cancels the run and still sends a reading client its `cancelled` result. A client that has stopped reading can delay shutdown by at most one frame-write deadline (30 seconds).
+- **Client bounds:** the client keeps the 2-second deadline for sending its request. After that, only its context bounds the run.
+
 ## Consequences
 
 - Scopra can run a command end to end on one machine. That is what the exit gate needs, and it is the first real use of the sandbox.

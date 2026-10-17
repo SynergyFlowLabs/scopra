@@ -34,6 +34,9 @@ type request struct {
 	Path            string // workspace.add
 	ID              string // workspace.remove
 	Cursor          string // workspace.list
+	// Run is execution.run's run object as JSON text, whose exact keys
+	// decodeRequest checks. Mio checks the values when it builds the request.
+	Run string
 }
 
 // requestHeader holds the fields that every request carries.
@@ -49,6 +52,7 @@ var requestKeys = map[string][]string{
 	addWorkspaceCommand:    {"protocolVersion", "requestId", "command", "path"},
 	listWorkspacesCommand:  {"protocolVersion", "requestId", "command", "cursor"},
 	removeWorkspaceCommand: {"protocolVersion", "requestId", "command", "id"},
+	runCommand:             {"protocolVersion", "requestId", "command", "run"},
 }
 
 // StatusResponse is the versioned read-only status reply from Mio.
@@ -84,6 +88,11 @@ func encodeRequest(message request) ([]byte, error) {
 			requestHeader
 			ID string `json:"id"`
 		}{header, message.ID})
+	case runCommand:
+		return json.Marshal(struct {
+			requestHeader
+			Run json.RawMessage `json:"run"`
+		}{header, json.RawMessage(message.Run)})
 	default:
 		return json.Marshal(header)
 	}
@@ -125,6 +134,8 @@ func decodeRequest(encoded []byte) (request, error) {
 		message.Cursor, err = jsonString(fields["cursor"])
 	case removeWorkspaceCommand:
 		message.ID, err = jsonString(fields["id"])
+	case runCommand:
+		message.Run = string(fields["run"])
 	}
 	if err != nil {
 		return request{}, err
@@ -142,13 +153,15 @@ func validateRequest(message request) error {
 	var valid bool
 	switch message.Command {
 	case statusCommand:
-		valid = message.Path == "" && message.ID == "" && message.Cursor == ""
+		valid = message.Path == "" && message.ID == "" && message.Cursor == "" && message.Run == ""
 	case addWorkspaceCommand:
-		valid = validRequestPath(message.Path) && message.ID == "" && message.Cursor == ""
+		valid = validRequestPath(message.Path) && message.ID == "" && message.Cursor == "" && message.Run == ""
 	case listWorkspacesCommand:
-		valid = (message.Cursor == "" || validWorkspaceID(message.Cursor)) && message.Path == "" && message.ID == ""
+		valid = (message.Cursor == "" || validWorkspaceID(message.Cursor)) && message.Path == "" && message.ID == "" && message.Run == ""
 	case removeWorkspaceCommand:
-		valid = validWorkspaceID(message.ID) && message.Path == "" && message.Cursor == ""
+		valid = validWorkspaceID(message.ID) && message.Path == "" && message.Cursor == "" && message.Run == ""
+	case runCommand:
+		valid = validateObjectKeys([]byte(message.Run), runKeys) == nil && message.Path == "" && message.ID == "" && message.Cursor == ""
 	}
 	if !valid {
 		return fmt.Errorf("%w: unsupported command or fields", ErrInvalidMessage)

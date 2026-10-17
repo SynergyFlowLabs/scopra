@@ -3,7 +3,7 @@
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
 **Current increment:** Local execution over IPC, the protocol (Step 27, increment 1 of ADR-011)
-**Status:** In progress on `arena/c7a368c1-scopra`: ADR-011 and the acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
+**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -2091,15 +2091,15 @@ Non-goals:
 #### Acceptance checklist (agreed before implementation)
 
 - [x] ADR-011 is accepted, with any changes the maintainer asks for, and indexed. ADR-006 gains a dated note that ADR-011 qualifies its execution sentence for local runs.
-- [ ] `internal/localipc` serves `execution.run` when an executor is enabled (as `EnableWorkspaces` enables workspace commands). It decodes the request with an exact key set and ADR-007's field rules for the command, access, limits, and reason, and a malformed request gets no reply.
-- [ ] **Streaming:** the executor's start notice, output, and result are written as `started`, `output`, and `result` frames. Output is split to at most 32768 bytes per frame, and every frame stays within 64 KiB.
-- [ ] **Bounds:**
+- [x] `internal/localipc` serves `execution.run` when an executor is enabled (as `EnableWorkspaces` enables workspace commands). It decodes the request with an exact key set and ADR-007's field rules for the command, access, limits, and reason, and a malformed request gets no reply.
+- [x] **Streaming:** the executor's start notice, output, and result are written as `started`, `output`, and `result` frames. Output is split to at most 32768 bytes per frame, and every frame stays within 64 KiB.
+- [x] **Bounds:**
   - only reading the request is limited to 2 seconds;
   - each reply frame is limited to 30 seconds;
   - a client that disconnects or stops reading cancels the executor's context;
   - a fifth concurrent run is answered with `rejected` and `busy`.
-- [ ] A client function sends a run, delivers the events to callbacks, and returns the result, with typed errors as for the workspace commands.
-- [ ] **Tests**, against a real in-process Mio with a fake executor:
+- [x] A client function sends a run, delivers the events to callbacks, and returns the result, with typed errors as for the workspace commands.
+- [x] **Tests**, against a real in-process Mio with a fake executor:
   - the frame shapes and order;
   - splitting at the 32 KiB bound;
   - malformed requests;
@@ -2134,3 +2134,47 @@ Tests added before any implementation:
 Expected failures, shown before implementing:
 1. **Build red:** `go test ./internal/localipc/` failed with 18 missing identifiers, including `RunExecution`, `RunRequest`, `RunEvents`, `Executor`, `ExecutionEvents`, `ErrNoRunResult`, `EnableExecutions`, `buildExecutionRequest`, `readRunReplies`, and the frame encoders.
 2. **Runtime red:** with a compiling skeleton whose bodies return "not implemented", all 19 new tests fail, and the 67 existing tests in the package still pass.
+
+Checkpoint: `30531d5` (tests, skeleton, ADR-011 accepted, ADR-006 note), pushed before implementing.
+
+#### Implementation record
+
+- **`internal/localipc/executions.go`:**
+  - `Daemon.EnableExecutions(executor)`, the `Executor` interface (shaped like Hollow's `Runner.Run`, so increment 2 can pass its events through), `ExecutionEvents`, `RunRequest`, `RunEvents`, `RunExecution`, and `ErrNoRunResult`.
+  - `buildExecutionRequest` splices the client's `run` values into a complete ADR-007 request with Mio's own fields and decodes it with `protocol.DecodeExecutionRequest`.
+  - `serveRun` and `runStream` handle streaming and fault handling. `decodeRunFrame` and `readRunReplies` are the client's strict frame reader.
+- **`messages.go`:** the `run` field with an exact key set, and `run` refused on every other command.
+- **`socket.go`:** `Serve` passes its context to each connection, so shutdown cancels runs. `handleConnection` dispatches `execution.run`. `roundTrip`'s connection checks moved, unchanged, into `dialMio`, which the run client shares. `Listen` initialises the frame-write timeout and the four run slots.
+- **Docs:** ADR-011 gains an implementation-status section, and the README mentions the protocol with "tested only with a fake executor, and Mio does not enable it yet". Scopra still runs no commands, because `scoprad` does not call `EnableExecutions`.
+
+**Mutation testing** (sequential, `go test -timeout 120s`, a timeout counted as caught):
+- **Round 1:** 56 mutations: 43 caught, 11 survived, and 2 failed to build.
+- **What the survivors showed:**
+  - **Weak tests, fixed:**
+    - the cap was not pinned to ADR-011's value of 4;
+    - no invalid output chunk was tested;
+    - no test checked the `run` key set in `decodeRequest`, or `run` on another command;
+    - no result with the right execution ID but another action hash was tested;
+    - no output data with an escaped newline was tested (Go's base64 decoder skips newlines, even in strict mode).
+  - **Redundant code, removed or restructured:**
+    - `checkJSONDocument` in `buildExecutionRequest`;
+    - `encodeRun`'s wire re-check, which the typed check made redundant;
+    - `Strict()`, which the re-encoding comparison made redundant;
+    - the per-method failure checks, replaced by one guard in `write`.
+  - **A guard that held only by accident:** without `EnableExecutions`, the zero write timeout and the nil slot channel also kept Mio silent, so the executor check could not be tested. `Listen` now initialises both, the check is the only guard, and removing it crashes the test binary on a nil executor.
+- **Rounds 2 and 3:** the survivors and the two compile-safe rewrites were all caught.
+- **Final run against the final code:** 53 of 53 caught, all by test assertions and none by timeout. They are the 49 round-1 mutations whose code still exists, the 2 compile-safe rewrites, and 2 new ones: the moved failure guard, and `run` with a path.
+
+Tests added during implementation:
+- `TestSecurity_FrameEncodersRefuseInvalidFrames`, for encoder guards that the coverage report showed untested;
+- `TestDecodeRequest_ChecksTheRunObjectsKeys` and `TestSecurity_RunStaysWithItsCommand`, from mutation testing;
+- the misbehaving-executor case "an invalid output chunk", and the frame-reader cases "another action hash's result" and "output with a newline".
+
+Verification, all passing:
+- `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+- `go test -race -count=1 -timeout 60s ./...`, plus five more race runs of `internal/localipc` (and eight of the new tests during development);
+- `CGO_ENABLED=0 go test ./...`;
+- build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64;
+- `git diff --cached --check`, no skipped tests, and an up-to-date tree.
+
+Coverage of `internal/localipc` rose from 82.3% to 85.3%.

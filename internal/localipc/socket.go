@@ -45,11 +45,11 @@ var (
 	ErrDaemonAlreadyServing = errors.New("localipc: daemon Serve may only be called once")
 )
 
-// Daemon is Mio's foreground local IPC service. It serves status and, once
-// EnableWorkspaces is called, workspace registration commands (ADR-006); it
-// exposes no execution. A Daemon holds an exclusive lock on its state
-// directory until it can no longer act, so at most one Mio serves a state
-// directory at a time.
+// Daemon is Mio's foreground local IPC service. It serves status, workspace
+// registration commands once EnableWorkspaces is called (ADR-006), and local
+// execution.run once EnableExecutions is called (ADR-011). A Daemon holds an
+// exclusive lock on its state directory until it can no longer act, so at
+// most one Mio serves a state directory at a time.
 type Daemon struct {
 	listener      *net.UnixListener
 	stateDir      string
@@ -199,12 +199,14 @@ func Listen(stateDir, daemonVersion string) (*Daemon, error) {
 
 	started = true
 	return &Daemon{
-		listener:      listener,
-		stateDir:      stateDir,
-		socketPath:    socketPath,
-		socketInfo:    socketInfo,
-		daemonVersion: daemonVersion,
-		lock:          lock,
+		listener:          listener,
+		stateDir:          stateDir,
+		socketPath:        socketPath,
+		socketInfo:        socketInfo,
+		daemonVersion:     daemonVersion,
+		lock:              lock,
+		frameWriteTimeout: defaultFrameWriteTimeout,
+		runs:              make(chan struct{}, maxConcurrentRuns),
 	}, nil
 }
 
@@ -290,7 +292,7 @@ func (d *Daemon) Serve(ctx context.Context) (serveErr error) {
 			go func() {
 				defer handlers.Done()
 				defer func() { <-connections }()
-				d.handleConnection(connection)
+				d.handleConnection(ctx, connection)
 			}()
 		default:
 			_ = connection.Close()
@@ -375,55 +377,14 @@ func roundTrip(ctx context.Context, stateDir string, message request, operation 
 		return nil, "", err
 	}
 
-	stateDir, err = resolveStateDir(stateDir)
+	unixConnection, err := dialMio(ctx, stateDir)
 	if err != nil {
 		return nil, "", err
-	}
-	socketPath, err := socketPathFor(stateDir)
-	if err != nil {
-		return nil, "", err
-	}
-	if _, err := validateStateDir(stateDir); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, "", ErrDaemonUnavailable
-		}
-		return nil, "", err
-	}
-	socketInfo, err := os.Lstat(socketPath)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, "", ErrDaemonUnavailable
-	}
-	if err != nil {
-		return nil, "", fmt.Errorf("inspect daemon socket: %w", err)
-	}
-	if err := validateSocketInfo(socketInfo); err != nil {
-		return nil, "", err
-	}
-
-	dialer := net.Dialer{Timeout: connectionTimeout}
-	connection, err := dialer.DialContext(ctx, "unix", socketPath)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) || isStaleSocketProbeError(err) {
-			return nil, "", ErrDaemonUnavailable
-		}
-		return nil, "", fmt.Errorf("connect to Mio: %w", err)
-	}
-	unixConnection, ok := connection.(*net.UnixConn)
-	if !ok {
-		_ = connection.Close()
-		return nil, "", ErrUnsupportedPlatform
 	}
 	defer unixConnection.Close()
 	stopCancellation := context.AfterFunc(ctx, func() { _ = unixConnection.Close() })
 	defer stopCancellation()
 
-	peerUID, err := peerUID(unixConnection)
-	if err != nil {
-		return nil, "", contextualError(ctx, "authenticate Mio peer", err)
-	}
-	if err := authorizePeer(peerUID, effectiveUID()); err != nil {
-		return nil, "", err
-	}
 	if err := setConnectionDeadline(ctx, unixConnection); err != nil {
 		return nil, "", contextualError(ctx, "set IPC deadline", err)
 	}
@@ -437,7 +398,65 @@ func roundTrip(ctx context.Context, stateDir string, message request, operation 
 	return encodedResponse, requestID, nil
 }
 
-func (d *Daemon) handleConnection(connection *net.UnixConn) {
+// dialMio connects to Mio's socket in stateDir after checking the state
+// directory and the socket, and returns the connection once the peer is
+// authenticated as the effective UID. It never falls back to an
+// unauthenticated transport.
+func dialMio(ctx context.Context, stateDir string) (*net.UnixConn, error) {
+	stateDir, err := resolveStateDir(stateDir)
+	if err != nil {
+		return nil, err
+	}
+	socketPath, err := socketPathFor(stateDir)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := validateStateDir(stateDir); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, ErrDaemonUnavailable
+		}
+		return nil, err
+	}
+	socketInfo, err := os.Lstat(socketPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, ErrDaemonUnavailable
+	}
+	if err != nil {
+		return nil, fmt.Errorf("inspect daemon socket: %w", err)
+	}
+	if err := validateSocketInfo(socketInfo); err != nil {
+		return nil, err
+	}
+
+	dialer := net.Dialer{Timeout: connectionTimeout}
+	connection, err := dialer.DialContext(ctx, "unix", socketPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) || isStaleSocketProbeError(err) {
+			return nil, ErrDaemonUnavailable
+		}
+		return nil, fmt.Errorf("connect to Mio: %w", err)
+	}
+	unixConnection, ok := connection.(*net.UnixConn)
+	if !ok {
+		_ = connection.Close()
+		return nil, ErrUnsupportedPlatform
+	}
+	peerUID, err := peerUID(unixConnection)
+	if err != nil {
+		_ = unixConnection.Close()
+		return nil, contextualError(ctx, "authenticate Mio peer", err)
+	}
+	if err := authorizePeer(peerUID, effectiveUID()); err != nil {
+		_ = unixConnection.Close()
+		return nil, err
+	}
+	return unixConnection, nil
+}
+
+// handleConnection answers the one request on connection. Only reading the
+// request is bounded by connectionTimeout; an execution.run reply then lasts
+// until the run ends, and ctx, which ends with Serve, cancels the run.
+func (d *Daemon) handleConnection(ctx context.Context, connection *net.UnixConn) {
 	defer connection.Close()
 	if err := connection.SetDeadline(time.Now().Add(connectionTimeout)); err != nil {
 		return
@@ -452,6 +471,10 @@ func (d *Daemon) handleConnection(connection *net.UnixConn) {
 	}
 	message, err := decodeRequest(encodedRequest)
 	if err != nil {
+		return
+	}
+	if message.Command == runCommand {
+		d.serveRun(ctx, connection, message, peerUID)
 		return
 	}
 	encodedResponse, err := d.reply(message)
