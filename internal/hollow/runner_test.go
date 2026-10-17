@@ -37,10 +37,21 @@ type fakeScenario struct {
 	NeverStart   bool   `json:"neverStart"`
 	PodmanExit   int    `json:"podmanExit"`
 	PodmanStderr string `json:"podmanStderr"`
-	// Writes happen in order after the start.
+	// Writes happen in order after the start; RunMS passes after them.
 	Writes    []fakeWrite `json:"writes"`
+	RunMS     int         `json:"runMs"`
 	ExitCode  int         `json:"exitCode"`
 	OOMKilled bool        `json:"oomKilled"`
+	// HideStartUntilExit records the state only at the end, as for a
+	// container that starts and exits between two polls.
+	HideStartUntilExit bool `json:"hideStartUntilExit"`
+	// InspectDelayMS slows every inspect; InspectElements, if not zero, is
+	// how many containers inspect reports.
+	InspectDelayMS  int `json:"inspectDelayMs"`
+	InspectElements int `json:"inspectElements"`
+	// FinishBeforeStart reports an end time before the start, as a clock
+	// change could.
+	FinishBeforeStart bool `json:"finishBeforeStart"`
 }
 
 // fakeWrite writes Bytes bytes of the stream's pattern, or Text.
@@ -115,7 +126,9 @@ func fakeRun(dir string, args []string) int {
 	}
 	time.Sleep(time.Duration(scenario.StartDelayMS) * time.Millisecond)
 	state.StartedAt = time.Now().UTC()
-	writeFakeState(dir, name, state)
+	if !scenario.HideStartUntilExit {
+		writeFakeState(dir, name, state)
+	}
 	offsets := map[string]int{}
 	for _, write := range scenario.Writes {
 		out := os.Stdout
@@ -129,10 +142,14 @@ func fakeRun(dir string, args []string) int {
 		offsets[write.Stream] += len(payload)
 		_, _ = out.Write(payload)
 	}
+	time.Sleep(time.Duration(scenario.RunMS) * time.Millisecond)
 	state.FinishedAt = time.Now().UTC()
+	if scenario.FinishBeforeStart {
+		state.FinishedAt = state.StartedAt.Add(-time.Second)
+	}
 	state.ExitCode, state.OOMKilled = scenario.ExitCode, scenario.OOMKilled
 	writeFakeState(dir, name, state)
-	return scenario.ExitCode
+	return scenario.ExitCode & 0xff
 }
 
 func writeFakeState(dir, name string, state fakeState) {
@@ -143,12 +160,25 @@ func writeFakeState(dir, name string, state fakeState) {
 }
 
 func fakeInspect(dir, name string) int {
+	var scenario fakeScenario
+	if data, err := os.ReadFile(filepath.Join(dir, "scenario.json")); err == nil {
+		_ = json.Unmarshal(data, &scenario)
+	}
+	time.Sleep(time.Duration(scenario.InspectDelayMS) * time.Millisecond)
 	data, err := os.ReadFile(filepath.Join(dir, "container-"+name+".json"))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: no such container %s\n", name)
 		return 125
 	}
-	fmt.Printf(`[{"Id":"0123","Name":%q,"State":%s}]`+"\n", name, data)
+	elements := scenario.InspectElements
+	if elements == 0 {
+		elements = 1
+	}
+	containers := make([]string, elements)
+	for i := range containers {
+		containers[i] = fmt.Sprintf(`{"Id":"0123","Name":%q,"State":%s}`, name, data)
+	}
+	fmt.Println("[" + strings.Join(containers, ",") + "]")
 	return 0
 }
 
@@ -182,6 +212,9 @@ func newFakeRunner(t *testing.T, scenario fakeScenario) (Runner, fakeHost) {
 		t.Fatalf("write the scenario: %v", err)
 	}
 	t.Setenv(fakePodmanEnv, dir)
+	// A race-enabled binary sleeps for a second before exiting unless told
+	// otherwise, and every fake podman call is one.
+	t.Setenv("GORACE", "atexit_sleep_ms=0")
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatalf("find the test binary: %v", err)
@@ -236,10 +269,18 @@ func (h fakeHost) finalState(name string) fakeState {
 
 // recorder keeps the events of one run in order.
 type recorder struct {
-	mu      sync.Mutex
-	started []protocol.ExecutionStarted
-	outputs []protocol.ExecutionOutput
-	order   []string
+	mu       sync.Mutex
+	started  []protocol.ExecutionStarted
+	outputs  []protocol.ExecutionOutput
+	order    []string
+	returned bool // Run has returned
+	late     int  // callbacks after Run returned
+}
+
+func (r *recorder) markReturned() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.returned = true
 }
 
 func (r *recorder) events() Events {
@@ -247,12 +288,18 @@ func (r *recorder) events() Events {
 		Started: func(started protocol.ExecutionStarted) {
 			r.mu.Lock()
 			defer r.mu.Unlock()
+			if r.returned {
+				r.late++
+			}
 			r.started = append(r.started, started)
 			r.order = append(r.order, "started")
 		},
 		Output: func(output protocol.ExecutionOutput) {
 			r.mu.Lock()
 			defer r.mu.Unlock()
+			if r.returned {
+				r.late++
+			}
 			r.outputs = append(r.outputs, output)
 			r.order = append(r.order, "output")
 		},
@@ -292,9 +339,17 @@ func checkRun(t *testing.T, runner Runner, host fakeHost, request protocol.Execu
 	if err != nil {
 		t.Fatalf("PodmanRunArgs() error = %v", err)
 	}
+	// Each fake call is its own process, so the log order of concurrent calls
+	// (run and the start watcher's inspects) is not the launch order.
 	calls := host.calls()
-	if len(calls) < 2 || !slices.Equal(calls[0], args) {
-		t.Fatalf("first podman call = %q, want %q", calls, args)
+	var runs [][]string
+	for _, call := range calls {
+		if len(call) > 0 && call[0] == "run" {
+			runs = append(runs, call)
+		}
+	}
+	if len(runs) != 1 || !slices.Equal(runs[0], args) {
+		t.Fatalf("podman run calls = %q, want exactly %q", runs, args)
 	}
 	name := containerName(t, request)
 	if want := []string{"rm", "--force", name}; !slices.Equal(calls[len(calls)-1], want) {
@@ -328,6 +383,13 @@ func checkRun(t *testing.T, runner Runner, host fakeHost, request protocol.Execu
 			t.Fatalf("event order = %q, want the start notice first", events.order)
 		}
 	}
+	// Give a wrongly late callback time to happen, then require none.
+	time.Sleep(20 * time.Millisecond)
+	events.mu.Lock()
+	defer events.mu.Unlock()
+	if events.late != 0 {
+		t.Fatalf("%d callbacks arrived after Run returned", events.late)
+	}
 }
 
 func runFake(t *testing.T, scenario fakeScenario, change func(*protocol.ExecutionRequest)) (Runner, fakeHost, protocol.ExecutionRequest, protocol.ExecutionResult, *recorder) {
@@ -339,6 +401,7 @@ func runFake(t *testing.T, scenario fakeScenario, change func(*protocol.Executio
 	}
 	events := &recorder{}
 	result, err := runner.Run(t.Context(), request, testWorkspace, events.events())
+	events.markReturned()
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
@@ -346,7 +409,8 @@ func runFake(t *testing.T, scenario fakeScenario, change func(*protocol.Executio
 }
 
 func TestRunner_ReportsASuccessfulRun(t *testing.T) {
-	runner, host, request, result, events := runFake(t, fakeScenario{Writes: []fakeWrite{{Stream: "stdout", Text: "hello\n"}}}, nil)
+	// RunMS keeps the start and end times in different milliseconds.
+	runner, host, request, result, events := runFake(t, fakeScenario{Writes: []fakeWrite{{Stream: "stdout", Text: "hello\n"}}, RunMS: 25}, nil)
 	checkRun(t, runner, host, request, result, events)
 	state := host.finalState(containerName(t, request))
 	hash, _ := request.ActionHash()
@@ -369,7 +433,16 @@ func TestRunner_ReportsASuccessfulRun(t *testing.T) {
 }
 
 func TestRunner_ReportsAFailedRun(t *testing.T) {
-	runner, host, request, result, events := runFake(t, fakeScenario{Writes: []fakeWrite{{Stream: "stderr", Text: "boom\n"}}, ExitCode: 3}, nil)
+	// This test keeps the default poll interval.
+	runner, host := newFakeRunner(t, fakeScenario{Writes: []fakeWrite{{Stream: "stderr", Text: "boom\n"}}, ExitCode: 3})
+	runner.pollInterval = 0
+	request := fixtureRequest(t, "execution-request-adr007")
+	events := &recorder{}
+	result, err := runner.Run(t.Context(), request, testWorkspace, events.events())
+	events.markReturned()
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
 	checkRun(t, runner, host, request, result, events)
 	if result.State != protocol.StateFailed || result.ExitCode != 3 || result.Output.StderrBytes != 5 {
 		t.Fatalf("result = %+v, want failed with exit code 3 and 5 bytes of stderr", result)
@@ -452,6 +525,73 @@ func TestSecurity_RunnerTruncatesOutputAtTheLimit(t *testing.T) {
 	// The command still ran to completion: the output was read and discarded.
 	if result.State != protocol.StateSucceeded {
 		t.Fatalf("result = %+v, want succeeded", result)
+	}
+}
+
+func TestRunner_SeesAStartOnlyVisibleAfterExit(t *testing.T) {
+	// The container starts and exits between polls (the next poll is ten
+	// seconds away), and inspects are slow, so only the last inspect after
+	// podman exits sees the start, and Run must wait for it.
+	// The container outlives the first (slow) inspect, so that inspect finds
+	// nothing and only the one after podman exits sees the start.
+	runner, host := newFakeRunner(t, fakeScenario{
+		HideStartUntilExit: true, InspectDelayMS: 30, RunMS: 150, Writes: []fakeWrite{{Stream: "stdout", Text: "late start\n"}},
+	})
+	runner.pollInterval = 10 * time.Second
+	request := fixtureRequest(t, "execution-request-adr007")
+	events := &recorder{}
+	result, err := runner.Run(t.Context(), request, testWorkspace, events.events())
+	events.markReturned()
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	checkRun(t, runner, host, request, result, events)
+	if len(events.started) != 1 || result.State != protocol.StateSucceeded || !events.started[0].StartedAt.Equal(result.StartedAt) ||
+		!slices.Equal(events.order, []string{"started", "output"}) {
+		t.Fatalf("start notices = %+v and result = %+v, want one notice matching the result", events.started, result)
+	}
+}
+
+func TestRunner_RefusesUnexpectedInspectOutput(t *testing.T) {
+	tests := []struct {
+		name     string
+		scenario fakeScenario
+	}{
+		{name: "two containers", scenario: fakeScenario{InspectElements: 2}},
+		{name: "exit code above 255", scenario: fakeScenario{ExitCode: 300}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			runner, host, request, result, events := runFake(t, test.scenario, nil)
+			checkRun(t, runner, host, request, result, events)
+			if result.State != protocol.StateErrored || result.Error.Code != protocol.ErrorCodeContainmentFailed {
+				t.Fatalf("result = %+v, want errored with containment_failed", result)
+			}
+		})
+	}
+}
+
+func TestRunner_ClampsAnEndBeforeTheStart(t *testing.T) {
+	runner, host, request, result, events := runFake(t, fakeScenario{FinishBeforeStart: true}, nil)
+	checkRun(t, runner, host, request, result, events)
+	if result.State != protocol.StateSucceeded || !result.EndedAt.Equal(result.StartedAt) {
+		t.Fatalf("result = %+v, want the end clamped to the start", result)
+	}
+}
+
+func TestRunner_ReportsAMissingPodman(t *testing.T) {
+	runner := Runner{Podman: filepath.Join(t.TempDir(), "missing", "podman"), Image: testImage}
+	request := fixtureRequest(t, "execution-request-adr007")
+	events := &recorder{}
+	result, err := runner.Run(t.Context(), request, testWorkspace, events.events())
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if result.State != protocol.StateErrored || result.Error.Code != protocol.ErrorCodeStartFailed || len(events.order) != 0 {
+		t.Fatalf("result = %+v with events %q, want errored with start_failed and no events", result, events.order)
+	}
+	if err := result.ValidateAgainst(request); err != nil {
+		t.Fatalf("result is not valid for the request: %v", err)
 	}
 }
 

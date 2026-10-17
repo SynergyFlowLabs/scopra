@@ -3,7 +3,7 @@
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
 **Current increment:** The Hollow runner against a fake Podman (Step 25, increment 3a-2 of ADR-010 as amended)
-**Status:** In progress on `arena/c7a368c1-scopra`: acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
+**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -25,7 +25,7 @@ This file is the running engineering log. Each increment records scope, verifica
 
 1. **Protocol foundation** — envelope v1 structural validation, strict execution request v1 decoding (ADR-007), the canonical request and action hash (ADR-008), and every execution lifecycle message: results, start notices, output chunks, and cancellation (ADR-009) are implemented and locally verified. The plan's first Messenger task is complete, and reference payloads in `packages/test-fixtures/messenger/v1` pin the version 1 wire format. Approval records, compatibility tests across protocol versions, cryptographic verification, replay storage, and compatibility/version guarantees remain pending.
 2. **Local daemon and CLI** — the initial foreground Mio status service with a persistent per-user state directory and an exclusive state-directory lock, Mariner `scopra status`, a minimal read-only `scopra doctor` (platform, state-directory, workspace-registry, registered-workspace revalidation, and daemon checks), and `scopra workspace add/list/remove` are implemented. Workspace validation (ADR-004) and registry storage (ADR-005) exist; Mio checks its registry at startup and serves add, list, and remove over local IPC (ADR-006). Broader doctor checks, execution, service installation, and expanded CLI/IPC authorization remain pending.
-3. **Policy and containment boundary** — implement default-deny policy and rootless containment before enabling execution; no native fallback. ADR-010 decides the rootless Podman backend. Its first two increments, the exact `podman run` argument builder and the fail-closed preflight check in `internal/hollow`, and the `scoprad --sandbox-image` setting are implemented and verified. Still to do: the runner against a fake Podman (3a-2 and 3a-3), then verification on a real host (3b) and the adversarial tests, both of which need rootless Podman.
+3. **Policy and containment boundary** — implement default-deny policy and rootless containment before enabling execution; no native fallback. ADR-010 decides the rootless Podman backend. Its first two increments, the exact `podman run` argument builder and the fail-closed preflight check in `internal/hollow`, and the `scoprad --sandbox-image` setting are implemented and verified. The runner against a fake Podman (3a-2) is also done. Still to do: the timeout, cancellation, image-presence check, and startup cleanup (3a-3), then verification on a real host (3b) and the adversarial tests, both of which need rootless Podman.
 4. **Structured execution and audit** — limits, cancellation, bounded output, and attributable events with adversarial tests.
 5. **Enrollment, relay, approvals, and integrations** — proceed only after local foundations and security invariants are testable.
 
@@ -1878,19 +1878,19 @@ Non-goals:
 
 #### Acceptance checklist (agreed before implementation)
 
-- [ ] `hollow.Runner` (with the absolute path of `podman` and the pinned image) runs one validated request in a workspace and reports `execution.started` and `execution.output` through callbacks. It returns the terminal `execution.result`, or an error only for an invalid request or runner configuration.
-- [ ] **Launch:** `podman run` with exactly `PodmanRunArgs`, standard input from `/dev/null`, and stdout and stderr on separate pipes. If `PodmanRunArgs` refuses the workspace or image, the result is `rejected` (`workspace_unavailable` or `containment_unavailable`) and Podman is never run.
-- [ ] **Start notice:** `execution.started` is sent at most once, with `State.StartedAt` from `podman inspect` truncated to milliseconds, and before any output. Output readers wait, which keeps memory bounded and applies backpressure through the pipes. A container that never starts gets no start notice.
-- [ ] **Output (ADR-009):**
+- [x] `hollow.Runner` (with the absolute path of `podman` and the pinned image) runs one validated request in a workspace and reports `execution.started` and `execution.output` through callbacks. It returns the terminal `execution.result`, or an error only for an invalid request or runner configuration.
+- [x] **Launch:** `podman run` with exactly `PodmanRunArgs`, standard input from `/dev/null`, and stdout and stderr on separate pipes. If `PodmanRunArgs` refuses the workspace or image, the result is `rejected` (`workspace_unavailable` or `containment_unavailable`) and Podman is never run.
+- [x] **Start notice:** `execution.started` is sent at most once, with `State.StartedAt` from `podman inspect` truncated to milliseconds, and before any output. Output readers wait, which keeps memory bounded and applies backpressure through the pipes. A container that never starts gets no start notice.
+- [x] **Output (ADR-009):**
   - chunks hold 1 to 65536 bytes and are numbered in one sequence, in the order they are read;
   - once `limits.outputBytes` is reached, output is read and discarded and marked truncated;
   - the result's byte and chunk counts match what was sent.
-- [ ] **Result and cleanup:**
+- [x] **Result and cleanup:**
   - the result comes from `podman inspect`, never from `podman run`'s exit status: never started is `start_failed`, `OOMKilled` is `out_of_memory`, exit code 0 is `succeeded`, and 1 to 255 is `failed`, so a command's own exit code of 125 is `failed`;
   - times are truncated to milliseconds;
   - the result passes `ValidateAgainst(request)`;
   - `podman rm --force` removes the container in every case.
-- [ ] **Tests:** a fake Podman, implemented as the test binary re-executed with scripted scenarios, covers each outcome, the exact arguments, ordering, chunking and truncation, the rejections, and removal. The race detector is on, and full verification passes.
+- [x] **Tests:** a fake Podman, implemented as the test binary re-executed with scripted scenarios, covers each outcome, the exact arguments, ordering, chunking and truncation, the rejections, and removal. The race detector is on, and full verification passes.
 
 Non-goals (3a-3 and later):
 - the timeout and cancellation (`podman kill`);
@@ -1927,3 +1927,56 @@ Non-goals (3a-3 and later):
    - an invalid request (`ErrInvalidExecutionRequest`), and an empty or relative Podman path (`ErrInvalidRunner`).
 3. **Build failure.** `Runner`, `Events`, and `ErrInvalidRunner` were undefined.
 4. **Declarations-only skeleton.** `Run` refuses everything. Runtime red: all 10 runner tests failed. The package's existing tests still passed under the new `TestMain`.
+
+#### Implementation and verification record
+
+- **`internal/hollow/runner.go`:** `Runner.Run` builds the arguments through an internal `podmanRunArgs`, which `PodmanRunArgs` now wraps and which also returns the action hash. The request is therefore validated exactly once, and a refused workspace or image gives a `rejected` result with a fixed message.
+  - **Pipes:** the runner creates them itself with `os.Pipe`, so `Wait` never reads them and can run while two readers drain chunks of up to 64 KiB.
+  - **Start watcher:** it polls `inspect` until `StartedAt` appears, sends the start notice, and lets output through. It then waits for Podman to exit and returns the final state from one last inspect. The result is built from that state, so `Run` cannot return while a start notice could still come.
+  - **Output emission:** a single lock numbers the chunks, enforces `limits.outputBytes`, copies the data, and calls the callback.
+  - **Result:** taken from `inspect`; `podman rm --force` always runs afterwards.
+- **Problems found while making the tests green:**
+  - Each fake call is its own process, so the log order of concurrent calls (`run` and the watcher's inspects) is not the launch order. The test now finds the single `run` call instead of assuming it comes first.
+  - Every test took about 3 seconds, because race-enabled binaries sleep for a second at exit by default. The fake calls are race-enabled test binaries, so the tests now set `GORACE=atexit_sleep_ms=0` for them.
+- **Changes found by mutation testing:**
+  - The end time could equal the start time unnoticed, because the fake ran within one millisecond. The successful-run scenario now runs for 25 ms.
+  - An early request check in `Run` was redundant with `PodmanRunArgs`'s. The internal `podmanRunArgs` replaced it, leaving one validation point.
+  - The fake gained ways to report two containers or an exit code above 255, both of which must give `errored` with `containment_failed`.
+  - The last inspect after Podman exits was exercised only by chance, because Go's `select` picks at random between the exit and a poll tick. In a test with a 10-second poll interval, the start is now visible only after exit.
+  - A start notice delivered after `Run` returned was hidden by the time `podman rm` takes. The watcher now returns the final state that the result depends on, and the recorder fails any callback that arrives after `Run` returns.
+  - For that test, the fake container now outlives the first slow inspect.
+- **Tests added for reachable branches:** a missing `podman` binary (`start_failed`, no events), an end time before the start (clamped), and the default poll interval.
+- Green: all tests pass under the race detector. The runner tests ran 25, 20, and 10 more times under the race detector, and 40 times without it, with no flakes.
+- Mutation testing: 20 deliberate mutations, all caught, run in one sequential batch (with `go test -timeout`), plus one by hand because removing the copy also needs its import removed:
+  - output not held for the start notice;
+  - truncation not marked, or the limit ignored;
+  - sequence numbers off by one, or stdout counted as stderr;
+  - Podman's 125 to 127 read as start failures;
+  - out of memory or a start failure not detected;
+  - the start notice using the current time;
+  - the end time equal to the start time;
+  - the container not removed;
+  - rejection codes swapped;
+  - the Podman path or the request not checked;
+  - chunk data not copied;
+  - the inspect element count unchecked;
+  - the last inspect sending no notice, or output released before it;
+  - exit codes above 255 accepted;
+  - the start-failure message without the status.
+- Coverage: `internal/hollow` 97.9%. The only uncovered lines are the two pipe-creation failures.
+- Documentation: the ADR-010 implementation status (including the scope note), the ADR index, the plan, the README status line, and the roadmap above. Each says the runner is tested only against a fake Podman and that Mio does not use it yet.
+- Security review:
+  - The runner never reads more than one chunk per stream ahead.
+  - Output is never logged, and messages are fixed text.
+  - The container is always removed.
+  - The result never trusts `podman run`'s exit status.
+  - Remaining risks for 3a-3 and 3b: a hung `podman inspect` would stall a run until the timeout exists (3a-3), and only a real host can confirm Podman's behaviour (3b).
+  - No high-confidence exploitable issue was found.
+- Local verification passed:
+  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `go test -race -count=1 -timeout 180s ./...` and ten repeated race runs of `internal/hollow`;
+  - every package with `CGO_ENABLED=0`;
+  - `git diff --cached --check`;
+  - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64.
+  - The tree is current.
+- Pushes to `arena/c7a368c1-scopra`: test checkpoint `02b894c` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.

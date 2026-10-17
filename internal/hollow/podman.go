@@ -58,20 +58,27 @@ type RunSpec struct {
 // image's entrypoint and CMD never apply, and nothing after the image is read
 // as a Podman option. It validates every input and starts no process.
 func PodmanRunArgs(spec RunSpec) ([]string, error) {
+	args, _, err := podmanRunArgs(spec)
+	return args, err
+}
+
+// podmanRunArgs is PodmanRunArgs that also returns the request's action hash,
+// so that the runner validates each request exactly once.
+func podmanRunArgs(spec RunSpec) ([]string, string, error) {
 	request := spec.Request
 	actionHash, err := request.ActionHash()
 	if err != nil {
-		return nil, fmt.Errorf("hollow: %w", err)
+		return nil, "", fmt.Errorf("hollow: %w", err)
 	}
 	if !mountablePath(spec.WorkspacePath) {
-		return nil, fmt.Errorf("%w: %q must be a clean absolute path of valid UTF-8 with no control characters", ErrUnmountableWorkspace, spec.WorkspacePath)
+		return nil, actionHash, fmt.Errorf("%w: %q must be a clean absolute path of valid UTF-8 with no control characters", ErrUnmountableWorkspace, spec.WorkspacePath)
 	}
 	if err := ValidateImage(spec.Image); err != nil {
-		return nil, err
+		return nil, actionHash, err
 	}
 	entrypoint, err := jsonArray(request.Command.Executable)
 	if err != nil {
-		return nil, fmt.Errorf("hollow: encode the entrypoint: %w", err)
+		return nil, "", fmt.Errorf("hollow: encode the entrypoint: %w", err)
 	}
 
 	limits := request.Limits
@@ -108,7 +115,7 @@ func PodmanRunArgs(spec RunSpec) ([]string, error) {
 		"--entrypoint=" + entrypoint,
 		spec.Image,
 	}
-	return append(args, request.Command.Arguments...), nil
+	return append(args, request.Command.Arguments...), actionHash, nil
 }
 
 // ValidateImage checks that image is a reference pinned by a SHA-256 digest,
