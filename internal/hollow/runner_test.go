@@ -2,14 +2,17 @@ package hollow
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -52,6 +55,24 @@ type fakeScenario struct {
 	// FinishBeforeStart reports an end time before the start, as a clock
 	// change could.
 	FinishBeforeStart bool `json:"finishBeforeStart"`
+	// Info replaces the default podman info output; ImageMissing makes
+	// podman image exists fail; Leftovers are the labelled containers that
+	// podman ps reports; KillFailures is how many kills fail before one works.
+	Info         string   `json:"info"`
+	ImageMissing bool     `json:"imageMissing"`
+	Leftovers    []string `json:"leftovers"`
+	KillFailures int      `json:"killFailures"`
+}
+
+// goodInfo is podman info output from a host that meets ADR-010.
+const goodInfo = `{"host":{"cgroupVersion":"v2","cgroupControllers":["cpu","memory","pids"],"security":{"rootless":true}},"version":{"Version":"5.2.0"}}`
+
+func loadScenario(dir string) fakeScenario {
+	var scenario fakeScenario
+	if data, err := os.ReadFile(filepath.Join(dir, "scenario.json")); err == nil {
+		_ = json.Unmarshal(data, &scenario)
+	}
+	return scenario
 }
 
 // fakeWrite writes Bytes bytes of the stream's pattern, or Text.
@@ -100,6 +121,25 @@ func fakePodman(dir string, args []string) int {
 		return fakeInspect(dir, args[5])
 	case args[0] == "rm" && len(args) == 3 && args[1] == "--force":
 		return fakeRemove(dir, args[2])
+	case args[0] == "kill" && len(args) == 3 && args[1] == "--signal=KILL":
+		return fakeKill(dir, args[2])
+	case args[0] == "info" && slices.Equal(args[1:], []string{"--format", "json"}):
+		info := loadScenario(dir).Info
+		if info == "" {
+			info = goodInfo
+		}
+		fmt.Println(info)
+		return 0
+	case args[0] == "image" && len(args) == 3 && args[1] == "exists":
+		if loadScenario(dir).ImageMissing {
+			return 1
+		}
+		return 0
+	case args[0] == "ps" && slices.Equal(args[1:], []string{"--all", "--filter", "label=scopra.action-hash", "--format", "{{.Names}}"}):
+		for _, name := range loadScenario(dir).Leftovers {
+			fmt.Println(name)
+		}
+		return 0
 	}
 	fmt.Fprintf(os.Stderr, "Error: unexpected fake podman call %q\n", args)
 	return 125
@@ -118,6 +158,7 @@ func fakeRun(dir string, args []string) int {
 		fmt.Fprintln(os.Stderr, "Error: fake podman has no scenario or container name")
 		return 125
 	}
+	_ = os.WriteFile(filepath.Join(dir, "pid-"+name), []byte(strconv.Itoa(os.Getpid())), 0o600)
 	state := fakeState{}
 	if scenario.NeverStart {
 		writeFakeState(dir, name, state)
@@ -160,10 +201,7 @@ func writeFakeState(dir, name string, state fakeState) {
 }
 
 func fakeInspect(dir, name string) int {
-	var scenario fakeScenario
-	if data, err := os.ReadFile(filepath.Join(dir, "scenario.json")); err == nil {
-		_ = json.Unmarshal(data, &scenario)
-	}
+	scenario := loadScenario(dir)
 	time.Sleep(time.Duration(scenario.InspectDelayMS) * time.Millisecond)
 	data, err := os.ReadFile(filepath.Join(dir, "container-"+name+".json"))
 	if err != nil {
@@ -188,10 +226,44 @@ func fakeRemove(dir, name string) int {
 		_, _ = log.WriteString(name + "\n")
 		_ = log.Close()
 	}
+	if slices.Contains(loadScenario(dir).Leftovers, name) {
+		return 0
+	}
 	if err := os.Rename(filepath.Join(dir, "container-"+name+".json"), filepath.Join(dir, "removed-"+name+".json")); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: no such container %s\n", name)
 		return 1
 	}
+	return 0
+}
+
+// fakeKill ends a running fake container the way podman kill --signal=KILL
+// would: it records exit code 137 and kills the fake run process. The first
+// KillFailures kills fail.
+func fakeKill(dir, name string) int {
+	scenario := loadScenario(dir)
+	attempts := 0
+	if data, err := os.ReadFile(filepath.Join(dir, "kills-"+name)); err == nil {
+		attempts, _ = strconv.Atoi(string(data))
+	}
+	_ = os.WriteFile(filepath.Join(dir, "kills-"+name), []byte(strconv.Itoa(attempts+1)), 0o600)
+	if attempts < scenario.KillFailures {
+		fmt.Fprintln(os.Stderr, "Error: can only kill running containers")
+		return 125
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "container-"+name+".json"))
+	var state fakeState
+	if err != nil || json.Unmarshal(data, &state) != nil || !state.FinishedAt.IsZero() {
+		fmt.Fprintln(os.Stderr, "Error: can only kill running containers")
+		return 125
+	}
+	pid, err := os.ReadFile(filepath.Join(dir, "pid-"+name))
+	process, convErr := strconv.Atoi(string(pid))
+	if err != nil || convErr != nil {
+		return 125
+	}
+	state.FinishedAt, state.ExitCode = time.Now().UTC(), 137
+	writeFakeState(dir, name, state)
+	_ = syscall.Kill(process, syscall.SIGKILL)
 	return 0
 }
 
@@ -254,6 +326,17 @@ func (h fakeHost) removals() []string {
 	return strings.Fields(string(data))
 }
 
+// kills returns the podman kill calls.
+func (h fakeHost) kills() [][]string {
+	var kills [][]string
+	for _, call := range h.calls() {
+		if len(call) > 0 && call[0] == "kill" {
+			kills = append(kills, call)
+		}
+	}
+	return kills
+}
+
 func (h fakeHost) finalState(name string) fakeState {
 	h.t.Helper()
 	data, err := os.ReadFile(filepath.Join(h.dir, "removed-"+name+".json"))
@@ -275,6 +358,8 @@ type recorder struct {
 	order    []string
 	returned bool // Run has returned
 	late     int  // callbacks after Run returned
+	// onStarted, if set, runs when the start notice arrives.
+	onStarted func()
 }
 
 func (r *recorder) markReturned() {
@@ -293,6 +378,9 @@ func (r *recorder) events() Events {
 			}
 			r.started = append(r.started, started)
 			r.order = append(r.order, "started")
+			if r.onStarted != nil {
+				r.onStarted()
+			}
 		},
 		Output: func(output protocol.ExecutionOutput) {
 			r.mu.Lock()
@@ -587,8 +675,10 @@ func TestRunner_ReportsAMissingPodman(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-	if result.State != protocol.StateErrored || result.Error.Code != protocol.ErrorCodeStartFailed || len(events.order) != 0 {
-		t.Fatalf("result = %+v with events %q, want errored with start_failed and no events", result, events.order)
+	// The preflight check runs podman info first, so a missing podman is a
+	// rejection (ADR-010 amendment).
+	if result.State != protocol.StateRejected || result.Error.Code != protocol.ErrorCodeContainmentUnavailable || len(events.order) != 0 {
+		t.Fatalf("result = %+v with events %q, want rejected with containment_unavailable and no events", result, events.order)
 	}
 	if err := result.ValidateAgainst(request); err != nil {
 		t.Fatalf("result is not valid for the request: %v", err)
@@ -644,5 +734,156 @@ func TestRunner_RefusesAnInvalidRequestOrConfiguration(t *testing.T) {
 	}
 	if calls := host.calls(); len(calls) != 0 {
 		t.Fatalf("podman calls = %q, want none", calls)
+	}
+}
+
+// runFakeWith runs the ADR-007 request with a context and request change of
+// the test's choosing, and marks when Run returned.
+func runFakeWith(t *testing.T, runner Runner, ctx context.Context, change func(*protocol.ExecutionRequest), events *recorder) (protocol.ExecutionRequest, protocol.ExecutionResult, time.Duration) {
+	t.Helper()
+	request := fixtureRequest(t, "execution-request-adr007")
+	if change != nil {
+		change(&request)
+	}
+	began := time.Now()
+	result, err := runner.Run(ctx, request, testWorkspace, events.events())
+	elapsed := time.Since(began)
+	events.markReturned()
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	return request, result, elapsed
+}
+
+func TestSecurity_RunnerTimesOut(t *testing.T) {
+	runner, host := newFakeRunner(t, fakeScenario{Writes: []fakeWrite{{Stream: "stdout", Text: "working\n"}}, RunMS: 30000})
+	events := &recorder{}
+	request, result, elapsed := runFakeWith(t, runner, t.Context(), func(r *protocol.ExecutionRequest) { r.Limits.TimeoutSeconds = 1 }, events)
+	checkRun(t, runner, host, request, result, events)
+	if result.State != protocol.StateTimedOut || result.ExitCode != 0 || result.StartedAt.IsZero() {
+		t.Fatalf("result = %+v, want timed_out with times and no exit code", result)
+	}
+	if elapsed < time.Second || elapsed > 10*time.Second {
+		t.Fatalf("Run() took %v, want about the one-second timeout", elapsed)
+	}
+	if kills := host.kills(); len(kills) != 1 || !slices.Equal(kills[0], []string{"kill", "--signal=KILL", containerName(t, request)}) {
+		t.Fatalf("kills = %q, want exactly one podman kill --signal=KILL of the container", kills)
+	}
+}
+
+func TestRunner_Cancels(t *testing.T) {
+	runner, host := newFakeRunner(t, fakeScenario{RunMS: 30000})
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	events := &recorder{}
+	events.onStarted = cancel
+	request, result, elapsed := runFakeWith(t, runner, ctx, nil, events)
+	checkRun(t, runner, host, request, result, events)
+	if result.State != protocol.StateCancelled || len(host.kills()) != 1 || elapsed > 10*time.Second {
+		t.Fatalf("result = %+v with %d kills after %v, want cancelled with one kill", result, len(host.kills()), elapsed)
+	}
+}
+
+func TestRunner_FirstKillWins(t *testing.T) {
+	runner, host := newFakeRunner(t, fakeScenario{RunMS: 30000})
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	events := &recorder{}
+	events.onStarted = cancel
+	request, result, _ := runFakeWith(t, runner, ctx, func(r *protocol.ExecutionRequest) { r.Limits.TimeoutSeconds = 1 }, events)
+	checkRun(t, runner, host, request, result, events)
+	// Wait past the timeout: the timer must have stopped with the run.
+	time.Sleep(1300 * time.Millisecond)
+	if result.State != protocol.StateCancelled || len(host.kills()) != 1 {
+		t.Fatalf("result = %+v with kills %q, want cancelled and no kill after the run", result, host.kills())
+	}
+}
+
+func TestRunner_RetriesAFailedKill(t *testing.T) {
+	runner, host := newFakeRunner(t, fakeScenario{RunMS: 30000, KillFailures: 2})
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	events := &recorder{}
+	events.onStarted = cancel
+	request, result, _ := runFakeWith(t, runner, ctx, nil, events)
+	checkRun(t, runner, host, request, result, events)
+	if result.State != protocol.StateCancelled || len(host.kills()) != 3 {
+		t.Fatalf("result = %+v with %d kills, want cancelled after two failed kills and one that worked", result, len(host.kills()))
+	}
+}
+
+func TestRunner_KeepsANaturalExitWhenNoKillSucceeds(t *testing.T) {
+	// Every kill fails, as when the container exits just before it, so the
+	// container's own result stands.
+	runner, host := newFakeRunner(t, fakeScenario{RunMS: 300, KillFailures: 1000})
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	events := &recorder{}
+	events.onStarted = cancel
+	request, result, _ := runFakeWith(t, runner, ctx, nil, events)
+	checkRun(t, runner, host, request, result, events)
+	if result.State != protocol.StateSucceeded || len(host.kills()) == 0 {
+		t.Fatalf("result = %+v with %d kills, want succeeded although kills were tried", result, len(host.kills()))
+	}
+}
+
+func TestSecurity_RunnerRefusesAHostThatFailsPreflight(t *testing.T) {
+	tests := []struct {
+		name     string
+		scenario fakeScenario
+		want     string
+		calls    int
+	}{
+		{name: "root", scenario: fakeScenario{Info: strings.Replace(goodInfo, `"rootless":true`, `"rootless":false`, 1)}, want: "root", calls: 1},
+		{name: "not JSON", scenario: fakeScenario{Info: "Error: no podman"}, want: "podman info", calls: 1},
+		{name: "huge version", scenario: fakeScenario{Info: strings.Replace(goodInfo, `"5.2.0"`, `"`+strings.Repeat("x", 5000)+`"`, 1)}, want: "older than", calls: 1},
+		{name: "image missing", scenario: fakeScenario{ImageMissing: true}, want: "local storage", calls: 2},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			runner, host := newFakeRunner(t, test.scenario)
+			events := &recorder{}
+			request, result, _ := runFakeWith(t, runner, t.Context(), nil, events)
+			if result.State != protocol.StateRejected || result.Error.Code != protocol.ErrorCodeContainmentUnavailable ||
+				!strings.Contains(result.Error.Message, test.want) || len(result.Error.Message) > 1024 {
+				t.Fatalf("result = %+v, want rejected with containment_unavailable mentioning %q in at most 1024 bytes", result, test.want)
+			}
+			if err := result.ValidateAgainst(request); err != nil {
+				t.Fatalf("result is not valid for the request: %v", err)
+			}
+			if calls := host.calls(); len(calls) != test.calls || len(events.order) != 0 {
+				t.Fatalf("podman calls = %q and events = %q, want %d preflight calls and no events", calls, events.order, test.calls)
+			}
+		})
+	}
+}
+
+func TestRunner_BoundsPodmanHelperCalls(t *testing.T) {
+	// Every inspect hangs past the helper deadline, so the start is never
+	// seen and the final state cannot be read.
+	runner, host := newFakeRunner(t, fakeScenario{InspectDelayMS: 5000})
+	runner.helperTimeout = 200 * time.Millisecond
+	events := &recorder{}
+	request, result, elapsed := runFakeWith(t, runner, t.Context(), nil, events)
+	checkRun(t, runner, host, request, result, events)
+	if result.State != protocol.StateErrored || result.Error.Code != protocol.ErrorCodeContainmentFailed || elapsed > 4*time.Second {
+		t.Fatalf("result = %+v after %v, want errored with containment_failed within the helper deadline", result, elapsed)
+	}
+}
+
+func TestRunner_RemovesLeftovers(t *testing.T) {
+	first, second := "scopra-"+strings.Repeat("a", 32), "scopra-"+strings.Repeat("0", 32)
+	runner, host := newFakeRunner(t, fakeScenario{Leftovers: []string{first, "unrelated", second, "scopra-short", "scopra-" + strings.Repeat("A", 32)}})
+	removed, err := runner.RemoveLeftovers()
+	if err != nil || removed != 2 {
+		t.Fatalf("RemoveLeftovers() = %d, %v; want 2, nil", removed, err)
+	}
+	if removals := host.removals(); !slices.Equal(removals, []string{first, second}) {
+		t.Fatalf("removals = %q, want exactly the two Scopra containers", removals)
+	}
+	relative := runner
+	relative.Podman = "podman"
+	if _, err := relative.RemoveLeftovers(); !errors.Is(err, ErrInvalidRunner) {
+		t.Fatalf("RemoveLeftovers() with a relative podman path error = %v, want ErrInvalidRunner", err)
 	}
 }

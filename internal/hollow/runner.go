@@ -37,6 +37,14 @@ type Runner struct {
 	// pollInterval is how often the runner asks podman inspect whether the
 	// container has started. Zero means the default.
 	pollInterval time.Duration
+	// helperTimeout bounds each helper call to podman. Zero means the
+	// default.
+	helperTimeout time.Duration
+}
+
+// RemoveLeftovers removes containers that an earlier run of Mio left behind.
+func (r Runner) RemoveLeftovers() (int, error) {
+	return 0, nil
 }
 
 // Events receives the progress messages of one execution, in order: at most

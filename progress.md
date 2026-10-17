@@ -2,8 +2,8 @@
 
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
-**Current increment:** The Hollow runner against a fake Podman (Step 25, increment 3a-2 of ADR-010 as amended)
-**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
+**Current increment:** Runner timeout, cancellation, preflight, and leftover cleanup (Step 26, increment 3a-3 of ADR-010 as amended)
+**Status:** In progress on `arena/c7a368c1-scopra`: acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -1980,3 +1980,50 @@ Non-goals (3a-3 and later):
   - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64.
   - The tree is current.
 - Pushes to `arena/c7a368c1-scopra`: test checkpoint `02b894c` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.
+
+### 2026-10-17 — Step 26: runner timeout, cancellation, preflight, and leftover cleanup (ADR-010 amendment, increment 3a-3)
+
+- Selection: the last increment that can be built without a real Podman. After Step 25, "continue" was stated to start it, and the maintainer replied "contnue".
+- Sandbox reset before this step: the branch had been recreated at `main` with the work kept as uncommitted changes, and the toolchain was gone. The temporary-index tree comparison found **one difference**. The restore had rewritten the raw `0xFF` byte in `packages/test-fixtures/messenger/v1/invalid/execution-request-invalid-utf8.json` as U+FFFD (`EF BF BD`), silently turning the invalid-UTF-8 fixture into valid text. After the mixed reset to `origin/arena/c7a368c1-scopra` (`e7fa155`), the file was restored from the commit, and the tree then matched exactly. The toolchain was rebuilt from the checksum-verified sources. **Lesson: the sandbox's restore is not byte-exact for non-UTF-8 files, so recovery must always compare trees and must never trust the restored working tree as it stands.**
+
+#### Acceptance checklist (agreed before implementation)
+
+- [ ] **Timeout:** Mio's own timer starts at launch with `limits.timeoutSeconds`. When it expires, the runner runs `podman kill --signal=KILL` on the container and reports `timed_out`. If the kill fails while Podman is still running, for example because the container is not yet created, it retries until Podman exits.
+- [ ] **Cancellation:** cancelling `Run`'s context kills the container in the same way and reports `cancelled`.
+- [ ] Rules for both:
+  - the first kill wins;
+  - a container that exits on its own before any kill succeeds keeps its natural result;
+  - the timer is stopped when the run ends, so no kill happens afterwards.
+- [ ] **Before each run**, after the arguments are validated:
+  - the preflight check (`podman info --format json`, then `ParsePodmanInfo` and `Check`);
+  - `podman image exists IMAGE`.
+
+  A failure is `rejected` with `containment_unavailable` and a message no longer than 1024 bytes, and Podman is never run.
+- [ ] Every helper call to Podman (`info`, `image exists`, `inspect`, `kill`, `rm`, `ps`) has a deadline of 30 seconds by default, so a hung `podman` cannot stall a run forever. A timed-out final inspect is `errored` with `containment_failed`.
+- [ ] **Leftover cleanup:** `Runner.RemoveLeftovers` lists containers labelled `scopra.action-hash` (`podman ps --all --filter label=scopra.action-hash --format {{.Names}}`). It removes only those named `scopra-` followed by 32 hexadecimal characters, and reports how many it removed.
+- [ ] **Tests:** the fake Podman gains `kill` (which ends the fake `run` process and records exit code 137), `info`, `image exists`, `ps`, and scenarios for each requirement. The race detector is on, and full verification passes.
+
+Non-goals:
+- Wiring the runner or the leftover cleanup into Mio.
+- Real Podman (3b) and the adversarial tests.
+- The expiry of the request's own validity window.
+
+#### Test-first record
+
+1. **The fake Podman gained:**
+   - `kill --signal=KILL`, which records exit code 137 and SIGKILLs the fake `run` process (whose PID `run` now records). It fails while the container is not running, and also for the scenario's first `KillFailures` attempts;
+   - `info --format json`, which reports a qualifying host by default or the scenario's output;
+   - `image exists`, which can report the image missing;
+   - `ps --all --filter label=scopra.action-hash --format {{.Names}}`, which lists the scenario's leftovers, and `rm`, which accepts them.
+2. **Tests written first:**
+   - `TestSecurity_RunnerTimesOut`: a 30-second container with a 1-second timeout gives `timed_out` after about one second, with exactly one correct `podman kill`.
+   - `TestRunner_Cancels`: cancelled from the start-notice callback.
+   - `TestRunner_FirstKillWins`: cancelled first; after waiting past the timeout there is still only one kill.
+   - `TestRunner_RetriesAFailedKill`: two failed kills, then one that works.
+   - `TestRunner_KeepsANaturalExitWhenNoKillSucceeds`: every kill fails, so the run is `succeeded`.
+   - `TestSecurity_RunnerRefusesAHostThatFailsPreflight`: root, non-JSON output, a 5000-character version (whose message must stay within 1024 bytes), and a missing image. Each is `rejected` with `containment_unavailable`, after exactly the preflight calls, without running anything.
+   - `TestRunner_BoundsPodmanHelperCalls`: inspects that hang past a 200 ms deadline give `errored` with `containment_failed` within seconds.
+   - `TestRunner_RemovesLeftovers`: only `scopra-` names with 32 lowercase hexadecimal characters are removed, and a relative Podman path is refused.
+   - The missing-Podman test now expects the preflight rejection.
+3. **Build failure.** `helperTimeout` and `RemoveLeftovers` were undefined. My own test also wrongly compared slices of slices with `slices.Equal`; I fixed that before going on.
+4. **Declarations-only skeleton.** It adds the field, and a `RemoveLeftovers` that does nothing. Runtime red: 9 tests failed. Without kills, the long-running fake containers ran their full 30 seconds.
