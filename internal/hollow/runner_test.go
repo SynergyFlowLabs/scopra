@@ -12,9 +12,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/SynergyFlowLabs/scopra/packages/protocol"
 )
@@ -62,6 +62,10 @@ type fakeScenario struct {
 	ImageMissing bool     `json:"imageMissing"`
 	Leftovers    []string `json:"leftovers"`
 	KillFailures int      `json:"killFailures"`
+	// ImageCheckBroken and PSBroken make those commands fail as Podman
+	// itself fails, with exit status 125.
+	ImageCheckBroken bool `json:"imageCheckBroken"`
+	PSBroken         bool `json:"psBroken"`
 }
 
 // goodInfo is podman info output from a host that meets ADR-010.
@@ -131,11 +135,17 @@ func fakePodman(dir string, args []string) int {
 		fmt.Println(info)
 		return 0
 	case args[0] == "image" && len(args) == 3 && args[1] == "exists":
-		if loadScenario(dir).ImageMissing {
+		switch scenario := loadScenario(dir); {
+		case scenario.ImageCheckBroken:
+			return 125
+		case scenario.ImageMissing:
 			return 1
 		}
 		return 0
 	case args[0] == "ps" && slices.Equal(args[1:], []string{"--all", "--filter", "label=scopra.action-hash", "--format", "{{.Names}}"}):
+		if loadScenario(dir).PSBroken {
+			return 125
+		}
 		for _, name := range loadScenario(dir).Leftovers {
 			fmt.Println(name)
 		}
@@ -263,7 +273,10 @@ func fakeKill(dir, name string) int {
 	}
 	state.FinishedAt, state.ExitCode = time.Now().UTC(), 137
 	writeFakeState(dir, name, state)
-	_ = syscall.Kill(process, syscall.SIGKILL)
+	// os.Process.Kill sends SIGKILL on Unix and is portable.
+	if running, err := os.FindProcess(process); err == nil {
+		_ = running.Kill()
+	}
 	return 0
 }
 
@@ -732,6 +745,10 @@ func TestRunner_RefusesAnInvalidRequestOrConfiguration(t *testing.T) {
 			t.Fatalf("Run() with podman path %q error = %v, want ErrInvalidRunner", podman, err)
 		}
 	}
+	var noContext context.Context
+	if _, err := runner.Run(noContext, fixtureRequest(t, "execution-request-adr007"), testWorkspace, Events{}); !errors.Is(err, ErrInvalidRunner) {
+		t.Fatalf("Run() without a context error = %v, want ErrInvalidRunner", err)
+	}
 	if calls := host.calls(); len(calls) != 0 {
 		t.Fatalf("podman calls = %q, want none", calls)
 	}
@@ -801,6 +818,7 @@ func TestRunner_FirstKillWins(t *testing.T) {
 
 func TestRunner_RetriesAFailedKill(t *testing.T) {
 	runner, host := newFakeRunner(t, fakeScenario{RunMS: 30000, KillFailures: 2})
+	runner.pollInterval = 0 // the default interval paces the retries
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	events := &recorder{}
@@ -838,6 +856,7 @@ func TestSecurity_RunnerRefusesAHostThatFailsPreflight(t *testing.T) {
 		{name: "not JSON", scenario: fakeScenario{Info: "Error: no podman"}, want: "podman info", calls: 1},
 		{name: "huge version", scenario: fakeScenario{Info: strings.Replace(goodInfo, `"5.2.0"`, `"`+strings.Repeat("x", 5000)+`"`, 1)}, want: "older than", calls: 1},
 		{name: "image missing", scenario: fakeScenario{ImageMissing: true}, want: "local storage", calls: 2},
+		{name: "image check broken", scenario: fakeScenario{ImageCheckBroken: true}, want: "podman image exists failed", calls: 2},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -885,5 +904,45 @@ func TestRunner_RemovesLeftovers(t *testing.T) {
 	relative.Podman = "podman"
 	if _, err := relative.RemoveLeftovers(); !errors.Is(err, ErrInvalidRunner) {
 		t.Fatalf("RemoveLeftovers() with a relative podman path error = %v, want ErrInvalidRunner", err)
+	}
+}
+
+func TestRunner_KeepsPreflightMessagesPrintable(t *testing.T) {
+	// A podman path with a newline puts a raw newline into the error text.
+	runner := Runner{Podman: filepath.Join(t.TempDir(), "po\ndman"), Image: testImage}
+	events := &recorder{}
+	request, result, _ := runFakeWith(t, runner, t.Context(), nil, events)
+	if result.State != protocol.StateRejected || strings.ContainsAny(result.Error.Message, "\n\r") {
+		t.Fatalf("result = %+v, want a rejection with a printable message", result)
+	}
+	if err := result.ValidateAgainst(request); err != nil {
+		t.Fatalf("result is not valid for the request: %v", err)
+	}
+}
+
+func TestRunner_ReportsAFailedLeftoverListing(t *testing.T) {
+	runner, host := newFakeRunner(t, fakeScenario{PSBroken: true, Leftovers: []string{"scopra-" + strings.Repeat("a", 32)}})
+	if removed, err := runner.RemoveLeftovers(); err == nil || removed != 0 {
+		t.Fatalf("RemoveLeftovers() = %d, %v; want 0 and an error", removed, err)
+	}
+	if removals := host.removals(); len(removals) != 0 {
+		t.Fatalf("removals = %q, want none", removals)
+	}
+}
+
+func TestResultMessage(t *testing.T) {
+	for text, want := range map[string]string{
+		"":                   "podman failed",
+		"plain":              "plain",
+		"a\nb\u202ec\u2028d": "a?b?c?d",
+		"\xffx":              "?x",
+	} {
+		if got := resultMessage(text); got != want {
+			t.Errorf("resultMessage(%q) = %q, want %q", text, got, want)
+		}
+	}
+	long := resultMessage(strings.Repeat("é", 1000))
+	if len(long) > 1024 || !utf8.ValidString(long) || len(long) < 1022 {
+		t.Fatalf("resultMessage of 2000 bytes = %d bytes (valid UTF-8: %v), want close to 1024 and whole characters", len(long), utf8.ValidString(long))
 	}
 }

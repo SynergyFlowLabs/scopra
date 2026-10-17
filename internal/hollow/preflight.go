@@ -102,13 +102,13 @@ func ParsePodmanInfo(output []byte) (PodmanInfo, error) {
 func (info PodmanInfo) Check() error {
 	var problems []string
 	if !atLeastVersion(info.Version, minPodmanMajor, minPodmanMinor) {
-		problems = append(problems, fmt.Sprintf("Podman %q is older than %d.%d or not a recognized version", info.Version, minPodmanMajor, minPodmanMinor))
+		problems = append(problems, fmt.Sprintf("Podman is older than %d.%d or reports an unrecognized version: %q", minPodmanMajor, minPodmanMinor, info.Version))
 	}
 	if !info.Rootless {
 		problems = append(problems, "Podman runs as root, not rootless")
 	}
 	if info.CgroupVersion != "v2" {
-		problems = append(problems, fmt.Sprintf("the cgroup version is %q, not v2", info.CgroupVersion))
+		problems = append(problems, fmt.Sprintf("cgroups are not v2: %q", info.CgroupVersion))
 	}
 	var missing []string
 	for _, controller := range requiredControllers {

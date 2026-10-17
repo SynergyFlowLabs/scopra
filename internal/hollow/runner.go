@@ -9,8 +9,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/SynergyFlowLabs/scopra/packages/protocol"
 )
@@ -21,6 +24,11 @@ const (
 	defaultPollInterval = 50 * time.Millisecond
 	// maxChunkBytes bounds one execution.output chunk (ADR-009).
 	maxChunkBytes = 64 << 10
+	// defaultHelperTimeout bounds each helper call to podman, so that a hung
+	// podman cannot stall a run forever.
+	defaultHelperTimeout = 30 * time.Second
+	// maxResultMessage bounds a result's error message (ADR-009).
+	maxResultMessage = 1024
 )
 
 // ErrInvalidRunner reports a Runner that cannot run anything, such as one
@@ -42,9 +50,101 @@ type Runner struct {
 	helperTimeout time.Duration
 }
 
-// RemoveLeftovers removes containers that an earlier run of Mio left behind.
+// RemoveLeftovers removes containers that an earlier run of Mio left behind
+// (ADR-010): those labelled scopra.action-hash whose name is "scopra-"
+// followed by 32 lowercase hexadecimal characters. It returns how many it
+// removed.
 func (r Runner) RemoveLeftovers() (int, error) {
-	return 0, nil
+	if !filepath.IsAbs(r.Podman) {
+		return 0, fmt.Errorf("%w: the podman path %q is not absolute", ErrInvalidRunner, r.Podman)
+	}
+	output, err := r.helperOutput("ps", "--all", "--filter", "label=scopra.action-hash", "--format", "{{.Names}}")
+	if err != nil {
+		return 0, fmt.Errorf("hollow: list leftover containers: %w", err)
+	}
+	removed := 0
+	for _, name := range strings.Fields(string(output)) {
+		if hash, ok := strings.CutPrefix(name, "scopra-"); !ok || len(hash) != 32 || !isLowerHex(hash) {
+			continue
+		}
+		if r.helperRun("rm", "--force", name) == nil {
+			removed++
+		}
+	}
+	return removed, nil
+}
+
+func isLowerHex(text string) bool {
+	for i := 0; i < len(text); i++ {
+		if !(text[i] >= '0' && text[i] <= '9' || text[i] >= 'a' && text[i] <= 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// helperOutput runs one helper podman command under the helper deadline and
+// returns its standard output.
+func (r Runner) helperOutput(args ...string) ([]byte, error) {
+	deadline := r.helperTimeout
+	if deadline <= 0 {
+		deadline = defaultHelperTimeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), deadline)
+	defer cancel()
+	command := exec.CommandContext(ctx, r.Podman, args...)
+	// Once the deadline kills podman, stop waiting for its output.
+	command.WaitDelay = time.Second
+	return command.Output()
+}
+
+// helperRun runs one helper podman command under the helper deadline.
+func (r Runner) helperRun(args ...string) error {
+	_, err := r.helperOutput(args...)
+	return err
+}
+
+// preflight checks the host and the image before a run (ADR-010) and returns
+// why the request must be rejected, or "" if it may run.
+func (r Runner) preflight() string {
+	output, err := r.helperOutput("info", "--format", "json")
+	if err != nil {
+		return resultMessage("podman info failed: " + err.Error())
+	}
+	info, err := ParsePodmanInfo(output)
+	if err == nil {
+		err = info.Check()
+	}
+	if err != nil {
+		return resultMessage(err.Error())
+	}
+	if err := r.helperRun("image", "exists", r.Image); err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+			return "the sandbox image is not in local storage, and Mio never pulls images"
+		}
+		return resultMessage("podman image exists failed: " + err.Error())
+	}
+	return ""
+}
+
+// resultMessage makes text fit ADR-009's message rules: 1 to 1024 bytes, with
+// control, format, and line or paragraph separator characters replaced.
+func resultMessage(text string) string {
+	var message strings.Builder
+	for _, char := range text {
+		if char == utf8.RuneError || unicode.In(char, unicode.Cc, unicode.Cf, unicode.Zl, unicode.Zp) {
+			char = '?'
+		}
+		if message.Len()+utf8.RuneLen(char) > maxResultMessage {
+			break
+		}
+		message.WriteRune(char)
+	}
+	if message.Len() == 0 {
+		return "podman failed"
+	}
+	return message.String()
 }
 
 // Events receives the progress messages of one execution, in order: at most
@@ -57,14 +157,24 @@ type Events struct {
 }
 
 // Run runs request with workspacePath mounted (ADR-010) and returns its
-// terminal result (ADR-009). Every outcome is a result: a workspace that
-// cannot be mounted or an image that is not pinned is rejected without
-// running podman; otherwise the container is run, observed through podman
-// inspect, and removed. The error is only for an invalid request or runner.
-// Cancellation and the timeout arrive in a later increment.
+// terminal result (ADR-009). Every outcome is a result:
+//   - a workspace that cannot be mounted or an image that is not pinned is
+//     rejected without calling podman;
+//   - a host that fails the preflight check, or a missing image, is rejected
+//     without running anything;
+//   - otherwise the container runs, observed through podman inspect, and is
+//     always removed. When limits.timeoutSeconds passes, or ctx is cancelled,
+//     Mio kills it with podman kill and reports timed_out or cancelled; the
+//     first of the two wins, and a container that exits before any kill
+//     succeeds keeps its own result.
+//
+// The error is only for an invalid request or runner.
 func (r Runner) Run(ctx context.Context, request protocol.ExecutionRequest, workspacePath string, events Events) (protocol.ExecutionResult, error) {
 	if !filepath.IsAbs(r.Podman) {
 		return protocol.ExecutionResult{}, fmt.Errorf("%w: the podman path %q is not absolute", ErrInvalidRunner, r.Podman)
+	}
+	if ctx == nil {
+		return protocol.ExecutionResult{}, fmt.Errorf("%w: no context", ErrInvalidRunner)
 	}
 	// podmanRunArgs validates the request first, so the action hash is set
 	// whenever the error is about the workspace or the image.
@@ -78,8 +188,11 @@ func (r Runner) Run(ctx context.Context, request protocol.ExecutionRequest, work
 	case err != nil:
 		return protocol.ExecutionResult{}, err
 	}
+	if message := r.preflight(); message != "" {
+		return rejected(base, protocol.ErrorCodeContainmentUnavailable, message), nil
+	}
 	run := &execution{runner: r, request: request, base: base, name: "scopra-" + actionHash[:32], events: events}
-	result := run.run(args)
+	result := run.run(ctx, args)
 	r.remove(run.name)
 	return result, nil
 }
@@ -93,7 +206,7 @@ func rejected(base protocol.ExecutionResult, code, message string) protocol.Exec
 // remove deletes the container. A failure leaves it for the cleanup of
 // labelled containers at Mio's next start.
 func (r Runner) remove(name string) {
-	_ = exec.Command(r.Podman, "rm", "--force", name).Run()
+	_ = r.helperRun("rm", "--force", name)
 }
 
 // execution is one run of one container.
@@ -109,11 +222,16 @@ type execution struct {
 	stderrBytes uint64
 	chunks      uint64
 	truncated   bool
+
+	// killReason and killed are written only by the killer goroutine and
+	// read after it has finished.
+	killReason protocol.ExecutionState
+	killed     bool
 }
 
 // run launches podman and waits until it has exited and both streams are
 // drained, then derives the result from podman inspect.
-func (e *execution) run(args []string) protocol.ExecutionResult {
+func (e *execution) run(ctx context.Context, args []string) protocol.ExecutionResult {
 	stdoutRead, stdoutWrite, err := os.Pipe()
 	if err != nil {
 		return e.errored(protocol.ErrorCodeInternal, "the output pipes could not be created")
@@ -143,6 +261,21 @@ func (e *execution) run(args []string) protocol.ExecutionResult {
 		_ = command.Wait()
 		close(exited)
 	}()
+	// One killer waits for the timeout, cancellation, or the exit, so the
+	// first trigger wins and no kill can follow the run.
+	killerDone := make(chan struct{})
+	go func() {
+		defer close(killerDone)
+		timer := time.NewTimer(time.Duration(e.request.Limits.TimeoutSeconds) * time.Second)
+		defer timer.Stop()
+		select {
+		case <-exited:
+		case <-timer.C:
+			e.kill(protocol.StateTimedOut, exited)
+		case <-ctx.Done():
+			e.kill(protocol.StateCancelled, exited)
+		}
+	}()
 	settled := make(chan struct{})
 	final := make(chan watched, 1)
 	go func() {
@@ -159,7 +292,30 @@ func (e *execution) run(args []string) protocol.ExecutionResult {
 	// a start notice could still be sent.
 	last := <-final
 	<-exited
+	<-killerDone
 	return e.result(last.state, last.err, command.ProcessState.ExitCode())
+}
+
+// kill records why Mio stops the container and runs podman kill until a kill
+// succeeds or podman exits, for example when the container did not exist yet
+// at the first attempt.
+func (e *execution) kill(reason protocol.ExecutionState, exited <-chan struct{}) {
+	e.killReason = reason
+	interval := e.runner.pollInterval
+	if interval <= 0 {
+		interval = defaultPollInterval
+	}
+	for {
+		if e.runner.helperRun("kill", "--signal=KILL", e.name) == nil {
+			e.killed = true
+			return
+		}
+		select {
+		case <-exited:
+			return
+		case <-time.After(interval):
+		}
+	}
 }
 
 // watched is the state that podman inspect reported after podman exited.
@@ -279,6 +435,8 @@ func (e *execution) result(state inspectState, inspectErr error, podmanExit int)
 		result.EndedAt = result.StartedAt
 	}
 	switch {
+	case e.killed:
+		result.State = e.killReason
 	case state.OOMKilled:
 		result.State = protocol.StateOutOfMemory
 	case state.ExitCode == 0:
@@ -309,7 +467,7 @@ type inspectState struct {
 }
 
 func (e *execution) inspect() (inspectState, error) {
-	output, err := exec.Command(e.runner.Podman, "inspect", "--type", "container", "--format", "json", e.name).Output()
+	output, err := e.runner.helperOutput("inspect", "--type", "container", "--format", "json", e.name)
 	if err != nil {
 		return inspectState{}, fmt.Errorf("podman inspect: %w", err)
 	}

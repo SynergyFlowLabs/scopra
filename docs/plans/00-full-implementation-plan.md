@@ -145,7 +145,7 @@ For the second task, validation tests exist, and the reference payloads in `pack
 - `internal/hollow` builds the exact rootless `podman run` argument vector for a validated request: no network, no capabilities, `no-new-privileges`, a read-only root, the workspace as the only mount, an empty environment, and limits with no swap.
 - Its preflight check parses `podman info --format json` and fails closed unless Podman is 4.0 or later, rootless, on cgroups v2, with the `cpu`, `memory`, and `pids` controllers delegated.
 - `scoprad --sandbox-image` takes the image, pinned by digest, and rejects a malformed value at startup.
-- `hollow.Runner` runs one request through `podman run`, sending the start notice and chunked, truncated output (ADR-009). It derives the result from `podman inspect` and removes the container. It is tested only against a fake Podman, and Mio does not use it yet.
+- `hollow.Runner` runs one request through `podman run`, sending the start notice and chunked, truncated output (ADR-009). It derives the result from `podman inspect` and removes the container. Its own timer and context cancellation kill the container with `podman kill`. It checks the host and the image before each run, bounds every helper call, and can remove leftover containers. It is tested only against a fake Podman, and Mio does not use it yet.
 
 Nothing runs Podman yet, so the containment tasks below stay unchecked until the runner exists and has been verified on a host with rootless Podman.
 
