@@ -2,7 +2,7 @@
 
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
-**Current increment:** public repository and community documentation (Step 34)
+**Current increment:** a generated documentation site deployed to Vercel (Step 35)
 **Status:** Implemented on `arena/fe74ddf7-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
@@ -2680,3 +2680,23 @@ Commit `26590a6` (`feat(journal): record run metadata and add scopra logs`) hold
   - Both binaries build and print their version.
   - The YAML files parse as expected in structure and contain no tab indentation.
 - Blocked: making the repository public requires an owner action in GitHub repository settings, or a token with repository administration write. The exact commands are `gh api -X PATCH repos/SynergyFlowLabs/scopra -F private=false` (or Settings → General → Danger Zone → Change visibility → Make public).
+
+### 2026-10-17 — Step 35: a generated documentation site on Vercel (ADR-015)
+
+- Selection: the maintainer made the repository public and asked for a Vercel deployment "using the best practices for this project". The repository has no web application — `apps/*` and `deploy/*` are placeholder READMEs and the only real artifacts are the two Go binaries and the Markdown. The correct artifact to publish is therefore the documentation itself, generated from the same files reviewers approve.
+- What was built:
+  - `tools/docsite` — a Markdown-to-HTML generator with no dependencies beyond the Go standard library. It renders ATX headings (with stable, de-duplicated anchors), fenced code, GFM tables with alignment, nested ordered/unordered lists with task boxes, blockquotes, thematic breaks, and inline code, emphasis, strikethrough, links, images, and autolinks. Raw HTML is escaped, never passed through.
+  - Link rewriting: a published page becomes its site URL, a fragment becomes an in-page anchor, and anything else (`LICENSE`, `progress.md`, fixtures) becomes a `blob/main` link on GitHub. An unresolvable link fails the build.
+  - Pages: the README, PRD, CHANGELOG, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, every file under `docs/` except `progress.md`, the decision index at `/docs/decisions.html`, and every ADR discovered from `docs/decisions/*.md` (the template excluded). Plus a hand-written landing page, an index of every page, a 404, `robots.txt`, `sitemap.xml`, and one stylesheet.
+  - `apps/docs-site/static/` holds the authored stylesheet and favicon; `apps/docs-site/public/` is the generated artifact and is committed.
+- Deployment:
+  - Vercel project `scopra` (`prj_8IUlxMQr92jfileaMhwprRyR6daH`) linked to `SynergyFlowLabs/scopra`, framework detection disabled, output directory `apps/docs-site/public`, no-op build and install commands.
+  - `vercel.json` sets a CSP with `script-src 'none'`, `frame-ancestors 'none'`, and `base-uri 'none'`, plus HSTS, `nosniff`, `X-Frame-Options: DENY`, COOP, a restrictive referrer policy, and a `Permissions-Policy` that disables every unused feature.
+  - Production deployment `dpl_GbFwwWhfZULmcS5mK2PSVGgXBZ14` is `READY` (2.6 s) and promoted; production URL <https://scopra-six.vercel.app>.
+- Why the artifact is committed: a first deployment proved that Vercel's build image has no Go toolchain (`make site` → `make: go: No such file or directory`). The alternatives — a Node static-site generator, a toolchain download during the build, or an unbuildable project — were rejected in ADR-015. The output is a pure function of the Markdown (no timestamps, no commit hash), so the committed copy is verifiable: `TestCommittedSiteIsUpToDate` rebuilds into a temporary directory and fails `go test ./...` when `apps/docs-site/public` is stale, and `resetOutput` deletes the output directory first so a page that is no longer generated cannot survive a deploy.
+- Verification:
+  - `go test ./...` passes across 12 packages, including 18 new tests: markdown rendering (headings and anchors, raw-HTML escaping, fenced code, tables with alignment and pipes inside code spans, nested lists and task boxes, ordered-list `start`, blockquotes, intraword underscores, inline code, link resolution, badges, autolinks, hard breaks, empty input, slugs), the full-site build (expected pages, `progress.md` excluded, zero broken internal links and anchors across 39 files and ~1,890 links, no unrendered Markdown, canonical and social metadata, robots and sitemap, GitHub link fallback), the up-to-date check, and the output-directory guard.
+  - `make lint` (gofmt + `go vet`) is clean; `git diff --check` is clean.
+  - Live checks on <https://scopra-six.vercel.app>: `/` renders the landing page, `/docs/` resolves to the generated index, `/docs/overview.html` renders the README with badges, tables, and fenced code, and `/docs/decisions.html` lists ADR-001 … ADR-014 after the index.
+  - The first deployment (`dpl_HBi8etcoK2tr6R36vKQyUBbVN2Zw`) failed on the missing Go toolchain; it is retained only as evidence for ADR-015 and is superseded.
+- Not done: a custom domain, search, and hosting `progress.md`. Vercel's default protection setting (`all_except_custom_domains`) does not block the production alias, which was verified anonymously.

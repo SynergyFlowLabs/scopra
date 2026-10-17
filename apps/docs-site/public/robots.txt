@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://scopra-gulzaibs-projects-347c279f.vercel.app/sitemap.xml
+Sitemap: https://scopra-six.vercel.app/sitemap.xml

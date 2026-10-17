@@ -76,6 +76,7 @@ var rootDocuments = []struct {
 	{"docs/plans/00-full-implementation-plan.md", "plan/implementation-plan", "plan", "Implementation Plan"},
 	{"docs/api/mcp-tools.md", "api/mcp-tools", "api", "MCP Tools"},
 	{"docs/operations/runbooks.md", "operations/runbooks", "operations", "Runbooks"},
+	{"docs/operations/deployment.md", "operations/deployment", "operations", "Deploying the Site"},
 	{"SECURITY.md", "community/security-policy", "community", "Security Policy"},
 	{"CONTRIBUTING.md", "community/contributing", "community", "Contributing"},
 	{"CODE_OF_CONDUCT.md", "community/code-of-conduct", "community", "Code of Conduct"},
@@ -83,7 +84,7 @@ var rootDocuments = []struct {
 }
 
 // defaultBaseURL is the production URL Vercel assigns to the project.
-const defaultBaseURL = "https://scopra-gulzaibs-projects-347c279f.vercel.app"
+const defaultBaseURL = "https://scopra-six.vercel.app"
 
 // siteOptions controls one build.
 type siteOptions struct {
@@ -135,6 +136,9 @@ func buildSite(options siteOptions) error {
 		documents[index].Headings = headings
 	}
 
+	if err := resetOutput(options.Root, options.Out); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(options.Out, 0o755); err != nil {
 		return err
 	}
@@ -167,6 +171,28 @@ func buildSite(options siteOptions) error {
 	return nil
 }
 
+// resetOutput clears the output directory so a page that is no longer
+// generated cannot survive in the published site. It refuses to remove the
+// repository itself.
+func resetOutput(root, out string) error {
+	cleaned := filepath.Clean(out)
+	if cleaned == "." || cleaned == ".." || cleaned == string(filepath.Separator) {
+		return fmt.Errorf("refusing to clear output directory %q", out)
+	}
+	absoluteOut, err := filepath.Abs(cleaned)
+	if err != nil {
+		return err
+	}
+	absoluteRoot, err := filepath.Abs(root)
+	if err != nil {
+		return err
+	}
+	if absoluteOut == absoluteRoot || strings.HasPrefix(absoluteRoot+string(filepath.Separator), absoluteOut+string(filepath.Separator)) {
+		return fmt.Errorf("refusing to clear output directory %q: it contains the repository", out)
+	}
+	return os.RemoveAll(absoluteOut)
+}
+
 // collectDocuments reads the configured sources and derives each title.
 func collectDocuments(root string) ([]document, error) {
 	var documents []document
@@ -191,19 +217,33 @@ func collectDocuments(root string) ([]document, error) {
 		return nil, err
 	}
 	sort.Strings(decisions)
+	// The index goes first in the navigation; the template is not a decision.
+	var index *document
 	for _, decision := range decisions {
 		name := strings.TrimSuffix(filepath.Base(decision), ".md")
-		source := path.Join("docs", "decisions", name+".md")
-		entry := document{Source: source, Group: "decisions"}
-		if name == "README" {
-			// The index becomes /docs/decisions.html rather than a README page.
-			entry.Slug = "decisions"
-			entry.Title = documentTitle(decision, "Decision Records")
-		} else {
-			entry.Slug = path.Join("decisions", name)
-			entry.Title = documentTitle(decision, name)
+		switch name {
+		case "README":
+			entry := document{
+				Source: path.Join("docs", "decisions", "README.md"),
+				Slug:   "decisions",
+				Group:  "decisions",
+				Title:  documentTitle(decision, "Decision Records"),
+			}
+			index = &entry
+			continue
+		case "000-template":
+			continue
 		}
-		documents = append(documents, entry)
+		documents = append(documents, document{
+			Source: path.Join("docs", "decisions", name+".md"),
+			Slug:   path.Join("decisions", name),
+			Group:  "decisions",
+			Title:  documentTitle(decision, name),
+		})
+	}
+	if index != nil {
+		// Prepend so the index heads the Decisions group and the docs index.
+		documents = append([]document{*index}, documents...)
 	}
 	return documents, nil
 }

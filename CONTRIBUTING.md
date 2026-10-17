@@ -62,6 +62,7 @@ The repository has **no external Go dependencies**. Prefer the standard library;
 - **ADRs and the log.** A durable design decision gets an ADR in `docs/decisions/` and an index entry. Each increment gets an entry in [`progress.md`](progress.md) with its acceptance checklist, test-first record, and verification evidence.
 - **No secrets, no raw output.** Do not log command output, credentials, tokens, or user data. The run journal is metadata-only by design; keep it that way.
 - **No pricing machinery.** Scopra is free and open source. Do not add license keys, entitlement checks, plan gating, payment code, telemetry, or "upgrade" prompts (ADR-014).
+- **The documentation site is generated.** Editing a published Markdown file (the README, the PRD, an ADR, anything under `docs/` except `progress.md`) means running `make site` and committing `apps/docs-site/public` in the same change. `go test ./...` fails when the committed site is stale (ADR-015).
 
 ## Commit messages
 

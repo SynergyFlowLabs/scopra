@@ -293,3 +293,16 @@ func firstLines(text string, count int) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+func TestResetOutputRefusesDangerousPaths(t *testing.T) {
+	root := t.TempDir()
+	for _, out := range []string{"", ".", "..", "/", root} {
+		if err := resetOutput(root, out); err == nil {
+			t.Errorf("resetOutput(%q) succeeded, want a refusal", out)
+		}
+	}
+	out := filepath.Join(root, "public")
+	if err := resetOutput(root, out); err != nil {
+		t.Fatalf("resetOutput(%q): %v", out, err)
+	}
+}

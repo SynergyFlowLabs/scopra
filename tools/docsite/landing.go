@@ -148,7 +148,7 @@ go build -o bin/scoprad ./cmd/scoprad</code></pre>
     <a class="card" href="/docs/overview.html"><strong>Overview</strong><span class="muted">What exists, what does not, and what is unverified</span></a>
     <a class="card" href="/docs/architecture/system-overview.html"><strong>Architecture</strong><span class="muted">How Mariner, Mio, and Hollow fit together</span></a>
     <a class="card" href="/docs/security/threat-model.html"><strong>Threat model</strong><span class="muted">Assets, boundaries, and what is out of scope</span></a>
-    <a class="card" href="/docs/decisions.html"><strong>Decisions</strong><span class="muted">Fourteen ADRs, from module layout to licensing</span></a>
+    <a class="card" href="/docs/decisions.html"><strong>Decisions</strong><span class="muted">Every design decision, from module layout to licensing</span></a>
     <a class="card" href="/docs/community/contributing.html"><strong>Contributing</strong><span class="muted">Setup, conventions, and the review process</span></a>
     <a class="card" href="/docs/changelog.html"><strong>Changelog</strong><span class="muted">What changed, in Keep a Changelog form</span></a>
   </div>

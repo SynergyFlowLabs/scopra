@@ -2,7 +2,7 @@ GO ?= go
 GOFMT ?= gofmt
 SITE_OUT ?= apps/docs-site/public
 SITE_STATIC ?= apps/docs-site/static
-SITE_BASE_URL ?= https://scopra-gulzaibs-projects-347c279f.vercel.app
+SITE_BASE_URL ?= https://scopra-six.vercel.app
 
 .PHONY: help bootstrap test lint security-test site
 

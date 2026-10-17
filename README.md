@@ -6,6 +6,7 @@
 [![Go 1.26.9](https://img.shields.io/badge/Go-1.26.9-00ADD8?logo=go&logoColor=white)](go.mod)
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux-FCC624?logo=linux&logoColor=black)](#requirements)
 [![Status: pre-alpha](https://img.shields.io/badge/Status-pre--alpha-orange)](#status)
+[![Documentation](https://img.shields.io/badge/docs-scopra--six.vercel.app-5ee0c0)](https://scopra-six.vercel.app)
 
 > Give agents enough access to complete the task — never unlimited access to the machine.
 
@@ -176,12 +177,14 @@ Read the [threat model](docs/security/threat-model.md), [risk register](docs/sec
 
 | Document | Contents |
 |---|---|
+| <https://scopra-six.vercel.app> | The same documentation as a website, generated from these files |
 | [`PRD.md`](PRD.md) | Product requirements, users, principles, alpha scope |
 | [`docs/plans/00-full-implementation-plan.md`](docs/plans/00-full-implementation-plan.md) | Milestones and acceptance criteria |
 | [`docs/architecture/system-overview.md`](docs/architecture/system-overview.md) | How the pieces fit together |
-| [`docs/decisions/`](docs/decisions/) | Architecture Decision Records (ADR-001 … ADR-014) |
+| [`docs/decisions/`](docs/decisions/) | Architecture Decision Records (ADR-001 … ADR-015) |
 | [`docs/security/`](docs/security/) | Threat model, risk register, security architecture |
 | [`docs/product/`](docs/product/) | Naming and product notes |
+| [`docs/operations/deployment.md`](docs/operations/deployment.md) | How the documentation site is built, deployed, verified, and rolled back |
 | [`progress.md`](progress.md) | Running engineering log with verification evidence |
 | [`CHANGELOG.md`](CHANGELOG.md) | User-visible changes by release |
 
@@ -198,8 +201,10 @@ internal/workspace/   Canonical paths, ownership, fingerprints, registry
 internal/execution/   Workspace lookup, revalidation, executor wiring
 internal/hollow/      Rootless Podman argument builder, preflight, runner
 packages/protocol/    Messenger v1 envelopes and lifecycle messages
+apps/docs-site/       Generated static documentation site
 docs/                 Plan, architecture, security, ADRs
 scripts/              Bootstrap and development helpers
+tools/docsite/        Markdown-to-HTML generator for the site
 ```
 
 ---

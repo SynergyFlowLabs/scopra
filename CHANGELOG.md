@@ -12,6 +12,14 @@ version, and the wire protocol is versioned separately (see ADR-002 and ADR-009)
 
 ### Added
 
+- **Documentation site (ADR-015).** <https://scopra-six.vercel.app> publishes the
+  README, the PRD, the ADRs, the security documents, and the community files as a
+  static site. It is generated from the repository's Markdown by `tools/docsite`
+  (Go standard library only), committed to `apps/docs-site/public`, and served by
+  Vercel with no build step, no JavaScript, and a strict content security policy.
+  Links are rewritten at build time and an unresolvable link fails the build;
+  `TestCommittedSiteIsUpToDate` fails when the committed site no longer matches
+  the docs.
 - **Run journal and `scopra logs` (ADR-013).** Mio records one bounded,
   metadata-only JSON line per answered run in `<state-dir>/runs.jsonl` —
   execution and workspace IDs, state, times, exit code, stdout/stderr byte
