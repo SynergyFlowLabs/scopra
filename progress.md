@@ -2,7 +2,7 @@
 
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
-**Current increment:** `scopra doctor` containment readiness (Step 30)
+**Current increment:** `scopra service` systemd user service (Step 31)
 **Status:** Implemented on `arena/fe74ddf7-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
@@ -2437,3 +2437,86 @@ Residual risk: doctor checks the image it is given, not the one Mio is running w
 Coverage: `cmd/scopra` 92.9% in total; `diagnoseContainment` is 100% and `runPodmanHelper` 85.7% (the nil-context guard is unused in practice).
 
 Commit `556f74f` (`feat(doctor): check containment readiness`) holds the implementation, the tests, and the documentation; a second commit records this log. Both were pushed to `arena/fe74ddf7-scopra`, so PR #3 picks them up. CI remains out of scope.
+
+### 2026-10-17 — Step 31: `scopra service` (systemd user service)
+
+- Selection: the maintainer replied "Continue" to the proposal after Step 30. ADR-010 deferred where a durable sandbox image setting lives to "the Linux service installation", so this step adds the service and settles that question in a new ADR-012.
+- Shape:
+  - `scopra service install [--state-dir PATH] [--sandbox-image IMAGE] [--scoprad PATH] [--force]` writes `$XDG_CONFIG_HOME/systemd/user/scoprad.service` (`~/.config/systemd/user/scoprad.service` by default), then runs `systemctl --user daemon-reload` and `systemctl --user enable --now scoprad.service`.
+  - `scopra service uninstall` runs `systemctl --user disable --now scoprad.service`, removes the unit, and reloads.
+  - `scopra service status [--json]` is read-only: it reports whether the unit is installed, whether Scopra wrote it, and systemd's `is-enabled` and `is-active` answers.
+- Decisions:
+  - **The unit is the durable configuration.** `ExecStart` holds the absolute `scoprad` path, an explicit `--state-dir`, and `--sandbox-image` when one is given. No new config file format, no environment variables, and no change to `scoprad`; changing the image means reinstalling. The file is visible and auditable.
+  - **A user service, never root.** `WantedBy=default.target`, `Type=simple`, `Restart=on-failure` with `RestartSec=2` and a start limit, and `UMask=0077`. The unit deliberately omits `NoNewPrivileges`, `ProtectHome`, and `ProtectSystem`: rootless Podman needs its setuid helpers and the workspace under the home directory. The ADR records why.
+  - **Escaped arguments.** Every `ExecStart` argument is escaped as systemd reads it: `%` → `%%`, `$` → `$$`, and quoting with backslash escapes for whitespace, quotes, and backslashes; control characters are refused. A test pins the exact line for a hostile path.
+  - **Fail closed, no half-install.** The state directory is resolved exactly as `scoprad` resolves it; `systemctl` and the `scoprad` executable are resolved before anything is written; the directory chain is checked (real directories, not group/other writable); the unit is written atomically with mode 0600. If `daemon-reload` or `enable --now` fails, the previous file content (or absence) is restored and the error is reported.
+  - **Recognition, not ownership.** The first line marks the file as Scopra's. `install` and `uninstall` refuse a different unit at that path; `install --force` replaces it. Repeating either command when already in the requested state succeeds.
+  - **No shell.** Every `systemctl` call is a fixed argument vector with a 30-second deadline, like Hollow's helper calls.
+  - **Linux only, for now.** Other platforms fail closed with a clear error and still cross-compile.
+- Status JSON (`schemaVersion` 1): `{"schemaVersion":1,"unitPath":"...","installed":true,"managed":true,"enabled":"enabled","active":"active"}`; `installed:false` omits `managed`, `enabled`, and `active`. Exit 0 when the queries succeed, even if the service is stopped or failed.
+
+#### Acceptance checklist (agreed before implementation)
+
+- [x] `service install`, `service uninstall`, and `service status` exist and are listed in the root usage; unknown subcommands and stray arguments are usage errors (exit 2).
+- [x] Install resolves the state directory with `localipc.ResolveStateDir`, refuses a non-executable or missing `scoprad`, refuses a non-pinned image as a usage error, and resolves `systemctl` before writing anything.
+- [x] The unit path is `$XDG_CONFIG_HOME/systemd/user/scoprad.service` when `XDG_CONFIG_HOME` is absolute, otherwise `$HOME/.config/systemd/user/scoprad.service`; the directory chain is created owner-only and checked to be real directories that are not group/other writable; the unit is a regular file with mode 0600, written by temp file and rename.
+- [x] Unit content is fixed and tested: marker line, `Description`, `StartLimitIntervalSec`/`StartLimitBurst`, `Type=simple`, the escaped `ExecStart`, `Restart=on-failure`, `RestartSec=2`, `UMask=0077`, `WantedBy=default.target`.
+- [x] Install runs `daemon-reload` then `enable --now scoprad.service`; a failure in either restores the previous unit content (or removes the new file), reloads again, and returns an error.
+- [x] A unit without Scopra's marker is never overwritten without `--force` and never disabled or removed by `uninstall`; both commands are idempotent when already in the requested state.
+- [x] Status is read-only: it reads the unit file and runs only `systemctl --user is-enabled` and `is-active`; it reports installed/managed/enabled/active, supports `--json` schema 1, and exits 0 when the queries succeed.
+- [x] Every `systemctl` call uses a fixed argument vector (no shell), a bounded deadline, and no added environment; paths and errors are escaped for the terminal.
+- [x] Non-Linux returns a clear unsupported error; the tree still builds and vets for darwin, windows, and linux/arm64.
+- [x] Tests use a fake `systemctl` (the test binary), cover exact unit content and escaping, rollback on both systemctl failures, foreign-unit refusal, idempotence, status shapes, missing systemctl, insecure directories, a symlinked unit, and the read-only status property.
+- [x] ADR-012 records the decision; ADR-010's deferred durable setting is resolved; READMEs, the plan, the system overview, the tree, and this log are updated; `make security-test` covers the new security tests.
+
+Non-goals: system (root) services, lingering, socket activation, auto-update, a new configuration file, changing the image without reinstalling, and verifying against a real systemd on this sandbox.
+
+#### Test-first record
+
+The tests were written first (`cmd/scopra/service_test.go`), and the implementation (`service.go`, `service_linux.go`) second. The first execution against the implementation found one expectation to correct, and later the red run was recorded by removing the implementation:
+
+- `relative state dir` was initially expected to be a usage error. It is not: `localipc.ResolveStateDir` deliberately turns a relative `--state-dir` into an absolute one with `filepath.Abs`, so the case was removed rather than making the CLI stricter than the daemon. The acceptance item asks that install resolve the path exactly as `scoprad` does, and it does.
+- `TestSystemdExecArg/tabs_and_separators` initially expected a tab to be quoted. `systemdExecArg` refuses every control character, tab included; the case moved to the refusal table. The rule is simpler and safer than special-casing tab.
+- `TestServiceInstallForceReplacesAForeignUnit` first expected the refusal to say "not managed by scopra"; the message is "was not written by Scopra; remove it yourself or pass --force". The assertion follows the message.
+- `TestServiceInstallReportsAnUnwritableDirectory` first passed 0500 to `MkdirAll`, which cannot create its own parents; it now creates the chain 0700 and chmods only the leaf before installing.
+
+Recorded red run (implementation moved aside, tests left in place):
+
+```text
+# github.com/SynergyFlowLabs/scopra/cmd/scopra [github.com/SynergyFlowLabs/scopra/cmd/scopra.test]
+cmd/scopra/main.go:50:10: undefined: runService
+cmd/scopra/service_test.go:463:14: undefined: serviceStatusJSON
+cmd/scopra/service_test.go:485:14: undefined: serviceStatusJSON
+cmd/scopra/service_test.go:513:14: undefined: serviceStatusJSON
+cmd/scopra/service_test.go:625:16: undefined: systemdExecArg
+cmd/scopra/service_test.go:638:17: undefined: systemdExecArg
+cmd/scopra/service_test.go:754:13: undefined: serviceStatusJSON
+FAIL	github.com/SynergyFlowLabs/scopra/cmd/scopra [build failed]
+```
+
+Restoring the two files makes the same selection pass. The suite is 25 test functions (50 test and subtest cases), including a scripted fake `systemctl` (this test binary, dispatched from `TestMain`) whose every call is appended to `calls.log`, and whose `is-enabled`, `is-active`, `daemon-reload`, `enable`, `disable`, and each failure mode are controlled by marker files (`enabled`, `active`, `failed`, `fail-daemon-reload`, `fail-enable`, `fail-disable`, `silent-is-enabled`).
+
+#### Implementation and verification record
+
+Files: `cmd/scopra/service.go` (dispatch, install, uninstall, status, unit rendering, escaping, directory checks, bounded `systemctl`), `cmd/scopra/service_linux.go` (Linux platform and ownership predicates), `cmd/scopra/service_other.go` (fail-closed other platforms), `cmd/scopra/service_test.go`; `cmd/scopra/main.go` gains the `service` dispatch and three usage lines; `cmd/scopra/containment_test.go` `TestMain` dispatches to the fake `systemctl` when `SCOPRA_FAKE_SYSTEMCTL` is set.
+
+Behavior as implemented:
+
+- `install`: validates and resolves everything that can be checked (flag set with no host-derived defaults, `hollow.ValidateImage`, `localipc.ResolveStateDir`, `systemctl` on `PATH`, an executable `scoprad` given explicitly, then `PATH`, then beside `scopra`) before creating anything. Then it creates the unit directory owner-only, checks every component is a real directory that is not group/other writable (root-owned sticky directories such as `/tmp` are allowed) and that the leaf is owned by the effective user, refuses a non-regular or foreign unit without `--force`, writes by temp file + `fsync` + rename with mode 0600, and runs `--user daemon-reload` then `--user enable --now scoprad.service`. If either fails, it restores the previous content (or removes the new file) and reloads again before returning the error.
+- `uninstall`: absent unit prints `Scopra Mio is not installed.` and exits 0; a foreign unit is refused; otherwise `--user disable --now scoprad.service`, remove the file, `--user daemon-reload`. A failed disable leaves the unit in place.
+- `status`: read-only; it `Lstat`s the unit and, when present, runs only `--user is-enabled` and `--user is-active`. A non-zero exit with some output is an answer (`disabled`, `inactive`, `failed`); a non-zero exit with no output is an error. `--json` writes schema 1 on one line, omitting `managed`, `enabled`, and `active` when the unit is absent.
+- `systemdExecArg`: refuses empty values and control characters, doubles `%` and `$`, and double-quotes with backslash escapes when whitespace, quotes, or backslashes remain. The unit passes no environment.
+- Every `systemctl` call is a fixed argument vector with a 30-second deadline; there is no shell.
+
+Verification (Go 1.26.9, `GORACE=atexit_sleep_ms=0` for the fake daemons):
+
+- `make lint`: `gofmt -l` empty and `go vet ./...` clean.
+- `make test`: every package passes with `-race`, including `cmd/scopra`.
+- `make security-test`: every package passes with `-race`, including `TestSecurity_ServiceRefusesInsecureDirectories` (group/world-writable ancestor, symlinked unit, symlinked directory, a unit that is a directory).
+- `go test -cover ./cmd/scopra`: 89.2% overall; the new code ranges from 50.0% (`resolveScoprad`, whose "beside `scopra`" fallback is unreachable without writing next to the test binary) to 100% (`runService`, `resolveSystemctl`, `systemdExecArg`, `runSystemctl`, `restoreServiceUnit`, `isManagedServiceUnit`, `ownedServiceDir`).
+- Cross-checks: `go build` and `go vet` pass for darwin/amd64, windows/amd64, and linux/arm64, so `service_other.go` compiles and vets everywhere.
+- Mutation testing: 30/30 mutants caught. Mutants covered unit name, marker, `ExecStart` contents, `%`/`$` doubling, quoting, control-character refusal, start limit, `UMask`, `WantedBy`, file mode, both rollbacks, reload-before-enable ordering, `--now`, `--force`, foreign-unit refusal, ignored directory check, `Lstat`→`Stat`, uninstall's foreign-unit refusal, disable failure, remove-before-disable, status queries, status's empty-answer rule, image validation, `scoprad` executable check, relative `$XDG_CONFIG_HOME`, `systemctl` resolution, and the root-owned sticky rule. Files were byte-identical before and after (`sha256 service.go 67cc1a95…bcca4`, `service_linux.go 6156980a…644dc`).
+- Real-binary smoke (`/tmp/smoke/bin/scopra`, a shell-script fake `systemctl` on `PATH`, a temporary `HOME`): install printed the unit path and wrote the exact unit with mode 0600; `status --json` printed schema 1 with `enabled`/`active`; `status` printed `installed (managed by scopra)`, `Enabled: enabled`, `Active: active`; a second install succeeded; uninstall printed `Removed …; Scopra Mio is stopped and disabled.`; status then printed `not installed` and `installed:false` JSON without `managed`/`enabled`/`active`. The fake's call log was exactly `--user daemon-reload`, `--user enable --now scoprad.service`, `--user is-enabled scoprad.service`, `--user is-active scoprad.service` (twice), `--user daemon-reload`, `--user enable --now scoprad.service`, `--user disable --now scoprad.service`, `--user daemon-reload`.
+- Not verified: a real systemd user manager and a real rootless Podman host, neither of which exists in this sandbox. The fakes script systemd's answers; they cannot prove its parsing. This is recorded, with the real-host check, as an open item rather than claimed.
+
+Commit `9bc6081` (`feat(service): install Mio as a systemd user service`) holds the implementation, the tests, ADR-012, and the documentation; a second commit records this log. Both were pushed to `arena/fe74ddf7-scopra`, so PR #3 picks them up. CI remains out of scope.
