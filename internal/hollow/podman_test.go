@@ -173,6 +173,31 @@ func TestSecurity_PodmanRunArgsRejectsUnsafeInputs(t *testing.T) {
 	}
 }
 
+func TestValidateImage(t *testing.T) {
+	digest := strings.Repeat("a", 64)
+	for _, image := range []string{
+		testImage,
+		"runner@sha256:" + digest,
+		"registry.example:5000/team/runner:1.2@sha256:" + digest,
+	} {
+		if err := ValidateImage(image); err != nil {
+			t.Errorf("ValidateImage(%q) error = %v, want nil", image, err)
+		}
+	}
+	for _, image := range []string{
+		"", "runner:1.0", "runner@sha256:" + digest[:63], "runner@sha256:" + strings.ToUpper(digest),
+		"--privileged@sha256:" + digest, "run ner@sha256:" + digest, "@sha256:" + digest, "runner@sha256:" + digest + "\n",
+	} {
+		err := ValidateImage(image)
+		if !errors.Is(err, ErrInvalidImage) || !strings.Contains(err.Error(), "@sha256:") {
+			t.Errorf("ValidateImage(%q) error = %v, want ErrInvalidImage stating the rule", image, err)
+		}
+		if strings.ContainsRune(err.Error(), '\n') {
+			t.Errorf("ValidateImage(%q) error = %q contains a raw newline", image, err)
+		}
+	}
+}
+
 func TestPodmanRunArgs_QuotesTheMountSourceAsCSV(t *testing.T) {
 	for _, workspace := range []string{
 		"/home/alice/a,b",

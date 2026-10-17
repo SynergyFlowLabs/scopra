@@ -88,6 +88,18 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	return daemon.Serve(ctx)
 }
 
+// daemonConfig is what scoprad's command line sets.
+type daemonConfig struct {
+	stateDir     string
+	sandboxImage string
+	showVersion  bool
+}
+
+// parseFlags parses scoprad's command line.
+func parseFlags(args []string, stderr io.Writer) (daemonConfig, error) {
+	return daemonConfig{}, nil
+}
+
 // newWorkspaceValidator returns the ADR-004 workspace validator that Mio uses.
 // Besides the filesystem root and the user's home directories, it protects
 // Mio's state directory, so that no workspace can contain Mio's socket, lock,

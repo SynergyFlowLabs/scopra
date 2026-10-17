@@ -161,7 +161,9 @@ The command can change the workspace when access is `read-write`, and nothing el
 - **gVisor, Kata, or Firecracker:** deferred. They are stronger, but beyond the alpha and harder to run rootless.
 - **The Podman remote API socket:** rejected. It exposes a powerful socket, and the local client is enough.
 
-## Amendment — 2026-10-17 (proposed, awaiting confirmation): image setting and runner plan
+## Amendment — 2026-10-17: image setting and runner plan
+
+Proposed, then accepted as written by the maintainer.
 
 ### Image setting
 

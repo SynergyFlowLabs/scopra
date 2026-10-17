@@ -3,7 +3,7 @@
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
 **Current increment:** The `scoprad --sandbox-image` setting (Step 24, increment 3a-1 of ADR-010 as amended)
-**Status:** Proposed. The ADR-010 amendment and the checklist below await the maintainer's confirmation, and no code has been written. CI is out of scope for now at the maintainer's request
+**Status:** In progress on `arena/c7a368c1-scopra`: the ADR-010 amendment and the acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -1791,7 +1791,7 @@ Non-goals:
   - The tree is current.
 - Pushes to `arena/c7a368c1-scopra`: test checkpoint `6f1064b` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.
 
-### 2026-10-17 — Step 24 (proposed): the `scoprad --sandbox-image` setting (ADR-010 amendment, increment 3a-1)
+### 2026-10-17 — Step 24: the `scoprad --sandbox-image` setting (ADR-010 amendment, increment 3a-1)
 
 - Selection: after Step 23 the default was (a). The runner splits into parts testable here against a fake Podman, plus verification on a real host, starting with a short proposal for how Mio learns the image. The maintainer replied "continue". Implementation starts only after confirmation; a "continue" accepts the proposal.
 - Research, from Podman v6.1.4's documentation and source code:
@@ -1805,7 +1805,9 @@ Non-goals:
   - `execution.started` is sent once `State.StartedAt` is set;
   - preflight and an image-presence check run before every execution.
 
-#### Acceptance checklist (proposed, not yet agreed)
+- Confirmation: the maintainer replied "continue", accepting the amendment and the checklist below as written.
+
+#### Acceptance checklist (agreed before implementation)
 
 - [ ] The ADR-010 amendment is accepted, with any changes the maintainer asks for, and the ADR index is updated.
 - [ ] `hollow` exports the image rule that `PodmanRunArgs` uses (for example `ValidateImage`), and its tests are unchanged.
@@ -1822,3 +1824,15 @@ Non-goals:
 - Reporting the setting in `status` or `doctor`.
 - Checking that the image exists.
 - The runner (3a-2 and 3a-3).
+
+#### Test-first record
+
+1. **Tests written first:**
+   - `internal/hollow`: `TestValidateImage` checks the exported image rule directly. Three references are accepted. Eight are rejected, each wrapping `ErrInvalidImage` with a message that states the rule and never contains a raw newline: empty, no digest, a short or uppercase digest, an option-like name, a space, no name, and a trailing newline. The existing `PodmanRunArgs` tests are unchanged.
+   - `cmd/scoprad`:
+     - the help output lists `--sandbox-image NAME@sha256:DIGEST`;
+     - `parseFlags` captures the image whether it is absent, set with `=`, set as a separate value, or repeated with the valid value last;
+     - `TestSecurity_RunRejectsAMalformedSandboxImageBeforeTouchingState` covers an empty value, no digest, a short digest, an option-like name, a repeat with the invalid value last, and `--version` combined with a bad value. Each must be a usage error whose stderr states the flag, the rule, and the usage, with no stdout and no state directory created;
+     - `TestRunStartsWithASandboxImage` checks that Mio still starts and reports that it is listening.
+2. **Build failure.** `ValidateImage` and `parseFlags` were undefined.
+3. **Declarations-only skeleton.** `ValidateImage` accepts everything, `parseFlags` returns an empty configuration, and `run` still parses inline. Runtime red: 5 tests failed across 9 subtests. The malformed-image cases were rejected only as an unknown flag, without the rule.

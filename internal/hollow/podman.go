@@ -108,6 +108,11 @@ func PodmanRunArgs(spec RunSpec) ([]string, error) {
 	return append(args, request.Command.Arguments...), nil
 }
 
+// ValidateImage checks that image is a reference pinned by digest (ADR-010).
+func ValidateImage(image string) error {
+	return nil
+}
+
 // mountablePath reports whether p can travel in a CSV-quoted mount source: a
 // clean absolute path other than the root, of valid UTF-8, with no control
 // characters. Go's CSV reader, which Podman uses, would drop a carriage return

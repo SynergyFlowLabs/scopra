@@ -85,6 +85,89 @@ func TestRunRejectsUnexpectedArguments(t *testing.T) {
 	}
 }
 
+const testSandboxImage = "registry.example/scopra/runner@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+func TestRunHelpListsTheSandboxImageFlag(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if err := run(t.Context(), []string{"--help"}, &stdout, &stderr); !errors.Is(err, flag.ErrHelp) {
+		t.Fatalf("run(--help) error = %v, want flag.ErrHelp", err)
+	}
+	if !strings.Contains(stderr.String(), "--sandbox-image NAME@sha256:DIGEST") {
+		t.Fatalf("help output = %q, want the --sandbox-image flag", stderr.String())
+	}
+}
+
+func TestParseFlags_SandboxImage(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "not set", args: []string{"--state-dir", "/tmp/x"}, want: ""},
+		{name: "set", args: []string{"--sandbox-image=" + testSandboxImage}, want: testSandboxImage},
+		{name: "separate value", args: []string{"--sandbox-image", testSandboxImage}, want: testSandboxImage},
+		{name: "repeated, valid last", args: []string{"--sandbox-image=runner:1.0", "--sandbox-image=" + testSandboxImage}, want: testSandboxImage},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var stderr bytes.Buffer
+			config, err := parseFlags(test.args, &stderr)
+			if err != nil {
+				t.Fatalf("parseFlags(%q) error = %v; stderr = %q", test.args, err, stderr.String())
+			}
+			if config.sandboxImage != test.want {
+				t.Fatalf("parseFlags(%q) sandbox image = %q, want %q", test.args, config.sandboxImage, test.want)
+			}
+		})
+	}
+}
+
+func TestSecurity_RunRejectsAMalformedSandboxImageBeforeTouchingState(t *testing.T) {
+	digest := strings.Repeat("a", 64)
+	for name, args := range map[string][]string{
+		"empty":                  {"--sandbox-image="},
+		"no digest":              {"--sandbox-image=registry.example/runner:1.0"},
+		"short digest":           {"--sandbox-image=runner@sha256:" + digest[:63]},
+		"option-like name":       {"--sandbox-image=--privileged@sha256:" + digest},
+		"repeated, invalid last": {"--sandbox-image=" + testSandboxImage, "--sandbox-image=runner:1.0"},
+		"with --version":         {"--version", "--sandbox-image=runner:1.0"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			stateDir := filepath.Join(t.TempDir(), "run")
+			var stdout, stderr bytes.Buffer
+			err := run(t.Context(), append([]string{"--state-dir", stateDir}, args...), &stdout, &stderr)
+			var usageErr *usageError
+			if !errors.As(err, &usageErr) {
+				t.Fatalf("run(%q) error = %v, want a usage error", args, err)
+			}
+			if !strings.Contains(stderr.String(), "--sandbox-image") || !strings.Contains(stderr.String(), "@sha256:") ||
+				!strings.Contains(stderr.String(), "usage: scoprad") {
+				t.Fatalf("run(%q) stderr = %q, want the rule and the usage", args, stderr.String())
+			}
+			if _, err := os.Lstat(stateDir); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("run(%q) touched the state directory (Lstat error = %v)", args, err)
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("run(%q) wrote stdout %q", args, stdout.String())
+			}
+		})
+	}
+}
+
+func TestRunStartsWithASandboxImage(t *testing.T) {
+	requireLinux(t)
+	stateDir := filepath.Join(t.TempDir(), "run")
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	stderr := &cancelOnWrite{cancel: cancel}
+	if err := run(ctx, []string{"--state-dir", stateDir, "--sandbox-image=" + testSandboxImage}, io.Discard, stderr); err != nil {
+		t.Fatalf("run() error = %v; stderr = %q", err, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "listening") {
+		t.Fatalf("run() stderr = %q, want listening", stderr.String())
+	}
+}
+
 func TestSecurity_RunRefusesUnusableWorkspaceRegistry(t *testing.T) {
 	requireLinux(t)
 	tests := []struct {
