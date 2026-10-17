@@ -49,6 +49,18 @@
 <li><strong>Failure is reported, not hidden.</strong> The command&#39;s output stays on the screen (the alternate screen is gone while it runs), and a non-zero exit returns the interface to the preflight with the failure line and the manual commands. A package that is too old for Scopra — Ubuntu 22.04 ships Podman 3.4 — shows up as the same failed check, with the version, after the attempt.</li>
 </ol>
 <p>The plan today covers Debian/Ubuntu (<code>apt-get</code> with <code>uidmap</code>, <code>slirp4netns</code>, and <code>fuse-overlayfs</code>, which rootless Podman needs there), Fedora/RHEL and derivatives (<code>dnf</code>), Arch (<code>pacman</code>), openSUSE (<code>zypper</code>), and Alpine (<code>apk</code>).</p>
+<h3 id="amendment-the-second-kind-of-prerequisite">Amendment: the second kind of prerequisite</h3>
+<p>Installing the package was not enough. A machine can have Podman 4.0+, run rootless, use cgroups v2, and still stop the preflight, because systemd&#39;s <code>user@.service</code> delegates only <code>memory</code> and <code>pids</code> by default and Podman cannot enforce a CPU limit without the <code>cpu</code> controller. The user who reported the first version of this feature hit exactly that: the package install succeeded, the interface came back, and the only thing left was a manual fix.</p>
+<p>The same consent mechanism now covers it. When Podman is present and its own <code>podman info</code> reports that delegation is the <em>only</em> missing requirement, <code>f</code> offers a systemd drop-in instead of a package:</p>
+<pre><code class="language-text">[Service]
+Delegate=cpu cpuset io memory pids
+</code></pre>
+<p>at <code>/etc/systemd/system/user@.service.d/99-scopra-delegate.conf</code>, followed by <code>systemctl daemon-reload</code>. Three rules keep it inside the agreement:</p>
+<ol>
+<li><strong>No shell redirection, even for a file.</strong> The drop-in is written to the user&#39;s state directory first, then installed by <code>mkdir</code>, <code>cp</code>, and <code>chmod</code> argument vectors. The screen prints those commands, so the file the user approves is the file that lands.</li>
+<li><strong>Only when it can work.</strong> The offer requires Podman 4.0+, rootless, cgroups v2, and <code>systemctl</code>; on cgroups v1 the fix would be a boot parameter and a reboot, which this installer does not touch.</li>
+<li><strong>Say when it takes effect.</strong> A delegation change applies when the user manager next starts. The installer re-runs the preflight after the commands; if the controllers are still missing, the screen says to log out and back in rather than pretending the fix failed. That is the one step this design cannot automate without destroying the session it is running in.</li>
+</ol>
 <h2 id="consequences">Consequences</h2>
 <ul>
 <li>The one command now ends in a working install on the distributions Scopra supports, including a machine where Podman was missing, without the user leaving the terminal.</li>
@@ -67,7 +79,7 @@
 <li><strong>Auto-detect the package manager by trying each one.</strong> Rejected: a failed <code>dnf</code> on Debian is noise, and &#34;try until something works&#34; is not a security posture.</li>
 <li><strong>Provision the sandbox image too.</strong> Deferred, not rejected: pulling an image needs a digest the user chose, and this installer does not get to choose what the sandbox runs.</li>
 </ul>
-</article><p class="edit-link"><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/docs/decisions/017-opt-in-prerequisite-provisioning.md" rel="noopener noreferrer">Edit this page on GitHub</a></p></main><aside class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#context">Context</a></li><li><a href="#decision">Decision</a></li><li><a href="#consequences">Consequences</a></li><li><a href="#alternatives-considered">Alternatives considered</a></li></ul></aside></div><footer class="site-footer">
+</article><p class="edit-link"><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/docs/decisions/017-opt-in-prerequisite-provisioning.md" rel="noopener noreferrer">Edit this page on GitHub</a></p></main><aside class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#context">Context</a></li><li><a href="#decision">Decision</a></li><li class="toc-sub"><a href="#amendment-the-second-kind-of-prerequisite">Amendment: the second kind of prerequisite</a></li><li><a href="#consequences">Consequences</a></li><li><a href="#alternatives-considered">Alternatives considered</a></li></ul></aside></div><footer class="site-footer">
   <div class="footer-inner">
     <p><strong>Scopra</strong> — controlled execution for AI agents. Free and open source under the <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE">MIT License</a>.</p>
     <p class="muted">No pricing model, no telemetry, no account. Generated from the Markdown in <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">the repository</a>.</p>

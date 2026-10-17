@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -16,14 +18,90 @@ import (
 // confirms them on a screen that prints every command.
 type Provision struct {
 	// Family names the distribution family, for the interface: "fedora",
-	// "debian", "arch", "suse", or "alpine".
+	// "debian", "arch", "suse", or "alpine". It is empty for a plan that
+	// fixes a configuration rather than installing a package.
 	Family string
 	// Manager is the package manager executable, for example "dnf".
 	Manager string
 	// Packages are the packages the plan installs.
 	Packages []string
+	// Title names the fix: "Install Podman", "Delegate cgroup controllers".
+	Title string
+	// Summary explains why the machine needs the fix, in one sentence.
+	Summary string
+	// Note tells the user what the commands do to the system.
+	Note string
+	// NeedsRelogin marks a fix that systemd only applies to the next session.
+	NeedsRelogin bool
+	// Files are staged before the commands run. The commands copy them into
+	// place, so every path in them is the path that appears on the screen.
+	Files []ProvisionFile
 	// Commands are the exact argument vectors, sudo included when needed.
 	Commands [][]string
+}
+
+// ProvisionFile is a file the plan stages with the user's own permissions, for
+// a command to install. Staging keeps the privileged commands argument-only:
+// nothing is written to a system path by a shell.
+type ProvisionFile struct {
+	Path    string
+	Mode    os.FileMode
+	Content string
+}
+
+// delegateDropIn gives the user manager every cgroup controller Scopra's limits
+// need. systemd's own user@.service delegates only memory and pids, so a
+// rootless Podman session has no cpu controller and cannot enforce limits.
+const delegateDropIn = `[Service]
+Delegate=cpu cpuset io memory pids
+`
+
+// delegateDir is where systemd reads drop-ins for the user manager.
+const delegateDir = "/etc/systemd/system/user@.service.d"
+
+// delegateName sorts after distribution drop-ins, so this one wins.
+const delegateName = "99-scopra-delegate.conf"
+
+// DetectDelegationFix returns the commands that delegate the cgroup controllers
+// Podman needs to the user manager, or false when the installer cannot do it
+// safely: without systemd, without root or sudo, or without somewhere to stage
+// the drop-in.
+func DetectDelegationFix(root bool, hasProgram func(string) bool, stagingDir string) (Provision, bool) {
+	if stagingDir == "" || !hasProgram("systemctl") {
+		return Provision{}, false
+	}
+	prefix := []string{}
+	if !root {
+		if !hasProgram("sudo") {
+			return Provision{}, false
+		}
+		prefix = []string{"sudo"}
+	}
+	staged := filepath.Join(stagingDir, delegateName)
+	destination := filepath.Join(delegateDir, delegateName)
+	with := func(name string, args ...string) []string {
+		argv := make([]string, 0, len(prefix)+1+len(args))
+		argv = append(argv, prefix...)
+		argv = append(argv, name)
+		return append(argv, args...)
+	}
+	return Provision{
+		Title:        "Delegate cgroup controllers",
+		Summary:      "Podman is installed, but your user session is not delegated the cgroup controllers Scopra's limits need: cpu, memory, and pids.",
+		Note:         "This writes a systemd drop-in for the user manager and reloads systemd. sudo asks for your password; Scopra never stores it. systemd applies the change the next time you log in.",
+		NeedsRelogin: true,
+		Files: []ProvisionFile{{
+			Path:    staged,
+			Mode:    0o644,
+			Content: delegateDropIn,
+		}},
+		Commands: [][]string{
+			with("mkdir", "-p", delegateDir),
+			with("cp", staged, destination),
+			with("chmod", "0644", destination),
+			with("systemctl", "daemon-reload"),
+		},
+	}, true
 }
 
 // CommandLines renders the plan for display, one line per command.
@@ -63,6 +141,9 @@ func DetectProvision(osRelease []byte, hasProgram func(string) bool, root bool) 
 		Family:   family,
 		Manager:  manager,
 		Packages: packages,
+		Title:    "Install Podman",
+		Summary:  "Scopra needs rootless Podman 4.0+, and this machine does not have it yet.",
+		Note:     "They install from your distribution's repositories. sudo asks for your password; Scopra never stores it, and nothing else on the system changes.",
 		Commands: provisionCommands(prefix, manager, packages),
 	}, true
 }
@@ -159,7 +240,27 @@ type Stdio struct {
 // runs, which is what lets sudo prompt normally.
 func RunProvision(ctx context.Context, plan Provision, stdio Stdio) error {
 	if len(plan.Commands) == 0 {
-		return errors.New("nothing to install")
+		return errors.New("nothing to run")
+	}
+	staged := make([]string, 0, len(plan.Files))
+	defer func() {
+		for _, path := range staged {
+			_ = os.Remove(path)
+		}
+	}()
+	for _, file := range plan.Files {
+		if err := os.MkdirAll(filepath.Dir(file.Path), 0o700); err != nil {
+			return fmt.Errorf("stage %s: %w", file.Path, err)
+		}
+		if err := os.WriteFile(file.Path, []byte(file.Content), file.Mode); err != nil {
+			return fmt.Errorf("stage %s: %w", file.Path, err)
+		}
+		// WriteFile is subject to the umask; the copy must carry the mode the
+		// plan prints.
+		if err := os.Chmod(file.Path, file.Mode); err != nil {
+			return fmt.Errorf("stage %s: %w", file.Path, err)
+		}
+		staged = append(staged, file.Path)
 	}
 	for _, argv := range plan.Commands {
 		if len(argv) == 0 {

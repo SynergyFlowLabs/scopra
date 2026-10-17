@@ -32,13 +32,13 @@ install directory and, if you ask for one, your systemd user unit.
    if you asked for one, then asks systemd for the service state rather than
    trusting the previous step.
 
-## If Podman is missing
+## If a prerequisite is missing
 
-The preflight does not stop at "install it yourself". On a distribution it
-knows, the checks screen adds one line:
+The preflight does not stop at "install it yourself". When it knows how to fix
+what failed, the checks screen adds one line:
 
 ```text
-Press f and the installer can install it for you.
+Press f and the installer can fix this for you.
 ```
 
 `f` opens a screen that prints every command it would run — exactly, argument
@@ -78,6 +78,35 @@ the checks screen shows the error next to the manual instructions.
 A distribution whose repositories ship Podman older than 4.0 — Ubuntu 22.04
 has 3.4 — is installed but still refused, with the version named. What the
 installer will not do is install a newer Podman from somewhere else.
+
+### When Podman is installed but the cgroup controllers are not delegated
+
+Rootless Podman can only apply a CPU limit if systemd delegated the `cpu`
+controller to your user manager; many distributions delegate only `memory` and
+`pids`. The install stops with `cgroup controllers not delegated: cpu`, and `f`
+offers a second kind of fix:
+
+```console
+sudo mkdir -p /etc/systemd/system/user@.service.d
+sudo cp /home/you/.local/state/scopra/installer/99-scopra-delegate.conf /etc/systemd/system/user@.service.d/99-scopra-delegate.conf
+sudo chmod 0644 /etc/systemd/system/user@.service.d/99-scopra-delegate.conf
+sudo systemctl daemon-reload
+```
+
+The drop-in is `[Service]` plus `Delegate=cpu cpuset io memory pids`. It is
+staged in your state directory first, so every privileged command is an
+argument vector rather than a shell redirection, and the file it installs is
+the one printed above.
+
+**systemd applies a delegation change when the user manager starts.** After the
+commands run, the installer re-checks; if the controllers are still missing it
+says so plainly: log out, log back in, and run the installer again — the whole
+command, from the top. Nothing else is needed.
+
+This fix is offered only when it can work: Podman 4.0+ is installed, it runs
+rootless, the host uses cgroups v2, and `systemd` exists. On cgroups v1 the fix
+is a kernel boot parameter and a reboot, so the installer explains instead of
+touching anything.
 
 The summary screen shows the install directory, the version, the service state,
 and — when the directory is not on `PATH` — the exact `export PATH=…` line to add.
@@ -124,7 +153,7 @@ not install silently because there was nobody to confirm.
 `install.sh` follows the latest release. To install a specific tag:
 
 ```console
-$ curl -fsSL https://scopra-six.vercel.app/install.sh | SCOPRA_VERSION=v0.1.0-alpha.4 sh
+$ curl -fsSL https://scopra-six.vercel.app/install.sh | SCOPRA_VERSION=v0.1.0-alpha.5 sh
 ```
 
 ## Verify the download yourself
@@ -176,6 +205,7 @@ stay in `$XDG_STATE_HOME/scopra` until you delete that directory.
 |---|---|
 | `systemctl --user is not answering` | Log in to a systemd user session and run the installer from a login shell. A machine without systemd cannot host `scoprad`; the installer refuses rather than writing a unit nothing will start. |
 | `podman is not available` | On the checks screen press `f` to have it installed with your distribution's package manager, or install Podman 4.0 or later yourself and run `podman info` once to create its configuration. |
+| `cgroup controllers not delegated: cpu` | Press `f` to write the systemd delegation drop-in, then log out and back in and re-run the installer. On cgroups v1, boot with `systemd.unified_cgroup_hierarchy=1` instead. |
 | `Podman runs as root, not rootless` | Install Podman as your user, not through a root service, and re-run `podman info`. |
 | `cgroups are not v2` / `cgroup controllers not delegated` | The host must boot with cgroup v2 and delegate `cpu`, `memory`, and `pids` to your user session. See ADR-010. |
 | `Your shell does not find scopra yet` | Add the `export PATH=…` line from the summary to `~/.profile` or `~/.zshrc`, then open a new terminal. |

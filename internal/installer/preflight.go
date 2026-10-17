@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -69,10 +70,10 @@ type Environment struct {
 	StateDir    string
 	StateDirErr error
 	Run         func(ctx context.Context, name string, args ...string) ([]byte, error)
-	// Provision returns how to install a missing prerequisite with the
-	// distribution's package manager. It returns false when there is no plan
-	// the installer is willing to run.
-	Provision func() (Provision, bool)
+	// Provision returns how to fix a failed prerequisite: install a missing
+	// package, or delegate the cgroup controllers Podman needs. It returns
+	// false when there is no plan the installer is willing to run.
+	Provision func(ctx context.Context) (Provision, bool)
 }
 
 // StateDir is the Mio state directory the installer reports and the service
@@ -99,14 +100,33 @@ func DefaultEnvironment() Environment {
 	}
 }
 
-// defaultProvision reads the distribution's own description and decides
-// whether Podman can be installed with its package manager.
-func defaultProvision() (Provision, bool) {
-	release, err := os.ReadFile("/etc/os-release")
+// defaultProvision decides how this machine's failed prerequisite can be fixed
+// without guessing. It reads the distribution's own description before
+// installing a package, and Podman's own report before touching systemd.
+func defaultProvision(ctx context.Context) (Provision, bool) {
+	root := os.Geteuid() == 0
+	if !hasProgram("podman") {
+		release, err := os.ReadFile("/etc/os-release")
+		if err != nil {
+			return Provision{}, false
+		}
+		return DetectProvision(release, hasProgram, root)
+	}
+	// Podman is installed. If the only thing missing is cgroup controller
+	// delegation, the fix is a systemd drop-in rather than a package.
+	output, err := runCommand(ctx, "podman", "info", "--format", "json")
 	if err != nil {
 		return Provision{}, false
 	}
-	return DetectProvision(release, hasProgram, os.Geteuid() == 0)
+	info, err := hollow.ParsePodmanInfo(output)
+	if err != nil || !info.DelegationMissing() {
+		return Provision{}, false
+	}
+	stateDir, err := localipc.ResolveStateDir("")
+	if err != nil || stateDir == "" {
+		return Provision{}, false
+	}
+	return DetectDelegationFix(root, hasProgram, filepath.Join(stateDir, "installer"))
 }
 
 // hasProgram reports whether name is on PATH. It is a variable so tests can

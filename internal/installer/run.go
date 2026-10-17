@@ -157,18 +157,19 @@ func (r *Runner) Run(ctx context.Context) (int, error) {
 func (r *Runner) runChecks(ctx context.Context, messages chan<- Message) {
 	checks := r.Env.Checks(ctx)
 	message := Message{Checks: checks}
-	if missingPodman(checks) && r.Env.Provision != nil {
-		if plan, ok := r.Env.Provision(); ok {
+	if blocked(checks) && r.Env.Provision != nil {
+		if plan, ok := r.Env.Provision(ctx); ok {
 			message.Provision = &plan
 		}
 	}
 	messages <- message
 }
 
-// missingPodman reports whether the Podman check is what blocks the install.
-func missingPodman(checks []Check) bool {
+// blocked reports whether a required check failed, which is the only case the
+// interface offers to fix.
+func blocked(checks []Check) bool {
 	for _, check := range checks {
-		if check.ID == "podman" && check.Failed() {
+		if check.Failed() {
 			return true
 		}
 	}

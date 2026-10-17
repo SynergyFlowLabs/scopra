@@ -125,6 +125,26 @@ func (info PodmanInfo) Check() error {
 	return fmt.Errorf("%w: %s", ErrContainmentUnavailable, strings.Join(problems, "; "))
 }
 
+// DelegationMissing reports whether the only requirement this build of Podman
+// fails is cgroup controller delegation: it is new enough, runs rootless, and
+// uses cgroups v2, but the user's cgroup does not offer every controller the
+// limits need. It is what tells the installer that a systemd drop-in, rather
+// than a package, is the fix.
+func (info PodmanInfo) DelegationMissing() bool {
+	if !atLeastVersion(info.Version, minPodmanMajor, minPodmanMinor) {
+		return false
+	}
+	if !info.Rootless || info.CgroupVersion != "v2" {
+		return false
+	}
+	for _, controller := range requiredControllers {
+		if !slices.Contains(info.CgroupControllers, controller) {
+			return true
+		}
+	}
+	return false
+}
+
 // atLeastVersion reports whether version, written major.minor with optional
 // further components or suffixes such as "4.9.4-dev", is at least
 // minMajor.minMinor. The numbers are compared as integers. A version with any

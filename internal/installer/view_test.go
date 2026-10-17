@@ -192,10 +192,10 @@ func TestChecksScreenOffersTheSetupKey(t *testing.T) {
 		Commands: [][]string{{"sudo", "dnf", "install", "-y", "podman"}}}
 	model.Update(Message{Checks: failChecks(), Provision: &plan})
 	view := model.View(100, 30, tui.StyleSheet{})
-	if !strings.Contains(view, "Press f and the installer can install it for you.") {
+	if !strings.Contains(view, "Press f and the installer can fix this for you.") {
 		t.Fatalf("checks screen does not offer the setup key:\n%s", view)
 	}
-	if !strings.Contains(view, "f set up podman") {
+	if !strings.Contains(view, "f fix this") {
 		t.Fatalf("footer does not name the setup key:\n%s", view)
 	}
 }
@@ -204,6 +204,7 @@ func TestSetupScreenShowsEveryCommand(t *testing.T) {
 	model := newTestModel()
 	begin(model)
 	plan := Provision{Family: "debian", Manager: "apt-get", Packages: []string{"podman"},
+		Summary: "Scopra needs rootless Podman 4.0+, and this machine does not have it yet.",
 		Commands: [][]string{
 			{"sudo", "apt-get", "update"},
 			{"sudo", "apt-get", "install", "-y", "podman", "uidmap"},
@@ -219,6 +220,51 @@ func TestSetupScreenShowsEveryCommand(t *testing.T) {
 		"sudo apt-get install -y podman uidmap",
 		"y install now",
 		"The last attempt failed: sudo: a password is required",
+	} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("setup screen is missing %q:\n%s", want, view)
+		}
+	}
+}
+
+func TestChecksScreenExplainsAFixThatNeedsANewLogin(t *testing.T) {
+	model := newTestModel()
+	begin(model)
+	plan := Provision{
+		Title:        "Delegate cgroup controllers",
+		NeedsRelogin: true,
+		Commands:     [][]string{{"sudo", "systemctl", "daemon-reload"}},
+	}
+	model.Update(Message{Checks: failChecks(), Provision: &plan})
+	model.Update(Message{ProvisionDone: true, ProvisionErr: errors.New("cgroup controllers not delegated: cpu")})
+	model.Update(Message{Checks: failChecks(), Provision: &plan})
+	view := model.View(100, 30, tui.StyleSheet{})
+	if !strings.Contains(view, "The change takes effect at your next login") {
+		t.Fatalf("checks screen does not explain the login step:\n%s", view)
+	}
+}
+
+func TestSetupScreenDescribesACgroupFix(t *testing.T) {
+	model := newTestModel()
+	begin(model)
+	plan := Provision{
+		Title:        "Delegate cgroup controllers",
+		Summary:      "Podman is installed, but your user session is not delegated the cgroup controllers Scopra's limits need: cpu, memory, and pids.",
+		Note:         "This writes a systemd drop-in for the user manager and reloads systemd.",
+		NeedsRelogin: true,
+		Commands: [][]string{
+			{"sudo", "mkdir", "-p", "/etc/systemd/system/user@.service.d"},
+			{"sudo", "cp", "/home/u/.local/state/scopra/installer/99-scopra-delegate.conf", "/etc/systemd/system/user@.service.d/99-scopra-delegate.conf"},
+		},
+	}
+	model.Update(Message{Checks: failChecks(), Provision: &plan})
+	model.Key(tui.Key{Type: tui.KeyRune, Rune: 'f'})
+	view := model.View(120, 30, tui.StyleSheet{})
+	for _, want := range []string{
+		"not delegated the cgroup controllers",
+		"sudo mkdir -p /etc/systemd/system/user@.service.d",
+		"sudo cp /home/u/.local/state/scopra/installer/99-scopra-delegate.conf",
+		"This writes a systemd drop-in",
 	} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("setup screen is missing %q:\n%s", want, view)

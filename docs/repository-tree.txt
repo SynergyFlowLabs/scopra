@@ -150,6 +150,10 @@
 ./apps/docs-site/public/releases/v0.1.0-alpha.4/checksums.txt
 ./apps/docs-site/public/releases/v0.1.0-alpha.4/scopra_linux_amd64.tar.gz
 ./apps/docs-site/public/releases/v0.1.0-alpha.4/scopra_linux_arm64.tar.gz
+./apps/docs-site/public/releases/v0.1.0-alpha.5
+./apps/docs-site/public/releases/v0.1.0-alpha.5/checksums.txt
+./apps/docs-site/public/releases/v0.1.0-alpha.5/scopra_linux_amd64.tar.gz
+./apps/docs-site/public/releases/v0.1.0-alpha.5/scopra_linux_arm64.tar.gz
 ./apps/docs-site/public/robots.txt
 ./apps/docs-site/public/sitemap.xml
 ./apps/docs-site/public/styles.css

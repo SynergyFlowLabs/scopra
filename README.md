@@ -29,9 +29,9 @@ SHA-256 against the release's `checksums.txt`, and opens an interactive
 installer. The installer checks the system first (Linux, systemd user session,
 rootless Podman 4.0+ with cgroups v2), then asks where to put the binaries,
 whether to pin a sandbox image, and whether Mio should run as a systemd user
-service. Nothing changes until you confirm. If rootless Podman is missing, the
-checks screen offers to install it with your distribution's package manager —
-it prints every command first and runs nothing until you press `y`.
+service. Nothing changes until you confirm. If rootless Podman is missing — or
+installed without the cgroup controllers Scopra needs — the checks screen offers
+to fix it: it prints every command first and runs nothing until you press `y`.
 
 Every variant — scripted installs, a pinned version, a custom directory, a pinned
 image, verifying the archive by hand — is in
@@ -188,7 +188,7 @@ $ curl -fsSL https://scopra-six.vercel.app/install.sh | sh -s -- --yes
 names the current tag; setting `SCOPRA_VERSION` repeats an exact install:
 
 ```console
-$ curl -fsSL https://scopra-six.vercel.app/install.sh | SCOPRA_VERSION=v0.1.0-alpha.4 sh
+$ curl -fsSL https://scopra-six.vercel.app/install.sh | SCOPRA_VERSION=v0.1.0-alpha.5 sh
 ```
 
 **Choose the directory and skip the service** — `--dir` defaults to

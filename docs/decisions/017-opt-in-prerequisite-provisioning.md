@@ -61,6 +61,40 @@ The plan today covers Debian/Ubuntu (`apt-get` with `uidmap`, `slirp4netns`, and
 `fuse-overlayfs`, which rootless Podman needs there), Fedora/RHEL and
 derivatives (`dnf`), Arch (`pacman`), openSUSE (`zypper`), and Alpine (`apk`).
 
+### Amendment: the second kind of prerequisite
+
+Installing the package was not enough. A machine can have Podman 4.0+, run
+rootless, use cgroups v2, and still stop the preflight, because systemd's
+`user@.service` delegates only `memory` and `pids` by default and Podman cannot
+enforce a CPU limit without the `cpu` controller. The user who reported the
+first version of this feature hit exactly that: the package install succeeded,
+the interface came back, and the only thing left was a manual fix.
+
+The same consent mechanism now covers it. When Podman is present and its own
+`podman info` reports that delegation is the *only* missing requirement, `f`
+offers a systemd drop-in instead of a package:
+
+```text
+[Service]
+Delegate=cpu cpuset io memory pids
+```
+
+at `/etc/systemd/system/user@.service.d/99-scopra-delegate.conf`, followed by
+`systemctl daemon-reload`. Three rules keep it inside the agreement:
+
+1. **No shell redirection, even for a file.** The drop-in is written to the
+   user's state directory first, then installed by `mkdir`, `cp`, and `chmod`
+   argument vectors. The screen prints those commands, so the file the user
+   approves is the file that lands.
+2. **Only when it can work.** The offer requires Podman 4.0+, rootless, cgroups
+   v2, and `systemctl`; on cgroups v1 the fix would be a boot parameter and a
+   reboot, which this installer does not touch.
+3. **Say when it takes effect.** A delegation change applies when the user
+   manager next starts. The installer re-runs the preflight after the commands;
+   if the controllers are still missing, the screen says to log out and back in
+   rather than pretending the fix failed. That is the one step this design
+   cannot automate without destroying the session it is running in.
+
 ## Consequences
 
 - The one command now ends in a working install on the distributions Scopra

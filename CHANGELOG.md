@@ -12,6 +12,16 @@ version, and the wire protocol is versioned separately (see ADR-002 and ADR-009)
 
 ### Added
 
+- **The installer can delegate cgroup controllers (ADR-017, amended).** A
+  machine with Podman 4.0+, rootless, on cgroups v2 can still fail the
+  preflight when systemd delegated only `memory` and `pids` to the user
+  manager. When that is the only missing requirement, `f` now offers a systemd
+  drop-in (`Delegate=cpu cpuset io memory pids`) installed with
+  `mkdir`/`cp`/`chmod`/`systemctl daemon-reload` argument vectors, staged from
+  the state directory so no shell writes a system file. The installer re-checks
+  afterwards; if the controllers are still missing it says the change applies
+  at the next login instead of failing silently. `--yes` still never runs any of
+  it.
 - **The installer can set up a missing prerequisite (ADR-017).** When the
   preflight fails because rootless Podman is absent, the checks screen offers
   `f` to install it with the distribution's own package manager. A confirmation

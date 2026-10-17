@@ -126,10 +126,13 @@ func runInstallPlain(ctx context.Context, options installer.Options, stdout, std
 	}
 	if !installer.Ready(checks) {
 		if env.Provision != nil {
-			if plan, ok := env.Provision(); ok {
-				_, _ = fmt.Fprintln(stdout, "\nto install it now, run:")
+			if plan, ok := env.Provision(ctx); ok {
+				_, _ = fmt.Fprintln(stdout, "\nto fix it now, run:")
 				for _, line := range plan.CommandLines() {
 					_, _ = fmt.Fprintf(stdout, "  %s\n", line)
+				}
+				if plan.NeedsRelogin {
+					_, _ = fmt.Fprintln(stdout, "then log out and back in, and run the installer again")
 				}
 			}
 		}

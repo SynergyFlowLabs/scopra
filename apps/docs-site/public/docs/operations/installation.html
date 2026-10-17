@@ -40,9 +40,9 @@
 <li><strong>Background service.</strong> A systemd <strong>user</strong> unit (<code>scoprad.service</code>) that starts Mio with your session, or the command line only.</li>
 <li><strong>Install.</strong> It copies the two binaries into place atomically, writes the unit if you asked for one, then asks systemd for the service state rather than trusting the previous step.</li>
 </ol>
-<h2 id="if-podman-is-missing">If Podman is missing</h2>
-<p>The preflight does not stop at &#34;install it yourself&#34;. On a distribution it knows, the checks screen adds one line:</p>
-<pre><code class="language-text">Press f and the installer can install it for you.
+<h2 id="if-a-prerequisite-is-missing">If a prerequisite is missing</h2>
+<p>The preflight does not stop at &#34;install it yourself&#34;. When it knows how to fix what failed, the checks screen adds one line:</p>
+<pre><code class="language-text">Press f and the installer can fix this for you.
 </code></pre>
 <p><code>f</code> opens a screen that prints every command it would run — exactly, argument for argument — and nothing runs until you press <code>y</code>:</p>
 <pre><code class="language-console">sudo apt-get update
@@ -62,6 +62,16 @@ sudo apt-get install -y podman uidmap slirp4netns fuse-overlayfs
 <p><code>sudo</code> is prefixed only when the installer is not already root, and only if <code>sudo</code> exists. An unknown distribution, a missing package manager, or a non-root process without <code>sudo</code> produces no plan at all: the installer shows the manual command instead of guessing. The packages come from your distribution&#39;s own repositories; the installer never adds a repository, never downloads a binary, and never runs a shell.</p>
 <p>While the commands run, the interface steps aside: the terminal is restored, so <code>sudo</code> asks for your password the way it always does. Scopra never sees it. The installer then takes the terminal back, re-runs the preflight, and continues with the location step. If a command fails, its output stays on the screen and the checks screen shows the error next to the manual instructions.</p>
 <p>A distribution whose repositories ship Podman older than 4.0 — Ubuntu 22.04 has 3.4 — is installed but still refused, with the version named. What the installer will not do is install a newer Podman from somewhere else.</p>
+<h3 id="when-podman-is-installed-but-the-cgroup-controllers-are-not-delegated">When Podman is installed but the cgroup controllers are not delegated</h3>
+<p>Rootless Podman can only apply a CPU limit if systemd delegated the <code>cpu</code> controller to your user manager; many distributions delegate only <code>memory</code> and <code>pids</code>. The install stops with <code>cgroup controllers not delegated: cpu</code>, and <code>f</code> offers a second kind of fix:</p>
+<pre><code class="language-console">sudo mkdir -p /etc/systemd/system/user@.service.d
+sudo cp /home/you/.local/state/scopra/installer/99-scopra-delegate.conf /etc/systemd/system/user@.service.d/99-scopra-delegate.conf
+sudo chmod 0644 /etc/systemd/system/user@.service.d/99-scopra-delegate.conf
+sudo systemctl daemon-reload
+</code></pre>
+<p>The drop-in is <code>[Service]</code> plus <code>Delegate=cpu cpuset io memory pids</code>. It is staged in your state directory first, so every privileged command is an argument vector rather than a shell redirection, and the file it installs is the one printed above.</p>
+<p><strong>systemd applies a delegation change when the user manager starts.</strong> After the commands run, the installer re-checks; if the controllers are still missing it says so plainly: log out, log back in, and run the installer again — the whole command, from the top. Nothing else is needed.</p>
+<p>This fix is offered only when it can work: Podman 4.0+ is installed, it runs rootless, the host uses cgroups v2, and <code>systemd</code> exists. On cgroups v1 the fix is a kernel boot parameter and a reboot, so the installer explains instead of touching anything.</p>
 <p>The summary screen shows the install directory, the version, the service state, and — when the directory is not on <code>PATH</code> — the exact <code>export PATH=…</code> line to add.</p>
 <h2 id="requirements">Requirements</h2>
 <div class="table-wrap"><table>
@@ -88,7 +98,7 @@ sudo apt-get install -y podman uidmap slirp4netns fuse-overlayfs
 <p>Without a terminal and without <code>--yes</code>, the installer stops and says so: it will not install silently because there was nobody to confirm.</p>
 <h2 id="pin-a-version">Pin a version</h2>
 <p><code>install.sh</code> follows the latest release. To install a specific tag:</p>
-<pre><code class="language-console">$ curl -fsSL https://scopra-six.vercel.app/install.sh | SCOPRA_VERSION=v0.1.0-alpha.4 sh
+<pre><code class="language-console">$ curl -fsSL https://scopra-six.vercel.app/install.sh | SCOPRA_VERSION=v0.1.0-alpha.5 sh
 </code></pre>
 <h2 id="verify-the-download-yourself">Verify the download yourself</h2>
 <pre><code class="language-console">$ version=$(curl -fsSL https://scopra-six.vercel.app/releases/latest.txt)
@@ -119,6 +129,7 @@ $ rm -f ~/.local/bin/scopra ~/.local/bin/scoprad
 <tbody>
 <tr><td><code>systemctl --user is not answering</code></td><td>Log in to a systemd user session and run the installer from a login shell. A machine without systemd cannot host <code>scoprad</code>; the installer refuses rather than writing a unit nothing will start.</td></tr>
 <tr><td><code>podman is not available</code></td><td>On the checks screen press <code>f</code> to have it installed with your distribution&#39;s package manager, or install Podman 4.0 or later yourself and run <code>podman info</code> once to create its configuration.</td></tr>
+<tr><td><code>cgroup controllers not delegated: cpu</code></td><td>Press <code>f</code> to write the systemd delegation drop-in, then log out and back in and re-run the installer. On cgroups v1, boot with <code>systemd.unified_cgroup_hierarchy=1</code> instead.</td></tr>
 <tr><td><code>Podman runs as root, not rootless</code></td><td>Install Podman as your user, not through a root service, and re-run <code>podman info</code>.</td></tr>
 <tr><td><code>cgroups are not v2</code> / <code>cgroup controllers not delegated</code></td><td>The host must boot with cgroup v2 and delegate <code>cpu</code>, <code>memory</code>, and <code>pids</code> to your user session. See ADR-010.</td></tr>
 <tr><td><code>Your shell does not find scopra yet</code></td><td>Add the <code>export PATH=…</code> line from the summary to <code>~/.profile</code> or <code>~/.zshrc</code>, then open a new terminal.</td></tr>
@@ -130,7 +141,7 @@ $ rm -f ~/.local/bin/scopra ~/.local/bin/scoprad
 <p><code>scripts/release.sh vX.Y.Z [--publish]</code> cross-compiles <code>scopra</code> and <code>scoprad</code> with <code>-trimpath</code> and <code>CGO_ENABLED=0</code>, stamps the version into both binaries (<code>-X …/internal/buildinfo.VersionOverride</code>), packs <code>scopra_linux_amd64.tar.gz</code> and <code>scopra_linux_arm64.tar.gz</code> with the licence and readme, and writes <code>checksums.txt</code> into <code>dist/</code>.</p>
 <p>With <code>--publish</code> it also copies the two archives and <code>checksums.txt</code> into <code>apps/docs-site/public/releases/&lt;tag&gt;/</code> and writes <code>apps/docs-site/public/releases/latest.txt</code> with the tag on a single line. The site build preserves that directory, so the next deployment serves <code>/releases/&lt;tag&gt;/…</code> and <code>/releases/latest.txt</code>. <code>install.sh</code> reads <code>latest.txt</code> — or a tag from <code>SCOPRA_VERSION</code> — and downloads from the same origin it came from. Commit both the archives and <code>latest.txt</code>: the site is built from the repository, and <code>go test ./tools/docsite</code> fails if the committed output and the sources disagree.</p>
 <p>The source of truth for the script is <code>apps/docs-site/static/install.sh</code>, published at <code>/install.sh</code> by the same site build that publishes this page.</p>
-</article><p class="edit-link"><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/docs/operations/installation.md" rel="noopener noreferrer">Edit this page on GitHub</a></p></main><aside class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#what-the-installer-asks">What the installer asks</a></li><li><a href="#if-podman-is-missing">If Podman is missing</a></li><li><a href="#requirements">Requirements</a></li><li><a href="#non-interactive-install">Non-interactive install</a></li><li><a href="#pin-a-version">Pin a version</a></li><li><a href="#verify-the-download-yourself">Verify the download yourself</a></li><li><a href="#what-an-install-changes">What an install changes</a></li><li><a href="#uninstall">Uninstall</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#how-releases-are-built">How releases are built</a></li></ul></aside></div><footer class="site-footer">
+</article><p class="edit-link"><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/docs/operations/installation.md" rel="noopener noreferrer">Edit this page on GitHub</a></p></main><aside class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#what-the-installer-asks">What the installer asks</a></li><li><a href="#if-a-prerequisite-is-missing">If a prerequisite is missing</a></li><li class="toc-sub"><a href="#when-podman-is-installed-but-the-cgroup-controllers-are-not-delegated">When Podman is installed but the cgroup controllers are not delegated</a></li><li><a href="#requirements">Requirements</a></li><li><a href="#non-interactive-install">Non-interactive install</a></li><li><a href="#pin-a-version">Pin a version</a></li><li><a href="#verify-the-download-yourself">Verify the download yourself</a></li><li><a href="#what-an-install-changes">What an install changes</a></li><li><a href="#uninstall">Uninstall</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#how-releases-are-built">How releases are built</a></li></ul></aside></div><footer class="site-footer">
   <div class="footer-inner">
     <p><strong>Scopra</strong> — controlled execution for AI agents. Free and open source under the <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE">MIT License</a>.</p>
     <p class="muted">No pricing model, no telemetry, no account. Generated from the Markdown in <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">the repository</a>.</p>

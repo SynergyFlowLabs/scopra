@@ -228,7 +228,14 @@ func (m *Model) drawChecks(frame *tui.Frame, x, y, width, height int) {
 		return
 	}
 	if m.setup != nil {
-		frame.Put(x, row, "Press f and the installer can install it for you.", styleAccent)
+		frame.Put(x, row, "Press f and the installer can fix this for you.", styleAccent)
+		if m.setupErr != nil && m.setup.NeedsRelogin {
+			row++
+			for _, line := range tui.Wrap("The change takes effect at your next login: log out, log back in, and run the installer again.", width) {
+				frame.Put(x, row, line, styleWarn)
+				row++
+			}
+		}
 		return
 	}
 	frame.Put(x, row, "Fix the item above, then run the installer again.", styleWarn)
@@ -271,12 +278,15 @@ func (m *Model) drawSteps(frame *tui.Frame, x, y, width, height int) {
 // drawSetup shows exactly what will run, and asks for one deliberate key. It
 // is the only screen that can lead to a privileged command.
 func (m *Model) drawSetup(frame *tui.Frame, x, y, width int) {
-	y = m.text(frame, x, y, width, styleText,
-		"Scopra needs rootless Podman 4.0+, and this machine does not have it yet.",
-		"",
-		"The installer can run these commands for you:",
-		"",
-	)
+	summary := "Scopra needs rootless Podman 4.0+, and this machine does not have it yet."
+	note := "They install from your distribution's repositories. sudo asks for your password; Scopra never stores it, and nothing else on the system changes."
+	if m.setup != nil && m.setup.Summary != "" {
+		summary = m.setup.Summary
+	}
+	if m.setup != nil && m.setup.Note != "" {
+		note = m.setup.Note
+	}
+	y = m.text(frame, x, y, width, styleText, summary, "", "The installer can run these commands for you:", "")
 	if m.setup != nil {
 		for _, line := range m.setup.CommandLines() {
 			for _, wrapped := range tui.Wrap(line, width-2) {
@@ -286,9 +296,7 @@ func (m *Model) drawSetup(frame *tui.Frame, x, y, width int) {
 		}
 	}
 	y++
-	y = m.text(frame, x, y, width, styleMuted,
-		"They install from your distribution's repositories. sudo asks for your password; Scopra never stores it, and nothing else on the system changes.",
-	)
+	y = m.text(frame, x, y, width, styleMuted, note)
 	if m.setupErr != nil {
 		y++
 		for _, line := range tui.Wrap("The last attempt failed: "+m.setupErr.Error(), width) {
@@ -488,7 +496,7 @@ func (m *Model) hints() []string {
 			return []string{"enter continue", "q quit"}
 		}
 		if m.setup != nil {
-			return []string{"f set up podman", "q quit"}
+			return []string{"f fix this", "q quit"}
 		}
 		return []string{"q quit"}
 	case ScreenSetup:

@@ -2,6 +2,10 @@ package installer
 
 import (
 	"context"
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -204,5 +208,75 @@ func TestRunProvisionReportsSuccess(t *testing.T) {
 	}
 	if output.String() != "onetwo" {
 		t.Fatalf("output = %q, want the child's output", output.String())
+	}
+}
+
+func TestDetectDelegationFixBuildsTheDropIn(t *testing.T) {
+	plan, ok := DetectDelegationFix(false, programSet("systemctl", "sudo"), "/home/u/.local/state/scopra/installer")
+	if !ok {
+		t.Fatal("DetectDelegationFix() = no plan, want one")
+	}
+	if plan.Title != "Delegate cgroup controllers" || !plan.NeedsRelogin {
+		t.Fatalf("plan = %+v, want the delegation fix that needs a new login", plan)
+	}
+	if len(plan.Files) != 1 {
+		t.Fatalf("files = %+v, want one staged drop-in", plan.Files)
+	}
+	file := plan.Files[0]
+	if file.Path != "/home/u/.local/state/scopra/installer/99-scopra-delegate.conf" || file.Mode != 0o644 {
+		t.Fatalf("staged file = %+v", file)
+	}
+	if !strings.Contains(file.Content, "Delegate=cpu cpuset io memory pids") || !strings.HasPrefix(file.Content, "[Service]") {
+		t.Fatalf("drop-in content = %q", file.Content)
+	}
+	want := [][]string{
+		{"sudo", "mkdir", "-p", "/etc/systemd/system/user@.service.d"},
+		{"sudo", "cp", file.Path, "/etc/systemd/system/user@.service.d/99-scopra-delegate.conf"},
+		{"sudo", "chmod", "0644", "/etc/systemd/system/user@.service.d/99-scopra-delegate.conf"},
+		{"sudo", "systemctl", "daemon-reload"},
+	}
+	if !reflect.DeepEqual(plan.Commands, want) {
+		t.Fatalf("commands = %q, want %q", plan.Commands, want)
+	}
+}
+
+func TestDetectDelegationFixRefusesWhenItCannotBeDone(t *testing.T) {
+	tests := []struct {
+		name     string
+		programs func(string) bool
+		root     bool
+		staging  string
+	}{
+		{name: "no staging directory", programs: programSet("systemctl", "sudo"), staging: ""},
+		{name: "no systemctl", programs: programSet("sudo"), staging: "/tmp/stage"},
+		{name: "no sudo and not root", programs: programSet("systemctl"), staging: "/tmp/stage"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if plan, ok := DetectDelegationFix(test.root, test.programs, test.staging); ok {
+				t.Fatalf("DetectDelegationFix() = %+v, want no plan", plan)
+			}
+		})
+	}
+}
+
+func TestRunProvisionStagesFilesAndRemovesThem(t *testing.T) {
+	dir := t.TempDir()
+	staged := filepath.Join(dir, "installer", "99-scopra-delegate.conf")
+	plan := Provision{
+		Files: []ProvisionFile{{Path: staged, Mode: 0o640, Content: "[Service]\nDelegate=pids\n"}},
+		Commands: [][]string{
+			{"/bin/sh", "-c", "test -f \"$1\" && cat \"$1\"", "sh", staged},
+		},
+	}
+	var output strings.Builder
+	if err := RunProvision(context.Background(), plan, Stdio{Out: &output, Err: &output}); err != nil {
+		t.Fatalf("RunProvision() error = %v", err)
+	}
+	if !strings.Contains(output.String(), "Delegate=pids") {
+		t.Fatalf("the command did not see the staged file: %q", output.String())
+	}
+	if _, err := os.Stat(staged); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("the staged file survived the run: %v", err)
 	}
 }
