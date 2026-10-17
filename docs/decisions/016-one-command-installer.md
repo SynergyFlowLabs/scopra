@@ -128,6 +128,13 @@ Git to carry, and it makes what users download byte-for-byte the same thing the
 site test compares against. A release is therefore a commit plus a deployment,
 which is a workflow the project already has.
 
+> **Amended 2026-10-17 (ADR-017).** The install itself still never uses `sudo`
+> and still changes only the install directory and the user unit. A missing
+> prerequisite is the one exception, and it is opt-in: the interface prints the
+> distribution's exact command, waits for `y`, and hands the terminal to the
+> child so `sudo` can prompt. `--yes` never provisions. Read "never uses `sudo`"
+> below as "the install never does; a prerequisite is offered, not assumed".
+
 ## Consequences
 
 - A user copies one line and gets a checklist, a choice of directory, an image

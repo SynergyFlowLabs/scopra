@@ -178,7 +178,7 @@ func (m *Model) drawWelcome(frame *tui.Frame, x, y, width int) {
 	y = m.text(frame, x, y, width, styleText,
 		"Scopra runs commands inside a rootless Podman container, one workspace at a time, and keeps an audit-friendly record of every run.",
 		"",
-		"This installer puts scopra and scoprad in place. It never uses sudo, never edits your shell profile, and can install a systemd user service so the daemon starts with your session.",
+		"This installer puts scopra and scoprad in place, never edits your shell profile, and can install a systemd user service so the daemon starts with your session. If a prerequisite is missing it offers to install it for you, showing the exact command first.",
 	)
 	y++
 	frame.Put(x, y, "Nothing is changed until you confirm.", styleFaint)

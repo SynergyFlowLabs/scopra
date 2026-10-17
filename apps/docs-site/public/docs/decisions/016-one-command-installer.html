@@ -71,6 +71,9 @@
 <h3 id="releases-and-the-version-stamp">Releases and the version stamp</h3>
 <p><code>scripts/release.sh vX.Y.Z [--publish]</code> cross-compiles <code>linux/amd64</code> and <code>linux/arm64</code> with <code>CGO_ENABLED=0</code> and <code>-trimpath</code>, stamps the tag into both binaries with <code>-X …/internal/buildinfo.VersionOverride</code>, and writes one archive per platform plus <code>checksums.txt</code>. Suffixing <code>--publish</code> copies them to <code>apps/docs-site/public/releases/&lt;tag&gt;/</code> and points <code>latest.txt</code> at the tag, which is what <code>install.sh</code> reads. <code>scopra version</code> reports the stamp; an invalid stamp is ignored, so a typo cannot produce a lying version.</p>
 <p>The archives live in the repository rather than in a binary store: two platforms, about six megabytes, and a handful of releases is small enough for Git to carry, and it makes what users download byte-for-byte the same thing the site test compares against. A release is therefore a commit plus a deployment, which is a workflow the project already has.</p>
+<blockquote>
+<p><strong>Amended 2026-10-17 (ADR-017).</strong> The install itself still never uses <code>sudo</code> and still changes only the install directory and the user unit. A missing prerequisite is the one exception, and it is opt-in: the interface prints the distribution&#39;s exact command, waits for <code>y</code>, and hands the terminal to the child so <code>sudo</code> can prompt. <code>--yes</code> never provisions. Read &#34;never uses <code>sudo</code>&#34; below as &#34;the install never does; a prerequisite is offered, not assumed&#34;.</p>
+</blockquote>
 <h2 id="consequences">Consequences</h2>
 <ul>
 <li>A user copies one line and gets a checklist, a choice of directory, an image field, a service question, live progress, and a summary — with nothing changed until they confirm.</li>
