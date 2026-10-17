@@ -2,8 +2,8 @@
 
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
-**Current increment:** Runner timeout, cancellation, preflight, and leftover cleanup (Step 26, increment 3a-3 of ADR-010 as amended)
-**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
+**Current increment:** Local execution over IPC, the protocol (Step 27, increment 1 of ADR-011)
+**Status:** Proposed. The ADR-011 draft and the checklist below await the maintainer's confirmation, and no code has been written. CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -2070,3 +2070,44 @@ Non-goals:
   - implementation `3e6b63c`;
   - this record, in a follow-up commit. My script that writes the record asserted 6 checklist boxes when the section has 7, so it failed, and the commit, which was not chained to the script, went ahead without the record.
 - CI was not checked, at the maintainer's request.
+
+### 2026-10-17 — Step 27 (proposed): local execution over IPC, the protocol (ADR-011, increment 1 of 4)
+
+- Selection: after Step 26 the default was (a), proposing local execution end to end through Mio and Hollow (the plan's "local execution" task for Mariner, and the first step towards the exit gate's "Direct execution works in rootless containment"). The maintainer replied "Continue". Implementation starts only after confirmation; a "continue" accepts the proposal.
+- Research:
+  - ADR-003: a bounded exchange, a 2-second deadline (`connectionTimeout`), and 16 concurrent connections (`maxConcurrentConnections`).
+  - ADR-006: 64 KiB frames, one request per connection, exact key sets, no reply to a malformed request, and the sentence that every execution needs a grant, policy evaluation, approval, and Rupes.
+  - ADR-009: output chunks of up to 64 KiB, about 87 KiB encoded, which do not fit an IPC frame.
+- Decisions proposed in ADR-011 that most need a maintainer's view:
+  - **local execution needs no grant or approval**, which qualifies ADR-006's sentence for local runs only;
+  - Mio, not the client, builds the full request with local principals from the peer credentials;
+  - streamed `started`, `output` (at most 32 KiB per frame), and `result` frames on one connection;
+  - a 30-second write deadline, cancellation when the client disconnects, and at most 4 concurrent runs, rejecting a fifth with `busy`;
+  - `scopra run` defaults (read-only access, 10 minutes, 2 GiB, 2 CPUs, 512 processes, 16 MiB of output), raw output by default with `--json` available, and exit statuses 124, 130, and 137 as shells use them.
+
+#### Acceptance checklist (proposed, not yet agreed)
+
+- [ ] ADR-011 is accepted, with any changes the maintainer asks for, and indexed. ADR-006 gains a dated note that ADR-011 qualifies its execution sentence for local runs.
+- [ ] `internal/localipc` serves `execution.run` when an executor is enabled (as `EnableWorkspaces` enables workspace commands). It decodes the request with an exact key set and ADR-007's field rules for the command, access, limits, and reason, and a malformed request gets no reply.
+- [ ] **Streaming:** the executor's start notice, output, and result are written as `started`, `output`, and `result` frames. Output is split to at most 32768 bytes per frame, and every frame stays within 64 KiB.
+- [ ] **Bounds:**
+  - only reading the request is limited to 2 seconds;
+  - each reply frame is limited to 30 seconds;
+  - a client that disconnects or stops reading cancels the executor's context;
+  - a fifth concurrent run is answered with `rejected` and `busy`.
+- [ ] A client function sends a run, delivers the events to callbacks, and returns the result, with typed errors as for the workspace commands.
+- [ ] **Tests**, against a real in-process Mio with a fake executor:
+  - the frame shapes and order;
+  - splitting at the 32 KiB bound;
+  - malformed requests;
+  - the concurrency cap;
+  - cancellation on disconnect and on a stalled reader;
+  - the deadlines.
+
+  Status and workspace commands are unchanged. The race detector is on, and full verification passes.
+
+Non-goals (later increments):
+- Mio wiring to Hollow, workspace revalidation, and building the request (increment 2).
+- `scopra run` (increment 3).
+- Real Podman (increment 4, with ADR-010's 3b).
+- Audit.

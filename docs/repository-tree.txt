@@ -118,6 +118,7 @@
 ./docs/decisions/008-canonical-execution-request.md
 ./docs/decisions/009-execution-lifecycle-messages.md
 ./docs/decisions/010-hollow-rootless-podman.md
+./docs/decisions/011-local-execution.md
 ./docs/decisions/README.md
 ./docs/operations
 ./docs/operations/runbooks.md
