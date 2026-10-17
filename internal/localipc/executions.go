@@ -102,6 +102,16 @@ func (d *Daemon) EnableExecutions(executor Executor) error {
 	return nil
 }
 
+// ValidateRun checks run against ADR-007 exactly as RunExecution does before
+// it contacts Mio: the workspace ID, the command, the workspace access, the
+// limits, and the reason. A nil error means RunExecution would send the run;
+// it does not authorize it, and Mio still revalidates the workspace. Every
+// error wraps ErrInvalidMessage and protocol.ErrInvalidExecutionRequest.
+func ValidateRun(run RunRequest) error {
+	_, err := encodeRun(run)
+	return err
+}
+
 // RunExecution asks Mio to run run locally (ADR-011), passes the start notice
 // and output to events as their frames arrive, and returns the result. A run
 // that Mio refuses returns a rejected result and no error. The run is checked

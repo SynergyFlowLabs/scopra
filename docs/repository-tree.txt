@@ -83,6 +83,8 @@
 ./cmd/scopra/doctor_test.go
 ./cmd/scopra/main.go
 ./cmd/scopra/main_test.go
+./cmd/scopra/run.go
+./cmd/scopra/run_test.go
 ./cmd/scopra/workspace.go
 ./cmd/scopra/workspace_test.go
 ./cmd/scoprad

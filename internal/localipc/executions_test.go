@@ -445,3 +445,27 @@ func equalResults(got, want protocol.ExecutionResult) bool {
 		got.Output == want.Output &&
 		got.Error == want.Error
 }
+
+func TestValidateRun_ChecksTheRunWithoutDialing(t *testing.T) {
+	if err := ValidateRun(testRunRequest()); err != nil {
+		t.Fatalf("ValidateRun() of a valid run error = %v", err)
+	}
+	tests := map[string]func(*RunRequest){
+		"a shell command":       func(run *RunRequest) { run.Command.Shell = true },
+		"no executable":         func(run *RunRequest) { run.Command.Executable = "" },
+		"an absolute workdir":   func(run *RunRequest) { run.Command.WorkingDirectory = "/etc" },
+		"an unknown access":     func(run *RunRequest) { run.WorkspaceAccess = "read-mostly" },
+		"a zero timeout":        func(run *RunRequest) { run.Limits.TimeoutSeconds = 0 },
+		"a malformed workspace": func(run *RunRequest) { run.WorkspaceID = "#" + testWorkspaceID },
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			run := testRunRequest()
+			mutate(&run)
+			err := ValidateRun(run)
+			if !errors.Is(err, ErrInvalidMessage) || !errors.Is(err, protocol.ErrInvalidExecutionRequest) {
+				t.Fatalf("ValidateRun() error = %v, want ErrInvalidMessage wrapping ErrInvalidExecutionRequest", err)
+			}
+		})
+	}
+}

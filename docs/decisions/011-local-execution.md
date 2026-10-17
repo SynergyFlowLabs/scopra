@@ -121,20 +121,12 @@ Ctrl-C closes the connection, which cancels the run.
 
    It is tested with a fake executor, not Hollow.
 2. **Mio wiring (done, Step 28):** Podman resolution, leftover cleanup, workspace revalidation, and running Hollow. It is tested with the fake Podman.
-3. **`scopra run`:** flags, output, exit status, and `--json`.
+3. **`scopra run` (done, Step 29):** flags, output, exit status, and `--json`. It is tested against a real in-process Mio with a fake executor.
 4. **Real-host verification,** together with ADR-010's increment 3b.
 
 ## Implementation Status
 
 **Increment 1 (IPC protocol): implemented** in `internal/localipc`, tested against a real in-process Mio with a fake executor.
-
-**Increment 2 (Mio wiring): implemented.** `scoprad` always enables `execution.run` and gives it a service from `internal/execution`, which runs commands through ADR-010's Hollow runner.
-
-- **Resolution and cleanup:** Mio resolves `podman` once with `exec.LookPath`, keeps the absolute path, and — when `--sandbox-image` is set and Podman exists — removes labelled leftover containers before it serves. A cleanup failure fails closed: this Mio process refuses every run with `containment_unavailable` and reports it on stderr after the listening line. Status and workspace commands keep working.
-- **Per run:** the service looks the workspace ID up in the registry, revalidates the recorded workspace with ADR-004's validator immediately before use, and passes the record's canonical path to Hollow. An unknown ID or a failed revalidation is rejected with `workspace_unavailable`; missing containment is rejected with `containment_unavailable`. A client cannot name a path.
-- **Always a typed answer:** without `--sandbox-image`, or without Podman, Mio starts as before and rejects every run, naming the missing requirement, instead of leaving the connection unanswered.
-- **Unchanged:** the wire format, the result states, and Hollow's arguments. Status and workspace commands are unaffected.
-- **Testing:** increment 2 is tested with ADR-010's fake Podman through a real in-process Mio: a successful run (start notice, output, result, and the mounted path), an unknown workspace, a replaced workspace, a missing image, a missing Podman, leftover cleanup, and a refused cleanup. Mio still has not run a real container.
 
 - **Server:** `Daemon.EnableExecutions(executor)`, before `Serve`, enables `execution.run`. Without it, the command gets no reply.
 - **Client:** `RunExecution(ctx, stateDir, run, events)` delivers the start notice and output frames to callbacks and returns the result. A refusal is a `rejected` result, not an error.
@@ -146,6 +138,30 @@ Ctrl-C closes the connection, which cancels the run.
 - **Faults end the run without a result.** This happens when the executor returns an error, or returns a result, start notice, or chunk that does not belong to the request, or when events arrive out of order. Mio then cancels the run and closes the connection without a `result`, so a client never shows an invented outcome. The client reports `ErrNoRunResult` for any connection that ends before the result.
 - **Shutdown cancels runs.** Each run's context ends with `Serve`'s, so stopping Mio cancels the run and still sends a reading client its `cancelled` result. A client that has stopped reading can delay shutdown by at most one frame-write deadline (30 seconds).
 - **Client bounds:** the client keeps the 2-second deadline for sending its request. After that, only its context bounds the run.
+
+**Increment 2 (Mio wiring): implemented.** `scoprad` always enables `execution.run` and gives it a service from `internal/execution`, which runs commands through ADR-010's Hollow runner.
+
+- **Resolution and cleanup:** Mio resolves `podman` once with `exec.LookPath`, keeps the absolute path, and — when `--sandbox-image` is set and Podman exists — removes labelled leftover containers before it serves. A cleanup failure fails closed: this Mio process refuses every run with `containment_unavailable` and reports it on stderr after the listening line. Status and workspace commands keep working.
+- **Per run:** the service looks the workspace ID up in the registry, revalidates the recorded workspace with ADR-004's validator immediately before use, and passes the record's canonical path to Hollow. An unknown ID or a failed revalidation is rejected with `workspace_unavailable`; missing containment is rejected with `containment_unavailable`. A client cannot name a path.
+- **Always a typed answer:** without `--sandbox-image`, or without Podman, Mio starts as before and rejects every run, naming the missing requirement, instead of leaving the connection unanswered.
+- **Unchanged:** the wire format, the result states, and Hollow's arguments. Status and workspace commands are unaffected.
+- **Testing:** increment 2 is tested with ADR-010's fake Podman through a real in-process Mio: a successful run (start notice, output, result, and the mounted path), an unknown workspace, a replaced workspace, a missing image, a missing Podman, leftover cleanup, and a refused cleanup. Mio still has not run a real container.
+
+**Increment 3 (`scopra run`): implemented** in `cmd/scopra/run.go`, on top of `localipc.ValidateRun` and `localipc.RunExecution`.
+
+- **CLI rules.** The synopsis above is implemented as written. Two rules make it exact:
+  - `--timeout` accepts a whole number of seconds from 1s to 24h, because ADR-007 carries integer seconds;
+  - `--cpus` accepts a whole number from 1 to 1000, multiplied by 1000 into `cpuMillicores`.
+  These are usage errors, found by `localipc.ValidateRun` before anything reaches the socket: every ADR-007 field rule, every limit range, an empty executable, an empty workdir, and an invalid reason. The command follows `--`; without it, `scopra run` refuses, so an option can never become an executable or an argument.
+- **`--path`** uses the same resolution as `workspace remove --path`: an exact recorded path, or the directory it now resolves to through symlinks; an ambiguous match is refused. Resolution needs Mio, so the other fields are checked first against a placeholder registration ID and checked again with the resolved ID before sending.
+- **Output.** Without `--json`, stdout and stderr bytes go unchanged to `scopra`'s stdout and stderr, as a native run. With `--json`, stdout carries one JSON object per line in arrival order:
+  - `{"type":"started", ...}` with ADR-009's start-notice fields;
+  - `{"type":"output","executionId":...,"stream":"stdout"|"stderr","data":"<unpadded base64url>"}` for each output frame, in order;
+  - `{"type":"result", ...}` with ADR-009's result fields.
+
+  The `type` field is the only addition to the payloads; the rest are the canonical ADR-008 encodings. Diagnostics stay on stderr, so stdout is always valid JSON lines. Frames, not ADR-009 chunks, are reported: Mio splits a chunk to fit its IPC frames, so `sequence` is not preserved on this path.
+- **Exit status.** As the table above: the command's own status, 124, 130, 137, and 1 with `<code>: <message>` for `rejected` and `errored`. A failure to reach Mio is 1. Ctrl-C cancels the run and exits 130 without an error line.
+- **Smoke test, with the real binaries and a scripted Podman:** a successful run (0, streams split), a failing command (its own status), `--json` (four lines, base64url output, the exit status preserved), `--write` (`ro=false` on the mount), a bad workdir (2), a missing `--` (2), a missing image (`rejected`, exit 1, reason shown), and Ctrl-C (130).
 
 ## Consequences
 
