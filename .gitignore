@@ -23,3 +23,7 @@ coverage/
 .tmp/
 tmp/
 artifacts/
+
+# Local Scopra state and journals (never commit run data)
+runs.jsonl
+.scopra/

@@ -2,7 +2,7 @@
 
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
-**Current increment:** open-source license and removal of pricing (Step 33)
+**Current increment:** public repository and community documentation (Step 34)
 **Status:** Implemented on `arena/fe74ddf7-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
@@ -2657,3 +2657,26 @@ Commit `26590a6` (`feat(journal): record run metadata and add scopra logs`) hold
   - `go build ./...`, `go vet ./...`, and `go test -count=1 ./...` still pass; no Go file changed.
   - `docs/repository-tree.txt` regenerated for the new `NOTICE` and ADR files.
 - Non-goals: relicensing third-party material, adding a CLA or DCO, hosted-service operations, and deciding whether a future hosted relay needs its own terms. Those are separate questions; the software itself stays free and complete.
+
+### 2026-10-17 — Step 34: public repository and open-source community files
+
+- Selection: the maintainer asked to make the repository public and to bring the README and the community documents up to the standard of a mature open-source project. ADR-014 had already licensed the code MIT; this step makes the project presentable and safe to publish.
+- Pre-publication check (read-only, before any visibility change):
+  - `git log --all --diff-filter=A --name-only` lists 238 distinct tracked paths, all source, docs, tests, or the packaged skills; no `.env`, key, certificate, or credential file has ever been committed.
+  - A regex scan of every added line in all history for AWS keys, GitHub tokens, `sk-` keys, Slack tokens, Google API keys, and PEM private-key blocks found one hit: `AKIAIOSFODNN7EXAMPLE`, which is AWS's documentation placeholder inside `.agents/skills/security-review/references/supply-chain.md`. It is not a credential.
+  - `gh api repos/… -f visibility=public` and `gh repo edit --visibility public` both return **HTTP 403 Resource not accessible by integration**, even though the token reports `admin: true` on the repository. The token is a fine-grained token without the repository-administration:write grant, so visibility cannot be changed from this environment. The repository is still `private`.
+- Documentation added or rewritten:
+  - `README.md`: rewritten in the shape common to mature open-source projects — badges (license, Go version, platform, status), a one-line pitch and blockquote, "Why Scopra", an ASCII architecture diagram with a component/status table, an explicit Status section split into *works today*, *not implemented*, and *not verified*, requirements, quick start with real commands, a command table, the security model with links, a documentation index, project layout, contributing, license, and acknowledgements.
+  - `CONTRIBUTING.md`: ways to contribute, required reading, development setup, project conventions (test-first, fail closed, bounded, strict decoding, no pricing machinery), commit-message style, the pull-request process, and the inbound MIT license statement.
+  - `CODE_OF_CONDUCT.md`: Contributor Covenant 2.1 with the enforcement ladder, adapted with a security-specific clause and the project's conduct contact.
+  - `SECURITY.md`: private reporting through GitHub advisories or email, acknowledgement and disclosure timelines (3/10 days, 90-day disclosure), in-scope and out-of-scope lists, the documented security properties that are not vulnerabilities (same-UID trust, the journal not being audit, the unit omitting hardening), safe harbor, and user hardening.
+  - `CHANGELOG.md`: Keep a Changelog format, an `[Unreleased]` section for Steps 31–34, and a `0.0.0` baseline covering the earlier foundation.
+  - `.github/`: issue templates for bugs, feature proposals, and security-review requests, plus `config.yml` that disables blank issues and routes vulnerabilities to private reporting; a pull-request template with scope, security impact, testing, and documentation checklists; `dependabot.yml` for the GitHub Actions pins (there are no other dependency ecosystems); and `FUNDING.yml` that deliberately declares no funding, matching ADR-014.
+  - `CODEOWNERS`, `.editorconfig`, and `.gitignore` additions for `runs.jsonl` and `.scopra/`, so local run data is never committed.
+  - `.github/workflows/ci.yml`: the integrity step now requires the new community documents, and a new step builds both binaries and prints their versions. The workflow content is unchanged in behaviour for the Go checks; CI remains blocked at the account level (`startup_failure`).
+- Verification:
+  - Every relative link in the README, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, and CHANGELOG resolves (checked with a script; zero broken links).
+  - `make lint` and `go test -count=1 ./...` pass; no Go file changed. `git diff --check` is clean.
+  - Both binaries build and print their version.
+  - The YAML files parse as expected in structure and contain no tab indentation.
+- Blocked: making the repository public requires an owner action in GitHub repository settings, or a token with repository administration write. The exact commands are `gh api -X PATCH repos/SynergyFlowLabs/scopra -F private=false` (or Settings → General → Danger Zone → Change visibility → Make public).

@@ -1,0 +1,13 @@
+# Default owners for everything in the repository.
+* @SynergyFlowLabs/maintainers
+
+# Security-sensitive paths need a maintainer review before merge.
+/PRD.md                        @SynergyFlowLabs/maintainers
+/SECURITY.md                   @SynergyFlowLabs/maintainers
+/docs/security/                @SynergyFlowLabs/maintainers
+/docs/decisions/               @SynergyFlowLabs/maintainers
+/internal/hollow/              @SynergyFlowLabs/maintainers
+/internal/localipc/            @SynergyFlowLabs/maintainers
+/internal/workspace/           @SynergyFlowLabs/maintainers
+/internal/journal/             @SynergyFlowLabs/maintainers
+/.github/                      @SynergyFlowLabs/maintainers
