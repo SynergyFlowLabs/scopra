@@ -55,8 +55,8 @@ func (r *Runner) Run(ctx context.Context) (int, error) {
 		if streamCancel == nil {
 			return
 		}
-		r.Terminal.Pause()
 		streamCancel()
+		r.Terminal.Pause()
 		streamCancel = nil
 		deadline := time.NewTimer(2 * time.Second)
 		defer deadline.Stop()

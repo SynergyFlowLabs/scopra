@@ -160,21 +160,26 @@ func TestTerminalEventsStopOnCancel(t *testing.T) {
 	}
 }
 
-// TestTerminalPauseWakesABlockedRead checks the mechanism that lets the
-// installer hand the terminal to sudo: a read deadline unblocks the reader,
-// and clearing it lets the same terminal stream events again.
-func TestTerminalPauseWakesABlockedRead(t *testing.T) {
+// TestTerminalPauseDefersInput checks the mechanism that lets the installer
+// hand the terminal to sudo: while paused the reader does not consume input,
+// so what is typed stays queued for the interface instead of being stolen from
+// the child.
+func TestTerminalPauseDefersInput(t *testing.T) {
 	terminal, input := pipeTerminal(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	events := terminal.Events(ctx)
 
 	terminal.Pause()
-	time.Sleep(10 * time.Millisecond)
-	terminal.Unpause()
 	if _, err := input.WriteString("x"); err != nil {
 		t.Fatalf("write: %v", err)
 	}
+	select {
+	case event, open := <-events:
+		t.Fatalf("event %+v while paused (open %v); the reader must not consume input", event, open)
+	case <-time.After(200 * time.Millisecond):
+	}
+	terminal.Unpause()
 	key, open := waitForKey(t, events)
 	if !open || !key.Is('x') {
 		t.Fatalf("key after unpause = %+v (open %v), want x", key, open)

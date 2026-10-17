@@ -5,8 +5,10 @@ package tui
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -39,6 +41,7 @@ type Terminal struct {
 	opened  *os.File
 	saved   syscall.Termios
 	raw     bool
+	paused  atomic.Bool
 	profile Profile
 }
 
@@ -102,11 +105,13 @@ func (t *Terminal) Enter() error {
 	raw.Lflag &^= syscall.ECHO | syscall.ECHONL | syscall.ICANON | syscall.ISIG | syscall.IEXTEN
 	raw.Cflag &^= syscall.CSIZE | syscall.PARENB
 	raw.Cflag |= syscall.CS8
-	// Reads block until at least one byte arrives. Deciding when an escape
-	// sequence is complete is the event loop's job (see Events), so the
-	// terminal itself never has to time out.
-	raw.Cc[syscall.VMIN] = 1
-	raw.Cc[syscall.VTIME] = 0
+	// Reads return after at most a tenth of a second, with or without input.
+	// The timer is what lets the reader stop for a child process: a terminal
+	// cannot be woken from a blocking read, so Pause would otherwise have to
+	// close a descriptor the child is still using. A zero-byte read is idle,
+	// not end of input (see Events).
+	raw.Cc[syscall.VMIN] = 0
+	raw.Cc[syscall.VTIME] = 1
 	if err := setTermios(t.in.Fd(), &raw); err != nil {
 		return err
 	}
@@ -150,21 +155,16 @@ func (t *Terminal) Resume() error {
 	return t.Enter()
 }
 
-// Pause makes a blocked read return, so the event loop can be retired before
-// the terminal is handed to a child process. Without it the reader and the
-// child would compete for the same keystrokes.
-func (t *Terminal) Pause() {
-	if t.in != nil {
-		_ = t.in.SetReadDeadline(time.Now())
-	}
-}
+// Pause stops the reader before the terminal is handed to a child process.
+// Without it the reader and the child would compete for the same keystrokes,
+// and a password typed at sudo's prompt could be swallowed by the interface.
+// A read already in flight returns within the terminal's timer; anything typed
+// after that waits in the terminal's queue for Unpause.
+func (t *Terminal) Pause() { t.paused.Store(true) }
 
-// Unpause clears the deadline Pause set, after a child process has finished.
-func (t *Terminal) Unpause() {
-	if t.in != nil {
-		_ = t.in.SetReadDeadline(time.Time{})
-	}
-}
+// Unpause lets the reader consume input again, after a child process has
+// finished with the terminal.
+func (t *Terminal) Unpause() { t.paused.Store(false) }
 
 // Devices returns the files the terminal reads from and writes to, so a child
 // process can inherit them while the interface is suspended.
@@ -194,23 +194,33 @@ func (t *Terminal) Events(ctx context.Context) <-chan Event {
 			defer close(readDone)
 			buffer := make([]byte, 256)
 			for {
+				if ctx.Err() != nil {
+					return
+				}
+				if t.paused.Load() {
+					// A child owns the terminal. Do not read: the child's
+					// prompt has to receive what is typed.
+					time.Sleep(5 * time.Millisecond)
+					continue
+				}
 				count, err := t.in.Read(buffer)
 				if err != nil {
 					if errors.Is(err, syscall.EINTR) || errors.Is(err, syscall.EAGAIN) {
 						continue
 					}
-					if errors.Is(err, os.ErrDeadlineExceeded) {
-						// Pause set the deadline to hand the terminal to a
-						// child process. Wait here until Resume clears it, and
-						// give up if the session is ending.
-						if ctx.Err() != nil {
-							return
-						}
-						time.Sleep(10 * time.Millisecond)
+					// In raw mode the terminal is read with a timer, and a
+					// quiet tenth of a second arrives as a zero-byte read
+					// that Go reports as io.EOF. That is idle, not the end of
+					// the session; treating it as EOF made the interface exit
+					// on the first quiet moment.
+					if t.raw && errors.Is(err, io.EOF) {
 						continue
 					}
 					// Anything else means the terminal is gone.
 					return
+				}
+				if count == 0 {
+					continue
 				}
 				data := make([]byte, count)
 				copy(data, buffer[:count])
