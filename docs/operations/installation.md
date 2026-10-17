@@ -207,7 +207,7 @@ stay in `$XDG_STATE_HOME/scopra` until you delete that directory.
 | `podman is not available` | On the checks screen press `f` to have it installed with your distribution's package manager, or install Podman 4.0 or later yourself and run `podman info` once to create its configuration. |
 | `cgroup controllers not delegated: cpu` | Press `f` to write the systemd delegation drop-in, then log out and back in and re-run the installer. On cgroups v1, boot with `systemd.unified_cgroup_hierarchy=1` instead. |
 | `Podman runs as root, not rootless` | Install Podman as your user, not through a root service, and re-run `podman info`. |
-| `cgroups are not v2` / `cgroup controllers not delegated` | The host must boot with cgroup v2 and delegate `cpu`, `memory`, and `pids` to your user session. See ADR-010. |
+| `cgroups are not v2` | The host must boot with cgroup v2 (`systemd.unified_cgroup_hierarchy=1`). That is a boot parameter and a reboot, so the installer explains rather than changing it. See ADR-010. |
 | `Your shell does not find scopra yet` | Add the `export PATH=…` line from the summary to `~/.profile` or `~/.zshrc`, then open a new terminal. |
 | `the interactive installer needs a terminal` | Re-run with `--yes` in scripts and CI, or run the installer from an interactive terminal. |
 | A checksum mismatch | The download was corrupted or has been tampered with. Nothing was executed; check the network and try again. |
