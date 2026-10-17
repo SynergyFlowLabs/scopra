@@ -150,6 +150,11 @@
 ./internal/hollow
 ./internal/hollow/podman.go
 ./internal/hollow/podman_test.go
+./internal/hollow/preflight.go
+./internal/hollow/preflight_test.go
+./internal/hollow/testdata
+./internal/hollow/testdata/README.md
+./internal/hollow/testdata/podman-info-v4.0.0-docs.json
 ./internal/identity
 ./internal/identity/README.md
 ./internal/localipc

@@ -2,8 +2,8 @@
 
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
-**Current increment:** Hollow `podman run` argument builder (Step 22, increment 1 of ADR-010)
-**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
+**Current increment:** Hollow preflight checks (Step 23, increment 2 of ADR-010)
+**Status:** In progress on `arena/c7a368c1-scopra`: acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -1713,3 +1713,44 @@ Non-goals:
   - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64.
   - The tree is current.
 - Pushes to `arena/c7a368c1-scopra`: the proposal `a6d6d7b`, test checkpoint `1cf9fc6` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.
+
+### 2026-10-17 — Step 23: Hollow preflight checks (ADR-010, increment 2 of 4)
+
+- Selection: after Step 22 the default was (a), ADR-010's increment 2. The maintainer replied "continue".
+- Research, from Podman's source code and documentation through the GitHub API:
+  - At both v4.0.0 and v6.1.4, `podman info --format json` reports the needed values as `host.cgroupVersion`, `host.cgroupControllers`, `host.security.rootless`, and `version.Version`. The last key keeps Go's capital V because its struct field has no JSON tag.
+  - The JSON example in `docs/source/markdown/podman-info.1.md` (v6.1.4) shows Podman 4.0.0, rootless, on cgroups v2, but with `cgroupControllers: []`, meaning no controllers are delegated to the user.
+  - Podman's own end-to-end test skips its controller check when rootless, because it is "hard to tell which controllers are going to be enabled for rootless".
+  - `podman info` includes the version, so one command covers every requirement.
+
+#### Acceptance checklist (agreed before implementation)
+
+- [ ] `internal/hollow` parses `podman info --format json` output: bounded to 1 MiB, ignoring fields it does not need so that newer Podman versions can add some, and failing closed on missing or mistyped required fields, non-JSON input, or trailing data.
+- [ ] A check requires Podman 4.0 or later (compared numerically), rootless operation, cgroups v2, and the `cpu`, `memory`, and `pids` controllers. Every failure wraps a new `ErrContainmentUnavailable` (ADR-009's `containment_unavailable`) and names every unmet requirement.
+- [ ] Tests:
+  - the verbatim documentation sample parses to its exact values and is refused for its missing delegation;
+  - a delegating variant derived from it is accepted;
+  - a table covers each requirement at its edge (3.4.4 and 4.0.0, 10.0.0 compared numerically, suffixes, unrecognized versions, root, cgroups v1, each missing controller, and all failures at once);
+  - fail-closed parsing cases;
+  - a fuzz test.
+- [ ] The sample's provenance is documented in `testdata`. The documentation and ADR-010's status are updated, and full verification passes.
+
+Non-goals:
+- Running `podman info` (the runner, increment 3).
+- Checking that the image exists locally, and the Mio setting for the image.
+- Systems without Podman.
+
+#### Test-first record
+
+1. **Recorded sample:** `internal/hollow/testdata/podman-info-v4.0.0-docs.json` is Podman's documentation example, copied verbatim. `testdata/README.md` records its provenance: repository, file, tag, lines, licence, and SHA-256.
+2. **Tests written first** (`internal/hollow/preflight_test.go`):
+   - the verbatim sample parses to its exact values (`4.0.0`, rootless, `v2`, and an empty controller list) and is refused for its missing delegation;
+   - a variant derived from it with the controllers that a delegating systemd reports is accepted;
+   - `TestPodmanInfo_Check`, with 21 rows:
+     - accepted: the minimum version, the current version, `10.0.0` compared numerically, `-rc1` and `-dev` suffixes, major and minor only, and exactly the three needed controllers;
+     - refused: 3.4.4 and 3.99.0, an empty version, a leading `v`, a major version alone, an overlong major version, an escape sequence in the version that must be quoted, root, cgroups v1, each missing controller, controller names that differ only in case or spacing, and all failures at once;
+   - `TestSecurity_ParsePodmanInfoFailsClosed`, with 17 cases: empty input, non-JSON, `null`, an array, an empty object, trailing data, more than 1 MiB, and each required field missing or mistyped;
+   - `FuzzParsePodmanInfo`: every error wraps `ErrContainmentUnavailable`, and any accepted host is rootless, on `v2`, with all three controllers, and an all-digit major version of at least 4.
+   - While writing the tests, I tightened the fuzz invariant. It first rejected only single-digit majors below 4, which would have let an implementation that accepted `03.0` through.
+3. **Build failure.** `ParsePodmanInfo`, `PodmanInfo`, and `ErrContainmentUnavailable` were undefined.
+4. **Declarations-only skeleton.** Parsing fails, and the check accepts everything. Runtime red: 4 tests failed across 31 subtests. The fuzz seeds passed, as expected, because every parse error wraps the error value.
