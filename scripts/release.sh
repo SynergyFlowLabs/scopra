@@ -13,8 +13,10 @@
 # rather than "dev". checksums.txt carries one SHA-256 line per archive and is
 # uploaded beside them; install.sh refuses a release without a matching line.
 #
-# The archives are built without cgo and with -trimpath, so the same source
-# produces the same bytes on any Linux machine with the same Go toolchain.
+# The archives are built without cgo, with -trimpath, and with -buildvcs=false:
+# a published binary must not describe a dirty working tree or the commit it
+# happened to be built from, and the same source has to produce the same bytes
+# on any machine with the same Go toolchain.
 set -euo pipefail
 
 version="${1:-}"
@@ -54,7 +56,7 @@ for target in $targets; do
 	mkdir -p "$stage"
 	for command in scopra scoprad; do
 		CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" GOTOOLCHAIN=local \
-			go build -trimpath -ldflags "$ldflags" -o "$stage/$command" "./cmd/$command"
+			go build -trimpath -buildvcs=false -ldflags "$ldflags" -o "$stage/$command" "./cmd/$command"
 	done
 	cp README.md LICENSE NOTICE "$stage/"
 	archive="scopra_${os}_${arch}.tar.gz"
