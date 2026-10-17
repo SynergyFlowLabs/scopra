@@ -48,6 +48,10 @@ const (
 	MessageTypeExecutionCancel   MessageType = "execution.cancel"
 	MessageTypeMachineRevocation MessageType = "machine.revocation"
 	MessageTypeAcknowledgement   MessageType = "message.ack"
+	// MessageTypeExecutionStarted and MessageTypeExecutionOutput carry
+	// ADR-009's daemon-to-cloud progress messages.
+	MessageTypeExecutionStarted MessageType = "execution.started"
+	MessageTypeExecutionOutput  MessageType = "execution.output"
 )
 
 var (

@@ -2,8 +2,8 @@
 
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
-**Current increment:** Execution results (Step 18, the first increment of ADR-009)
-**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
+**Current increment:** `execution.started` and `execution.output` (Step 19, the second increment of ADR-009)
+**Status:** In progress on `arena/c7a368c1-scopra`: acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -1335,3 +1335,54 @@ Non-goals:
   - increment 2: `execution.started` and `execution.output`, the two new envelope message types, and envelope helpers for the daemon-to-cloud types;
   - increment 3: `execution.cancel`.
 - Pushes to `arena/c7a368c1-scopra`: the proposal `b89978c`, test checkpoint `7d736ed` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.
+
+### 2026-10-17 — Step 19: `execution.started` and `execution.output` (ADR-009, increment 2 of 3)
+
+- Selection: ADR-009's implementation plan, which the maintainer accepted, makes this the second increment. After Step 18, "continue" was stated to start it, and the maintainer replied "Continue".
+- Sandbox reset: before this step the sandbox reset again. The branch had been recreated at `main` with the work kept as uncommitted changes, and the Go toolchain was gone. A temporary index showed that the working tree was identical to `origin/arena/c7a368c1-scopra` (`d515017`), so the branch was restored with a mixed reset. The toolchain was rebuilt from the recorded, checksum-verified sources.
+
+#### Acceptance checklist (agreed before implementation)
+
+- [ ] ADR-002 gains a dated amendment, and the envelope's closed set of message types gains `execution.started` and `execution.output` (ADR-009). `DecodeEnvelope` accepts both and still rejects unknown types.
+- [ ] `DecodeExecutionStarted` and `DecodeExecutionOutput` strictly decode their payloads, with exact keys and ADR-009's field rules. Their errors wrap `ErrInvalidExecutionStarted` and `ErrInvalidExecutionOutput` respectively and name the field. Both typed values get `Validate` and `CanonicalJSON`, and `ExecutionStarted.ValidateAgainst(request)` checks the execution ID and the action hash.
+- [ ] Output `data` must be canonical unpadded base64url of 1 to 65536 bytes. It decodes to bytes, and the canonical encoding reproduces it.
+- [ ] `Envelope.ExecutionResult()`, `Envelope.ExecutionStarted()`, and `Envelope.ExecutionOutput()` each decode only their own message type.
+- [ ] Tests:
+  - examples decode, starting with ADR-009's own;
+  - field rules are tested at both sides of their bounds, with exact key sets;
+  - strictness errors wrap the right error value;
+  - canonical bytes match an independent Python rendering;
+  - envelope round trips work;
+  - a fuzz test covers each decoder.
+
+  The documentation is updated, and full verification passes.
+
+Non-goals:
+- `execution.cancel`, which is increment 3.
+- Checking chunk sequences across messages or against a result, which needs receiver state.
+- Retries and acknowledgements.
+- Mio producing these messages.
+- Output storage and redaction.
+
+#### Test-first record
+
+1. **Independent reference:** the canonical forms of both ADR-009 examples, and the bytes that the output example decodes to, were rendered with Python's `json` and `base64` modules.
+2. **Tests written first:**
+   - `execution_started_test.go`:
+     - ADR-009's example decodes exactly, and its canonical bytes match the Python rendering;
+     - 20 field-rule rows at both sides of each bound, including a comma decimal separator and wrong JSON types;
+     - exact keys;
+     - the shared strictness cases (`checkAmbiguousJSON`), which must wrap `ErrInvalidExecutionStarted` and no other payload's error value;
+     - `ValidateAgainst`, `Validate` on typed values, and a fuzz test.
+   - `execution_output_test.go`:
+     - the example decodes to its exact bytes, and its canonical bytes match;
+     - binary data round-trips exactly, including all 256 byte values and invalid UTF-8;
+     - 28 field-rule rows, including `data` that is padded, uses the standard alphabet, has non-zero trailing bits, contains spaces or newlines, has an impossible length, is empty, or exceeds 64 KiB;
+     - exact keys, shared strictness, and `Validate` on typed values;
+     - a generic fuzz test, and a structured one over raw bytes.
+   - `envelope_messages_test.go`:
+     - the closed set holds exactly the seven version 1 types;
+     - the three daemon-to-cloud messages round-trip through `DecodeEnvelope` and their helpers;
+     - each of the four payload helpers rejects every other type without decoding the payload.
+3. **Build failure.** The new types and constants were undefined.
+4. **Declarations-only skeleton.** It has the final types, error values, stream constants, and the two message-type constants, which the envelope does not yet accept. The decoders and encoders fail, the validators do nothing, and the helpers return a zero value. Runtime red: 18 tests failed across 108 subtests, including the structured fuzz test. The two generic fuzz targets passed, as expected, because rejecting everything satisfies them.

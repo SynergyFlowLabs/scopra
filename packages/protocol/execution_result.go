@@ -128,6 +128,11 @@ func DecodeExecutionResult(payload []byte) (ExecutionResult, error) {
 	return result, nil
 }
 
+// ExecutionResult decodes the payload of an execution.result envelope.
+func (e Envelope) ExecutionResult() (ExecutionResult, error) {
+	return ExecutionResult{}, nil
+}
+
 // Validate checks every ADR-009 rule on a typed result, including that the
 // fields its state does not use are zero.
 func (r ExecutionResult) Validate() error {
