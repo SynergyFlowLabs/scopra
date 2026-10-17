@@ -48,7 +48,7 @@
 <pre><code class="language-console">sudo apt-get update
 sudo apt-get install -y podman uidmap slirp4netns fuse-overlayfs
 </code></pre>
-<p>Enter, <code>n</code>, or Escape cancels and leaves the manual instructions in place. <code>--yes</code> never provisions: an unattended run has no one to ask.</p>
+<p>Enter, <code>n</code>, or Escape cancels and leaves the manual instructions in place. <code>--yes</code> never provisions: an unattended run has no one to ask. It does print the same commands, with an absolute path to the staged drop-in where one is needed, so a scripted run tells you exactly what to type next.</p>
 <p>The plan comes from <code>/etc/os-release</code> and a fixed table, never from guessing:</p>
 <div class="table-wrap"><table>
 <thead><tr><th>Distribution (<code>ID</code> or <code>ID_LIKE</code>)</th><th>Commands</th></tr></thead>

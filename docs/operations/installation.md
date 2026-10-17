@@ -50,7 +50,9 @@ sudo apt-get install -y podman uidmap slirp4netns fuse-overlayfs
 ```
 
 Enter, `n`, or Escape cancels and leaves the manual instructions in place.
-`--yes` never provisions: an unattended run has no one to ask.
+`--yes` never provisions: an unattended run has no one to ask. It does print the
+same commands, with an absolute path to the staged drop-in where one is needed,
+so a scripted run tells you exactly what to type next.
 
 The plan comes from `/etc/os-release` and a fixed table, never from guessing:
 

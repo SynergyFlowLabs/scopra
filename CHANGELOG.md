@@ -105,6 +105,13 @@ version, and the wire protocol is versioned separately (see ADR-002 and ADR-009)
 
 ### Fixed
 
+- **A scripted install printed a command that could not run.** `scopra install
+  --yes` described the delegation drop-in with a `cp` from the state directory,
+  but only the interactive path staged that file, so the command failed with
+  "No such file or directory". The scripted path now stages it before printing
+  the commands and keeps it, since the commands are for a person to run; the
+  interactive path still stages, runs, and removes it. Shipped in
+  `v0.1.0-alpha.6`.
 - **The installer's terminal dropped every key press.** Raw mode was configured
   with a read timeout, and a quiet tenth of a second arrives as a zero-length
   read that Go reports as `io.EOF`; the reader treated it as the end of input,

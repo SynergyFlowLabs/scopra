@@ -54,6 +54,7 @@
 </ul>
 <h3 id="fixed">Fixed</h3>
 <ul>
+<li><strong>A scripted install printed a command that could not run.</strong> <code>scopra install --yes</code> described the delegation drop-in with a <code>cp</code> from the state directory, but only the interactive path staged that file, so the command failed with &#34;No such file or directory&#34;. The scripted path now stages it before printing the commands and keeps it, since the commands are for a person to run; the interactive path still stages, runs, and removes it. Shipped in <code>v0.1.0-alpha.6</code>.</li>
 <li><strong>The installer&#39;s terminal dropped every key press.</strong> Raw mode was configured with a read timeout, and a quiet tenth of a second arrives as a zero-length read that Go reports as <code>io.EOF</code>; the reader treated it as the end of input, exited, and left the interface running with no keyboard. Reads now block until a byte arrives, and a separate idle timer decides when a pending escape sequence is complete, so a lone <code>Escape</code> still registers and arrow keys split across reads still decode. <code>internal/tui</code> gained terminal event tests covering a quiet terminal, a lone escape, a split sequence, end of input, and cancellation.</li>
 </ul>
 <h2 id="0-0-0-2026-10-17">[0.0.0] - 2026-10-17</h2>
