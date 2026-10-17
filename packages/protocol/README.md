@@ -50,6 +50,20 @@ Every other rule is ADR-007's, through the same strict-document checks, and ever
 
 `ExecutionResult.Validate()` checks typed values, including that the fields a state does not use are zero. `ValidateAgainst(request)` ties a result to its request: the same execution ID, the request's action hash, and output within its `limits.outputBytes`. `CanonicalJSON()` encodes a valid result with ADR-008's writer, for Mio to send.
 
-`execution.started`, `execution.output`, and `execution.cancel` are not implemented yet.
+## Implemented: start notices and output chunks
 
-Run the package tests with `go test -race ./packages/protocol`. Fuzz the decoders and the canonical forms with `go test -run '^$' -fuzz FuzzDecodeExecutionRequest ./packages/protocol`, `go test -run '^$' -fuzz FuzzCanonicalFieldValues ./packages/protocol`, and `go test -run '^$' -fuzz FuzzDecodeExecutionResult ./packages/protocol`.
+`DecodeExecutionStarted` decodes `execution.started`, which holds the execution ID, the action hash, and `startedAt` with millisecond precision. `ExecutionStarted.ValidateAgainst(request)` ties it to its request.
+
+`DecodeExecutionOutput` decodes `execution.output`, which holds the execution ID, a `sequence` from 1 to 2^30, the `stream` (`stdout` or `stderr`), and `data`:
+
+- `data` must be canonical unpadded base64url. Text that does not re-encode exactly is rejected, including padding, the standard alphabet, non-zero trailing bits, and the line breaks that Go's base64 decoder would skip.
+- It decodes to 1 to 65536 bytes, kept exactly as the command wrote them, even when they are not UTF-8.
+- Output data is untrusted and may hold secrets. It must never be logged.
+
+Both payloads follow ADR-007's strict-document rules with exact keys. Their errors wrap `ErrInvalidExecutionStarted` and `ErrInvalidExecutionOutput` respectively, and each value has `Validate` and a canonical encoding.
+
+The envelope's closed set now includes both types (ADR-002, amended). `Envelope.ExecutionRequest()`, `ExecutionResult()`, `ExecutionStarted()`, and `ExecutionOutput()` each decode only their own message type and fail with `ErrUnexpectedMessageType` otherwise.
+
+Checking a sequence of chunks against a result is the receiver's job, and `execution.cancel` is not implemented yet.
+
+Run the package tests with `go test -race ./packages/protocol`. Fuzz the decoders and the canonical forms with `go test -run '^$' -fuzz FuzzDecodeExecutionRequest ./packages/protocol`, `go test -run '^$' -fuzz FuzzCanonicalFieldValues ./packages/protocol`, `go test -run '^$' -fuzz FuzzDecodeExecutionResult ./packages/protocol`, `go test -run '^$' -fuzz FuzzDecodeExecutionStarted ./packages/protocol`, `go test -run '^$' -fuzz FuzzDecodeExecutionOutput ./packages/protocol`, and `go test -run '^$' -fuzz FuzzExecutionOutputValues ./packages/protocol`.

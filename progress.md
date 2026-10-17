@@ -3,7 +3,7 @@
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
 **Current increment:** `execution.started` and `execution.output` (Step 19, the second increment of ADR-009)
-**Status:** In progress on `arena/c7a368c1-scopra`: acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
+**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -23,7 +23,7 @@ This file is the running engineering log. Each increment records scope, verifica
 
 ## Roadmap
 
-1. **Protocol foundation** — envelope v1 structural validation, strict execution request v1 decoding (ADR-007), the canonical request and action hash (ADR-008), and execution results with their states and error codes (ADR-009, increment 1) are implemented and locally verified. `execution.started`, output chunks, `execution.cancel`, approval records, cryptographic verification, replay storage, and compatibility/version guarantees remain pending.
+1. **Protocol foundation** — envelope v1 structural validation, strict execution request v1 decoding (ADR-007), the canonical request and action hash (ADR-008), and execution results, start notices, and output chunks (ADR-009, increments 1 and 2) are implemented and locally verified. `execution.cancel`, approval records, cryptographic verification, replay storage, and compatibility/version guarantees remain pending.
 2. **Local daemon and CLI** — the initial foreground Mio status service with a persistent per-user state directory and an exclusive state-directory lock, Mariner `scopra status`, a minimal read-only `scopra doctor` (platform, state-directory, workspace-registry, registered-workspace revalidation, and daemon checks), and `scopra workspace add/list/remove` are implemented. Workspace validation (ADR-004) and registry storage (ADR-005) exist; Mio checks its registry at startup and serves add, list, and remove over local IPC (ADR-006). Broader doctor checks, execution, service installation, and expanded CLI/IPC authorization remain pending.
 3. **Policy and containment boundary** — implement default-deny policy and rootless containment before enabling execution; no native fallback.
 4. **Structured execution and audit** — limits, cancellation, bounded output, and attributable events with adversarial tests.
@@ -1343,11 +1343,11 @@ Non-goals:
 
 #### Acceptance checklist (agreed before implementation)
 
-- [ ] ADR-002 gains a dated amendment, and the envelope's closed set of message types gains `execution.started` and `execution.output` (ADR-009). `DecodeEnvelope` accepts both and still rejects unknown types.
-- [ ] `DecodeExecutionStarted` and `DecodeExecutionOutput` strictly decode their payloads, with exact keys and ADR-009's field rules. Their errors wrap `ErrInvalidExecutionStarted` and `ErrInvalidExecutionOutput` respectively and name the field. Both typed values get `Validate` and `CanonicalJSON`, and `ExecutionStarted.ValidateAgainst(request)` checks the execution ID and the action hash.
-- [ ] Output `data` must be canonical unpadded base64url of 1 to 65536 bytes. It decodes to bytes, and the canonical encoding reproduces it.
-- [ ] `Envelope.ExecutionResult()`, `Envelope.ExecutionStarted()`, and `Envelope.ExecutionOutput()` each decode only their own message type.
-- [ ] Tests:
+- [x] ADR-002 gains a dated amendment, and the envelope's closed set of message types gains `execution.started` and `execution.output` (ADR-009). `DecodeEnvelope` accepts both and still rejects unknown types.
+- [x] `DecodeExecutionStarted` and `DecodeExecutionOutput` strictly decode their payloads, with exact keys and ADR-009's field rules. Their errors wrap `ErrInvalidExecutionStarted` and `ErrInvalidExecutionOutput` respectively and name the field. Both typed values get `Validate` and `CanonicalJSON`, and `ExecutionStarted.ValidateAgainst(request)` checks the execution ID and the action hash.
+- [x] Output `data` must be canonical unpadded base64url of 1 to 65536 bytes. It decodes to bytes, and the canonical encoding reproduces it.
+- [x] `Envelope.ExecutionResult()`, `Envelope.ExecutionStarted()`, and `Envelope.ExecutionOutput()` each decode only their own message type.
+- [x] Tests:
   - examples decode, starting with ADR-009's own;
   - field rules are tested at both sides of their bounds, with exact key sets;
   - strictness errors wrap the right error value;
@@ -1386,3 +1386,60 @@ Non-goals:
      - each of the four payload helpers rejects every other type without decoding the payload.
 3. **Build failure.** The new types and constants were undefined.
 4. **Declarations-only skeleton.** It has the final types, error values, stream constants, and the two message-type constants, which the envelope does not yet accept. The decoders and encoders fail, the validators do nothing, and the helpers return a zero value. Runtime red: 18 tests failed across 108 subtests, including the structured fuzz test. The two generic fuzz targets passed, as expected, because rejecting everything satisfies them.
+
+#### Implementation and verification record
+
+- **Envelope:**
+  - `supportedMessageType` accepts `execution.started` and `execution.output`.
+  - `Envelope.expectType` is the single type check behind all four payload helpers: `ExecutionRequest()`, which keeps its exact message, and the new `ExecutionResult()`, `ExecutionStarted()`, and `ExecutionOutput()`.
+  - ADR-002 has a dated amendment, and the ADR index notes it.
+- **Shared rules** (`strict_json.go`):
+  - `startedPayload` and `outputPayload` kinds;
+  - full-sentence rule texts for identifiers, action hashes, and millisecond times;
+  - `millisecondTime`, which decodes and requires an exact round trip;
+  - `validMillisecondTime` and `validActionHash`, moved from `execution_result.go`.
+
+  The result decoder now uses them with the same messages, and its unchanged tests guard this refactor.
+- **`execution_started.go`:** a strict decoder with exact keys, plus `Validate`, `ValidateAgainst` (execution ID, then the action hash recomputed with ADR-008), and `CanonicalJSON`.
+- **`execution_output.go`:**
+  - a strict decoder in which `data` must re-encode exactly (`decodeCanonicalBase64URL`). Go's base64 decoder silently skips line breaks and, by default, accepts non-zero trailing bits, so the re-encoding check is essential.
+  - `Validate` alone bounds the size to 1 to 65536 bytes;
+  - `CanonicalJSON` writes `data` as unpadded base64url.
+- **Simplification found by mutation testing:** the base64url helper first had its own empty and size checks, and then an early length check. Each duplicated a rule that `Validate` applies on every decode, so each produced an equivalent mutant. They were removed, and the size rule now lives only in `Validate`, where the decode-path tests reach it directly.
+- Green: all tests pass under the race detector with no skips.
+- **Mutation testing**, run in one sequential batch: 25 deliberate mutations, all caught:
+  - the closed set, a misspelled type constant, and the shared type check;
+  - each field rule of both payloads;
+  - `Validate` skipped, or a partial value returned;
+  - a canonical key renamed;
+  - both `ValidateAgainst` comparisons, and request validation skipped;
+  - a key-set omission;
+  - the time round trip, sub-millisecond and non-UTC times, and the action-hash length;
+  - the `data` re-encoding check;
+  - the sequence bounds, the stream set, and both typed size bounds;
+  - padded `data` or a hexadecimal sequence in the encoding;
+  - a helper checking the wrong type.
+
+  The two redundant-guard mutants described above were removed together with the guards.
+- Fuzzing: 30-second sessions, run one after another, with no failures (about 6.4 million inputs in total):
+  - `FuzzDecodeExecutionStarted`: 1.89 million inputs;
+  - `FuzzDecodeExecutionOutput`: 1.85 million;
+  - `FuzzExecutionOutputValues`: 0.70 million;
+  - `FuzzDecodeExecutionResult`, after the shared-parser refactor: 1.97 million.
+- Coverage: protocol 96.4% (up from 95.9%), with every new function at 100%. The other packages are unchanged.
+- Documentation: the protocol package README, `docs/architecture/protocol.md`, the plan's Messenger section, the README status line, the roadmap above, the ADR-002 amendment, and the ADR index.
+- Security review:
+  - Output bytes are kept exact and never interpreted.
+  - The README and the type documentation say that output must never be logged.
+  - Helpers refuse to decode a payload under another type's rules.
+  - Every payload stays within the 512 KiB envelope bound, and a maximum chunk encodes to 87,382 characters.
+  - No high-confidence exploitable issue was found.
+- Local verification passed on the rebuilt toolchain:
+  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `go test -race -count=1 -timeout 120s ./...` and ten repeated race runs of the protocol package;
+  - every package with `CGO_ENABLED=0`;
+  - `git diff --cached --check`;
+  - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64.
+  - The tree is current.
+- Follow-up: increment 3, `execution.cancel`, which closes the plan's Messenger task.
+- Pushes to `arena/c7a368c1-scopra`: test checkpoint `f78e8aa` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.

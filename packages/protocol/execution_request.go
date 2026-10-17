@@ -141,8 +141,8 @@ func DecodeExecutionRequest(payload []byte) (ExecutionRequest, error) {
 // fails without decoding for any other message type. The envelope itself must
 // already have been decoded, verified, and checked for freshness and replay.
 func (e Envelope) ExecutionRequest() (ExecutionRequest, error) {
-	if e.Type != MessageTypeExecutionRequest {
-		return ExecutionRequest{}, fmt.Errorf("%w: %q, want %q", ErrUnexpectedMessageType, e.Type, MessageTypeExecutionRequest)
+	if err := e.expectType(MessageTypeExecutionRequest); err != nil {
+		return ExecutionRequest{}, err
 	}
 	return DecodeExecutionRequest(e.Payload)
 }
@@ -160,7 +160,7 @@ func (r ExecutionRequest) Validate() error {
 		{"sessionId", r.SessionID},
 	} {
 		if !validIdentifier(identifier.value) {
-			return requestPayload.fieldError(identifier.field, "must be 1 to 128 bytes of A-Z, a-z, 0-9, '-', '_', '.', or ':'")
+			return requestPayload.fieldError(identifier.field, identifierRule)
 		}
 	}
 	switch {

@@ -10,10 +10,6 @@ import (
 )
 
 const (
-	// resultTimeLayout is the only accepted form of startedAt and endedAt:
-	// RFC 3339 in UTC with exactly three fractional digits.
-	resultTimeLayout = "2006-01-02T15:04:05.000Z"
-
 	// maxOutputCount bounds output byte counts and chunk counts (2^30).
 	maxOutputCount = 1 << 30
 	// maxOutputChunkBytes bounds the data in one execution.output chunk.
@@ -128,19 +124,24 @@ func DecodeExecutionResult(payload []byte) (ExecutionResult, error) {
 	return result, nil
 }
 
-// ExecutionResult decodes the payload of an execution.result envelope.
+// ExecutionResult decodes the payload of an execution.result envelope and
+// fails without decoding for any other message type. The envelope itself must
+// already have been decoded, verified, and checked for freshness and replay.
 func (e Envelope) ExecutionResult() (ExecutionResult, error) {
-	return ExecutionResult{}, nil
+	if err := e.expectType(MessageTypeExecutionResult); err != nil {
+		return ExecutionResult{}, err
+	}
+	return DecodeExecutionResult(e.Payload)
 }
 
 // Validate checks every ADR-009 rule on a typed result, including that the
 // fields its state does not use are zero.
 func (r ExecutionResult) Validate() error {
 	if !validIdentifier(r.ExecutionID) {
-		return resultPayload.fieldError("executionId", "must be 1 to 128 bytes of A-Z, a-z, 0-9, '-', '_', '.', or ':'")
+		return resultPayload.fieldError("executionId", identifierRule)
 	}
 	if !validActionHash(r.ActionHash) {
-		return resultPayload.fieldError("actionHash", "must be 64 lowercase hexadecimal characters")
+		return resultPayload.fieldError("actionHash", actionHashRule)
 	}
 	keys, ok := resultKeys[r.State]
 	if !ok {
@@ -151,10 +152,10 @@ func (r ExecutionResult) Validate() error {
 
 	if slices.Contains(keys, "startedAt") {
 		switch {
-		case !validResultTime(r.StartedAt):
-			return resultPayload.fieldError("startedAt", "must be a UTC time with millisecond precision between years 0 and 9999")
-		case !validResultTime(r.EndedAt):
-			return resultPayload.fieldError("endedAt", "must be a UTC time with millisecond precision between years 0 and 9999")
+		case !validMillisecondTime(r.StartedAt):
+			return resultPayload.fieldError("startedAt", millisecondTimeRule)
+		case !validMillisecondTime(r.EndedAt):
+			return resultPayload.fieldError("endedAt", millisecondTimeRule)
 		case r.EndedAt.Before(r.StartedAt):
 			return resultPayload.fieldError("endedAt", "must not be before startedAt")
 		}
@@ -235,8 +236,8 @@ func (r ExecutionResult) CanonicalJSON() ([]byte, error) {
 	}
 	if slices.Contains(keys, "startedAt") {
 		members = append(members,
-			canonicalMember{"startedAt", canonicalString(r.StartedAt.Format(resultTimeLayout))},
-			canonicalMember{"endedAt", canonicalString(r.EndedAt.Format(resultTimeLayout))})
+			canonicalMember{"startedAt", canonicalString(r.StartedAt.Format(millisecondTimeLayout))},
+			canonicalMember{"endedAt", canonicalString(r.EndedAt.Format(millisecondTimeLayout))})
 	}
 	if slices.Contains(keys, "exitCode") {
 		members = append(members, canonicalMember{"exitCode", strconv.AppendInt(nil, int64(r.ExitCode), 10)})
@@ -313,20 +314,11 @@ func decodeResultFields(payload []byte) (ExecutionResult, error) {
 	}
 
 	if slices.Contains(keys, "startedAt") {
-		for _, field := range []struct {
-			path   string
-			target *time.Time
-		}{{"startedAt", &result.StartedAt}, {"endedAt", &result.EndedAt}} {
-			var text string
-			if err := resultPayload.decodeFields([]payloadField{{top[field.path], field.path, &text}}); err != nil {
-				return ExecutionResult{}, err
-			}
-			parsed, err := time.Parse(resultTimeLayout, text)
-			if err != nil || parsed.Format(resultTimeLayout) != text {
-				return ExecutionResult{}, resultPayload.fieldError(field.path,
-					"must be RFC 3339 in UTC with exactly three fractional digits (YYYY-MM-DDTHH:MM:SS.sssZ)")
-			}
-			*field.target = parsed
+		if result.StartedAt, err = resultPayload.millisecondTime(top["startedAt"], "startedAt"); err != nil {
+			return ExecutionResult{}, err
+		}
+		if result.EndedAt, err = resultPayload.millisecondTime(top["endedAt"], "endedAt"); err != nil {
+			return ExecutionResult{}, err
 		}
 	}
 	if slices.Contains(keys, "exitCode") {
@@ -367,25 +359,6 @@ func decodeResultFields(payload []byte) (ExecutionResult, error) {
 		}
 	}
 	return result, nil
-}
-
-// validResultTime reports whether t has the wire form's precision and range.
-func validResultTime(t time.Time) bool {
-	return t.Location() == time.UTC && t.Nanosecond()%int(time.Millisecond) == 0 && t.Year() >= 0 && t.Year() <= 9999
-}
-
-// validActionHash reports whether hash has the form of an ADR-008 action
-// hash: 64 lowercase hexadecimal characters.
-func validActionHash(hash string) bool {
-	if len(hash) != 64 {
-		return false
-	}
-	for i := 0; i < len(hash); i++ {
-		if !(hash[i] >= '0' && hash[i] <= '9' || hash[i] >= 'a' && hash[i] <= 'f') {
-			return false
-		}
-	}
-	return true
 }
 
 // validErrorCode reports whether code matches [a-z][a-z_]* and is at most 32

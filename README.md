@@ -4,7 +4,7 @@ Scopra is the controlled execution layer for AI agents. It connects agents to ap
 
 ## Status
 
-Early implementation: Scopra Messenger v1 envelope validation, strict decoding of execution request payloads (ADR-007, structure only), their canonical form and action hash (ADR-008), and strict decoding of execution results (ADR-009), a read-only Mio status service over local IPC, and a read-only `scopra doctor` that checks only the local platform, state directory, workspace registry, registered workspaces, and Mio status endpoint. `scopra workspace add/list/remove` manages Mio's workspace registrations over local IPC; policy, authorization, and execution are not implemented.
+Early implementation: Scopra Messenger v1 envelope validation, strict decoding of execution request payloads (ADR-007, structure only), their canonical form and action hash (ADR-008), and strict decoding of execution results, start notices, and output chunks (ADR-009), a read-only Mio status service over local IPC, and a read-only `scopra doctor` that checks only the local platform, state directory, workspace registry, registered workspaces, and Mio status endpoint. `scopra workspace add/list/remove` manages Mio's workspace registrations over local IPC; policy, authorization, and execution are not implemented.
 
 ## Start Here
 

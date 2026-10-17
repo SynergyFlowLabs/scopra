@@ -190,7 +190,9 @@ func supportedMessageType(messageType MessageType) bool {
 		MessageTypeExecutionResult,
 		MessageTypeExecutionCancel,
 		MessageTypeMachineRevocation,
-		MessageTypeAcknowledgement:
+		MessageTypeAcknowledgement,
+		MessageTypeExecutionStarted,
+		MessageTypeExecutionOutput:
 		return true
 	default:
 		return false

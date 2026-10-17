@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"time"
 	"unicode/utf8"
 )
 
@@ -18,7 +19,22 @@ type payloadKind struct {
 var (
 	requestPayload = payloadKind{invalid: ErrInvalidExecutionRequest}
 	resultPayload  = payloadKind{invalid: ErrInvalidExecutionResult}
+	startedPayload = payloadKind{invalid: ErrInvalidExecutionStarted}
+	outputPayload  = payloadKind{invalid: ErrInvalidExecutionOutput}
 )
+
+// Rule texts shared by several payloads, so that a rule reads the same
+// wherever it applies.
+const (
+	identifierRule      = "must be 1 to 128 bytes of A-Z, a-z, 0-9, '-', '_', '.', or ':'"
+	actionHashRule      = "must be 64 lowercase hexadecimal characters"
+	millisecondTimeRule = "must be a UTC time with millisecond precision between years 0 and 9999"
+	millisecondTimeForm = "must be RFC 3339 in UTC with exactly three fractional digits (YYYY-MM-DDTHH:MM:SS.sssZ)"
+)
+
+// millisecondTimeLayout is the only accepted form of ADR-009's times: RFC 3339
+// in UTC with exactly three fractional digits.
+const millisecondTimeLayout = "2006-01-02T15:04:05.000Z"
 
 // payloadField is one field to decode: its raw JSON, its path for errors, and
 // a pointer to its typed target.
@@ -136,6 +152,21 @@ func (k payloadKind) decodeFields(fields []payloadField) error {
 	return nil
 }
 
+// millisecondTime decodes a time in millisecondTimeLayout. The text must
+// round-trip exactly, because time.Parse also accepts forms such as a comma
+// before the fraction.
+func (k payloadKind) millisecondTime(raw json.RawMessage, path string) (time.Time, error) {
+	var text string
+	if err := k.decodeFields([]payloadField{{raw, path, &text}}); err != nil {
+		return time.Time{}, err
+	}
+	parsed, err := time.Parse(millisecondTimeLayout, text)
+	if err != nil || parsed.Format(millisecondTimeLayout) != text {
+		return time.Time{}, k.fieldError(path, millisecondTimeForm)
+	}
+	return parsed, nil
+}
+
 func (k payloadKind) fieldError(field, problem string) error {
 	if field == "" {
 		field = "payload"
@@ -213,4 +244,33 @@ func joinFieldPath(parent, key string) string {
 		return key
 	}
 	return parent + "." + key
+}
+
+// expectType returns ErrUnexpectedMessageType unless e carries want, so that a
+// payload is never decoded under another message type's rules.
+func (e Envelope) expectType(want MessageType) error {
+	if e.Type != want {
+		return fmt.Errorf("%w: %q, want %q", ErrUnexpectedMessageType, e.Type, want)
+	}
+	return nil
+}
+
+// validMillisecondTime reports whether t has the precision and range of
+// millisecondTimeLayout.
+func validMillisecondTime(t time.Time) bool {
+	return t.Location() == time.UTC && t.Nanosecond()%int(time.Millisecond) == 0 && t.Year() >= 0 && t.Year() <= 9999
+}
+
+// validActionHash reports whether hash has the form of an ADR-008 action
+// hash: 64 lowercase hexadecimal characters.
+func validActionHash(hash string) bool {
+	if len(hash) != 64 {
+		return false
+	}
+	for i := 0; i < len(hash); i++ {
+		if !(hash[i] >= '0' && hash[i] <= '9' || hash[i] >= 'a' && hash[i] <= 'f') {
+			return false
+		}
+	}
+	return true
 }
