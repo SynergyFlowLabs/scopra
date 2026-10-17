@@ -24,7 +24,7 @@ func runInstall(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	dir := flags.String("dir", "", "install directory (default: $XDG_BIN_HOME or ~/.local/bin)")
 	image := flags.String("sandbox-image", "", "Hollow container image, pinned by digest (ADR-010)")
 	scoprad := flags.String("scoprad", "", "path of the scoprad executable")
-	noService := flags.Bool("no-service", false, "install only the command line, with no systemd unit")
+	noService := flags.Bool("no-service", false, "install without a unit; verify the manual daemon context")
 	plain := flags.Bool("yes", false, "run without the interactive interface, using the flags as answers")
 	if err := flags.Parse(args); err != nil {
 		return &usageError{err: err}
@@ -86,6 +86,9 @@ func runInstall(ctx context.Context, args []string, stdout, stderr io.Writer) er
 		return fmt.Errorf("the interactive installer needs a terminal (%v); re-run with --yes for a scripted install", err)
 	}
 	model := installer.NewModel(buildinfo.Version(), installDir, *image, daemon != "")
+	if *noService {
+		model.SetNoService()
+	}
 	runner := &installer.Runner{
 		Terminal: terminal,
 		Model:    model,
@@ -104,7 +107,10 @@ func runInstall(ctx context.Context, args []string, stdout, stderr io.Writer) er
 
 // runInstallPlain performs the install and writes a line per step.
 func runInstallPlain(ctx context.Context, options installer.Options, stdout, stderr io.Writer) error {
-	env := installer.DefaultEnvironment()
+	return runInstallPlainWithEnvironment(ctx, options, stdout, stderr, installer.DefaultEnvironment())
+}
+
+func runInstallPlainWithEnvironment(ctx context.Context, options installer.Options, stdout, stderr io.Writer, env installer.Environment) error {
 	checks := env.Checks(ctx)
 	for _, check := range checks {
 		if _, err := fmt.Fprintf(stdout, "%s %s", check.Status.Symbol(), check.Title); err != nil {
@@ -125,9 +131,7 @@ func runInstallPlain(ctx context.Context, options installer.Options, stdout, std
 		}
 	}
 	if !installer.Ready(checks) {
-		if env.NeedsRelogin != nil && env.NeedsRelogin(ctx) {
-			_, _ = fmt.Fprint(stdout, installer.ReloginNote())
-		} else if env.Provision != nil {
+		if env.Provision != nil {
 			if plan, ok := env.Provision(ctx); ok {
 				// The commands refer to a staged file, so stage it before
 				// printing anything: a command that cannot run is worse than
@@ -137,13 +141,22 @@ func runInstallPlain(ctx context.Context, options installer.Options, stdout, std
 					for _, line := range plan.CommandLines() {
 						_, _ = fmt.Fprintf(stdout, "  %s\n", line)
 					}
-					if plan.NeedsRelogin {
-						_, _ = fmt.Fprintln(stdout, "then log out and back in, and run the installer again")
+					if plan.VerifyDelegationDropIn {
+						_, _ = fmt.Fprintln(stdout, "then rerun the installer to verify Podman in the delegated user service")
 					}
 				}
 			}
 		}
 		return errors.New("preflight failed: " + installer.FailureReason(checks))
+	}
+	if !options.Service && options.Scoprad != "" {
+		check := env.PodmanCurrentContextCheck(ctx)
+		if _, err := fmt.Fprintf(stdout, "%s Podman in the current process context: %s\n", check.Status.Symbol(), check.Detail); err != nil {
+			return err
+		}
+		if check.Failed() {
+			return fmt.Errorf("preflight failed: without the systemd user service, scoprad runs in the current cgroup; %s. rerun without `--no-service` and choose the delegated systemd service, or start scoprad from a context with the required controllers", check.Detail)
+		}
 	}
 	result, err := installer.Execute(ctx, options, func(step installer.Step) {
 		_, _ = fmt.Fprintf(stdout, "%s %s\n", step.Status.Symbol(), step.Title)

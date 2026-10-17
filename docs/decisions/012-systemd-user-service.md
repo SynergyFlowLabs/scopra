@@ -39,6 +39,7 @@ StartLimitBurst=3
 
 [Service]
 Type=simple
+Delegate=cpu cpuset io memory pids
 ExecStart=/path/to/scoprad --state-dir=/home/alice/.local/state/scopra --sandbox-image=name@sha256:...
 Restart=on-failure
 RestartSec=2
@@ -48,7 +49,7 @@ UMask=0077
 WantedBy=default.target
 ```
 
-This settles ADR-010's deferred question: **there is no separate configuration file and no environment variable.** The image is visible in the unit, changing it means reinstalling, and `scoprad` itself is unchanged. The first line marks the file as Scopra's; `install` and `uninstall` refuse a different unit at that path, and `install --force` replaces it.
+This settles ADR-010's deferred question: **there is no separate configuration file and no environment variable.** The image is visible in the unit, changing it means reinstalling, and `scoprad` itself is unchanged. `Delegate=cpu cpuset io memory pids` gives Mio's actual unit the controllers Hollow needs; the installer probes Podman in a transient user service with the same delegation instead of trusting the terminal's cgroup. The first line marks the file as Scopra's; `install` and `uninstall` refuse a different unit at that path, and `install --force` replaces it.
 
 ### Fail closed, no half-install
 

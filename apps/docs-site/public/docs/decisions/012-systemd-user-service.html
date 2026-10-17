@@ -54,6 +54,7 @@ StartLimitBurst=3
 
 [Service]
 Type=simple
+Delegate=cpu cpuset io memory pids
 ExecStart=/path/to/scoprad --state-dir=/home/alice/.local/state/scopra --sandbox-image=name@sha256:...
 Restart=on-failure
 RestartSec=2
@@ -62,7 +63,7 @@ UMask=0077
 [Install]
 WantedBy=default.target
 </code></pre>
-<p>This settles ADR-010&#39;s deferred question: <strong>there is no separate configuration file and no environment variable.</strong> The image is visible in the unit, changing it means reinstalling, and <code>scoprad</code> itself is unchanged. The first line marks the file as Scopra&#39;s; <code>install</code> and <code>uninstall</code> refuse a different unit at that path, and <code>install --force</code> replaces it.</p>
+<p>This settles ADR-010&#39;s deferred question: <strong>there is no separate configuration file and no environment variable.</strong> The image is visible in the unit, changing it means reinstalling, and <code>scoprad</code> itself is unchanged. <code>Delegate=cpu cpuset io memory pids</code> gives Mio&#39;s actual unit the controllers Hollow needs; the installer probes Podman in a transient user service with the same delegation instead of trusting the terminal&#39;s cgroup. The first line marks the file as Scopra&#39;s; <code>install</code> and <code>uninstall</code> refuse a different unit at that path, and <code>install --force</code> replaces it.</p>
 <h3 id="fail-closed-no-half-install">Fail closed, no half-install</h3>
 <ul>
 <li>Every value that can be checked without the filesystem is checked first: the image must satisfy ADR-010&#39;s digest rule, the state directory is resolved exactly as <code>scoprad</code> resolves it, and <code>systemctl</code> and an executable <code>scoprad</code> (explicit, then <code>PATH</code>, then beside <code>scopra</code>) must be found. A missing <code>systemctl</code> or <code>scoprad</code> therefore writes nothing.</li>

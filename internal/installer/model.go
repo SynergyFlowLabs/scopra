@@ -69,9 +69,6 @@ type Message struct {
 	// ProvisionErr set when it failed.
 	ProvisionDone bool
 	ProvisionErr  error
-	// Relogin reports that the remaining obstacle is a new login, not a
-	// missing fix.
-	Relogin bool
 	// Tick advances the spinner.
 	Tick bool
 }
@@ -100,6 +97,9 @@ type Model struct {
 	serviceChoice int
 	// installService is the answer, once chosen.
 	installService bool
+	// noService bypasses the service-choice screen when the CLI flag made
+	// that opt-out explicit.
+	noService bool
 
 	steps  []Step
 	result *Result
@@ -113,11 +113,6 @@ type Model struct {
 	// and setupErr is why the last attempt failed, if it did.
 	setup    *Provision
 	setupErr error
-	// relogin is true when the only remaining step is a new login session.
-	relogin bool
-	// ExitNote is printed after the interface is gone, for an instruction
-	// that would be erased with the alternate screen.
-	ExitNote string
 	// width and height are the last drawn size, kept for text layout.
 	width  int
 	height int
@@ -135,6 +130,13 @@ func NewModel(version, defaultDir, defaultImage string, hasDaemon bool) *Model {
 		Screen:        ScreenWelcome,
 		serviceChoice: 0,
 	}
+}
+
+// SetNoService makes the explicit --no-service flag skip the service-choice
+// screen; the runner still verifies the manual daemon context when scoprad is bundled.
+func (m *Model) SetNoService() {
+	m.noService = true
+	m.installService = false
 }
 
 // Intent reports what the runner should do next and clears it.
@@ -181,16 +183,6 @@ func (m *Model) Update(message Message) {
 	case message.Checks != nil || message.ChecksErr != nil:
 		m.checks = message.Checks
 		m.setup = message.Provision
-		m.relogin = message.Relogin
-		if m.relogin {
-			// The remedy is already installed; say so on the row itself
-			// instead of leaving instructions that no longer apply.
-			for index := range m.checks {
-				if m.checks[index].ID == "podman" && m.checks[index].Status == StatusFailed {
-					m.checks[index].Fix = "The delegation drop-in is installed; systemd applies it at your next login."
-				}
-			}
-		}
 		m.checksRunning = false
 		if message.ChecksErr != nil {
 			m.err = message.ChecksErr
@@ -303,13 +295,6 @@ func (m *Model) keyChecks(key tui.Key) bool {
 	case key.Is('f') && m.setup != nil && !m.checksRunning:
 		m.Screen = ScreenSetup
 		return true
-	case key.Type == tui.KeyEnter && !m.checksRunning && m.relogin:
-		// Nothing else can happen in this session; leave with the one
-		// instruction that does apply, printed after the screen is restored.
-		m.ExitNote = ReloginNote()
-		m.ExitCode = 1
-		m.intent = IntentQuit
-		return true
 	case key.Type == tui.KeyEnter && !m.checksRunning:
 		if !Ready(m.checks) {
 			return false
@@ -377,6 +362,11 @@ func (m *Model) keyImage(key tui.Key) bool {
 			return true
 		}
 		m.Image.Error = ""
+		if m.noService {
+			m.installService = false
+			m.beginInstall()
+			return true
+		}
 		m.serviceChoice = 0
 		m.Screen = ScreenService
 		return true
@@ -395,18 +385,22 @@ func (m *Model) keyService(key tui.Key) bool {
 		return true
 	case tui.KeyEnter:
 		m.installService = m.serviceChoice == 0 && m.HasDaemon
-		m.steps = Plan(m.Options())
-		for index := range m.steps {
-			m.steps[index].Status = StatusPending
-		}
-		m.Screen = ScreenRunning
-		m.intent = IntentInstall
+		m.beginInstall()
 		return true
 	case tui.KeyEscape:
 		m.Screen = ScreenImage
 		return true
 	}
 	return true
+}
+
+func (m *Model) beginInstall() {
+	m.steps = Plan(m.Options())
+	for index := range m.steps {
+		m.steps[index].Status = StatusPending
+	}
+	m.Screen = ScreenRunning
+	m.intent = IntentInstall
 }
 
 func (m *Model) keyRunning(tui.Key) bool {
@@ -424,9 +418,6 @@ func (m *Model) exit(code int) {
 // Running reports whether work is in flight.
 // Setup returns the plan the interface is offering, or nil.
 func (m *Model) Setup() *Provision { return m.setup }
-
-// Relogin reports that the installer is waiting for a new login session.
-func (m *Model) Relogin() bool { return m.relogin }
 
 // SetupErr returns why the last provisioning attempt failed, or nil.
 func (m *Model) SetupErr() error { return m.setupErr }

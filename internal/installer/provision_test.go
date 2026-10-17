@@ -217,8 +217,8 @@ func TestDetectDelegationFixBuildsTheDropIn(t *testing.T) {
 	if !ok {
 		t.Fatal("DetectDelegationFix() = no plan, want one")
 	}
-	if plan.Title != "Delegate cgroup controllers" || !plan.NeedsRelogin {
-		t.Fatalf("plan = %+v, want the delegation fix that needs a new login", plan)
+	if plan.Title != "Delegate cgroup controllers" || !plan.VerifyDelegationDropIn {
+		t.Fatalf("plan = %+v, want the delegation fix with post-install verification", plan)
 	}
 	if len(plan.Files) != 1 {
 		t.Fatalf("files = %+v, want one staged drop-in", plan.Files)

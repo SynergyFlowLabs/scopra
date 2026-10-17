@@ -94,11 +94,14 @@ and the install itself. `cmd/scopra/install.go` wires them together.
   Shift-Tab, and a lone Escape are decoded; an idle incomplete sequence is
   discarded rather than guessed at, so a stray bracket cannot drive the
   interface. Control bytes from a paste are dropped before they reach a field.
-- **Every check is the same rule Mio applies.** The preflight runs
-  `podman info --format json` and hands it to `hollow.ParsePodmanInfo` and
-  `PodmanInfo.Check`, so version, rootless mode, cgroup version, and delegated
-  controllers are judged once, in one place. A failing required check stops the
-  install; there is no "install anyway".
+- **Every check uses Hollow's same parser and fails closed.** The normal
+  preflight runs `podman info --format json` in a transient systemd user
+  service requesting `Delegate=cpu cpuset io memory pids`, matching the unit
+  Scopra installs, then hands the result to `hollow.ParsePodmanInfo` and
+  `PodmanInfo.Check`. A no-service install additionally probes in the current
+  process cgroup where `scoprad` will run. The daemon's per-request Hollow
+  preflight is unchanged, and no failing required check has an "install anyway"
+  path.
 - **Nothing is silent.** With no terminal and no `--yes`, the installer exits
   with an explanation instead of installing. The summary states what changed.
 - **The install is small and repeatable.** Create the directory, prove it is

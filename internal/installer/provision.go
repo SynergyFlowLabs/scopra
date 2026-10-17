@@ -31,8 +31,9 @@ type Provision struct {
 	Summary string
 	// Note tells the user what the commands do to the system.
 	Note string
-	// NeedsRelogin marks a fix that systemd only applies to the next session.
-	NeedsRelogin bool
+	// VerifyDelegationDropIn makes the runner confirm that the system-level
+	// drop-in was installed before it trusts a successful command exit.
+	VerifyDelegationDropIn bool
 	// Files are staged before the commands run. The commands copy them into
 	// place, so every path in them is the path that appears on the screen.
 	Files []ProvisionFile
@@ -62,9 +63,8 @@ const delegateDir = "/etc/systemd/system/user@.service.d"
 // delegateName sorts after distribution drop-ins, so this one wins.
 const delegateName = "99-scopra-delegate.conf"
 
-// DelegateDropInPath is the file the delegation plan installs, and the file
-// the installer reads to tell "configured but not active yet" apart from "not
-// configured at all". It is world-readable, so reading it needs no privileges.
+// DelegateDropInPath is the file the delegation plan installs. It is
+// world-readable, so verifying it needs no privileges.
 var DelegateDropInPath = filepath.Join(delegateDir, delegateName)
 
 // DelegationConfigured reports whether a drop-in at path already delegates the
@@ -101,12 +101,6 @@ func dropInDelegates(content string) bool {
 	return granted["cpu"] && granted["memory"] && granted["pids"]
 }
 
-// ReloginNote explains the one step the installer cannot do for the user: a
-// delegation change applies when systemd starts the user manager again.
-func ReloginNote() string {
-	return fmt.Sprintf("\nThe cgroup delegation drop-in is installed at %s.\nsystemd applies it when your user manager starts: log out, log back in, and run the installer again.\n", DelegateDropInPath)
-}
-
 // DetectDelegationFix returns the commands that delegate the cgroup controllers
 // Podman needs to the user manager, or false when the installer cannot do it
 // safely: without systemd, without root or sudo, or without somewhere to stage
@@ -131,10 +125,10 @@ func DetectDelegationFix(root bool, hasProgram func(string) bool, stagingDir str
 		return append(argv, args...)
 	}
 	return Provision{
-		Title:        "Delegate cgroup controllers",
-		Summary:      "Podman is installed, but your user session is not delegated the cgroup controllers Scopra's limits need: cpu, memory, and pids.",
-		Note:         "This writes a systemd drop-in for the user manager and reloads systemd. sudo asks for your password; Scopra never stores it. systemd applies the change the next time you log in.",
-		NeedsRelogin: true,
+		Title:                  "Delegate cgroup controllers",
+		Summary:                "Podman is installed, but Scopra could not confirm that the user manager can delegate the cgroup controllers its limits need: cpu, memory, and pids.",
+		Note:                   "This writes a systemd drop-in for the user manager and reloads systemd. sudo asks for your password; Scopra never stores it. The installer then probes Podman in a transient delegated user service.",
+		VerifyDelegationDropIn: true,
 		Files: []ProvisionFile{{
 			Path:    staged,
 			Mode:    0o644,

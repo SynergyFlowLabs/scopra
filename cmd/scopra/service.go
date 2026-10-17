@@ -222,6 +222,7 @@ func serviceUnitContent(scopradPath, stateDir, image string) (string, error) {
 		"",
 		"[Service]",
 		"Type=simple",
+		"Delegate=cpu cpuset io memory pids",
 		"ExecStart=" + strings.Join(execArgs, " "),
 		"Restart=on-failure",
 		"RestartSec=2",

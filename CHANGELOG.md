@@ -12,16 +12,15 @@ version, and the wire protocol is versioned separately (see ADR-002 and ADR-009)
 
 ### Added
 
-- **The installer can delegate cgroup controllers (ADR-017, amended).** A
-  machine with Podman 4.0+, rootless, on cgroups v2 can still fail the
-  preflight when systemd delegated only `memory` and `pids` to the user
-  manager. When that is the only missing requirement, `f` now offers a systemd
-  drop-in (`Delegate=cpu cpuset io memory pids`) installed with
-  `mkdir`/`cp`/`chmod`/`systemctl daemon-reload` argument vectors, staged from
-  the state directory so no shell writes a system file. The installer re-checks
-  afterwards; if the controllers are still missing it says the change applies
-  at the next login instead of failing silently. `--yes` still never runs any of
-  it.
+- **Cgroup preflight now matches the daemon's service context (ADR-017).** The
+  installer and `scopra doctor` run `podman info` inside a transient systemd
+  user service requesting `Delegate=cpu cpuset io memory pids`; the generated
+  `scoprad.service` requests the same controllers. The installer no longer
+  trusts a desktop terminal's less-delegated cgroup, and a no-service install
+  additionally checks the current process context where `scoprad` would be
+  started. The opt-in user-manager drop-in is re-probed in the same session;
+  an already-installed fix is not offered again, and no unverified logout/login
+  instruction is shown. Hollow's runtime containment check remains fail-closed.
 - **The installer can set up a missing prerequisite (ADR-017).** When the
   preflight fails because rootless Podman is absent, the checks screen offers
   `f` to install it with the distribution's own package manager. A confirmation
@@ -106,16 +105,13 @@ version, and the wire protocol is versioned separately (see ADR-002 and ADR-009)
 ### Fixed
 
 - **The installer looped on a cgroup delegation fix it had already applied.**
-  A delegation change only takes effect when systemd starts the user manager
-  again, so a re-check in the same session has to fail. The checks screen
-  offered `f` again, and pressing it re-ran the same four commands — a loop
-  with no exit, reported from a real machine. The installer now reads the
-  installed drop-in: when it is present and Podman still reports the
-  controllers missing, the screen says the change applies at the next login,
-  stops offering the fix, and exits with that instruction printed to the
-  terminal after the interface is restored. A later run goes straight to the
-  same message, and a drop-in that is not in place after a successful command
-  run is reported as the failure it is.
+  Alpha.7 stopped repeating the commands when the drop-in was present, but
+  guessed that a new login was required. Diagnostics from the affected host
+  disproved that explanation: `cpu` was available at the user-manager boundary,
+  while the terminal's `app.slice` exposed only `memory` and `pids`. The
+  unreleased correction above probes the actual delegated service context and
+  removes the relogin heuristic; it also checks the current process context
+  before accepting a no-service install.
 - **A scripted install printed a command that could not run.** `scopra install
   --yes` described the delegation drop-in with a `cp` from the state directory,
   but only the interactive path staged that file, so the command failed with

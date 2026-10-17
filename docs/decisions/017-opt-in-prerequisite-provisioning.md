@@ -61,18 +61,34 @@ The plan today covers Debian/Ubuntu (`apt-get` with `uidmap`, `slirp4netns`, and
 `fuse-overlayfs`, which rootless Podman needs there), Fedora/RHEL and
 derivatives (`dnf`), Arch (`pacman`), openSUSE (`zypper`), and Alpine (`apk`).
 
-### Amendment: the second kind of prerequisite
+### Amendment: delegation is tested in the service context (2026-10-18)
 
-Installing the package was not enough. A machine can have Podman 4.0+, run
-rootless, use cgroups v2, and still stop the preflight, because systemd's
-`user@.service` delegates only `memory` and `pids` by default and Podman cannot
-enforce a CPU limit without the `cpu` controller. The user who reported the
-first version of this feature hit exactly that: the package install succeeded,
-the interface came back, and the only thing left was a manual fix.
+Installing Podman was not enough. The first reported failure was
+`cgroup controllers not delegated: cpu` after package provisioning. The initial
+explanation blamed a user-manager restart and told the user to log out and back
+in. That advice was not supported by the diagnostics: the user manager had
+`cpu` available, while the desktop terminal's `app.slice` cgroup exposed only
+`memory` and `pids`.
 
-The same consent mechanism now covers it. When Podman is present and its own
-`podman info` reports that delegation is the *only* missing requirement, `f`
-offers a systemd drop-in instead of a package:
+Podman reports controllers for the cgroup of the `podman` process. A terminal
+probe therefore does not prove what the daemon's systemd unit can use. The
+installer and `scopra doctor` now run the read-only probe through an exact
+argument vector equivalent to:
+
+```text
+systemd-run --user --quiet --pipe --wait --collect \
+  --property=Delegate=cpu cpuset io memory pids -- \
+  /absolute/path/to/podman info --format json
+```
+
+The generated `scoprad.service` requests the same `Delegate=cpu cpuset io
+memory pids`. Hollow's runtime preflight is unchanged: it still checks the
+actual daemon process context and refuses every run when required controllers
+are missing. The installer never treats a successful terminal-scope probe as a
+substitute for that check.
+
+The opt-in user-manager drop-in remains available when controller absence is
+identified and the file is not already configured:
 
 ```text
 [Service]
@@ -80,36 +96,39 @@ Delegate=cpu cpuset io memory pids
 ```
 
 at `/etc/systemd/system/user@.service.d/99-scopra-delegate.conf`, followed by
-`systemctl daemon-reload`. Three rules keep it inside the agreement:
+`systemctl daemon-reload`. The rules remain:
 
 1. **No shell redirection, even for a file.** The drop-in is written to the
    user's state directory first, then installed by `mkdir`, `cp`, and `chmod`
    argument vectors. The screen prints those commands, so the file the user
    approves is the file that lands.
 2. **Only when it can work.** The offer requires Podman 4.0+, rootless, cgroups
-   v2, and `systemctl`; on cgroups v1 the fix would be a boot parameter and a
-   reboot, which this installer does not touch.
-3. **Say when it takes effect.** A delegation change applies when the user
-   manager next starts. The installer re-runs the preflight after the commands;
-   if the controllers are still missing, the screen says to log out and back in
-   rather than pretending the fix failed. That is the one step this design
-   cannot automate without destroying the session it is running in.
-4. **A fix that is already installed is not offered again.** The installer reads
-   the drop-in before it offers anything, so a session that is waiting for its
-   next login is told exactly that, once, with no privileged command to repeat.
-   After the commands succeed it also verifies the file it claims to have
-   installed, and reports a drop-in it cannot see as a failure.
+   v2, and the required systemd tools. On cgroups v1 the fix would be a boot
+   parameter and a reboot, which this installer does not touch. If the
+   delegated probe itself fails, a direct Podman query may classify a missing
+   controller for provisioning; that query can never make preflight pass.
+3. **Verify the effect, not a presumed login boundary.** After an explicitly
+   approved plan completes, the installer re-runs the delegated service probe
+   in the same session. If it still fails, the failed check is shown and the
+   install remains blocked. The installer does not restart `user@.service`,
+   claim that logging out will fix it, or offer the same already-installed
+   drop-in again.
+4. **A no-service install tests its real launch context.** If `scoprad` is
+   present and the user opts out of the systemd unit, the installer additionally
+   runs `podman info` in the current process cgroup, where the user will start
+   the daemon manually. A failure blocks the install before binaries are
+   written; a passing transient-service probe alone is not enough.
 
-   The first shipped version of rule 3 got this wrong: the re-check failed in
-   the same session, the screen offered `f` again, and pressing it re-ran the
-   same four commands. The state the installer could not reach was the one it
-   was already in, and it has to say so instead of looping.
+The earlier same-session loop and relogin screen were symptoms of using the
+wrong cgroup as evidence. The check now follows the process context that will
+execute Hollow instead of guessing at systemd lifecycle behavior.
 
 ## Consequences
 
-- The one command now ends in a working install on the distributions Scopra
-  supports, including a machine where Podman was missing, without the user
-  leaving the terminal.
+- The one command can install Podman and, when explicitly approved, delegate
+  cgroup controllers. A systemd-managed install is accepted only after the
+  transient service probe passes; an explicit no-service install must also pass
+  in the current process context where the daemon will be started.
 - The installer can change the system in a way it could not before. That is a
   real trust expansion, bounded by: it is opt-in, it is visible before it runs,
   it runs only the distribution's package manager against the distribution's

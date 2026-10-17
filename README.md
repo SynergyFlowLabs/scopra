@@ -27,11 +27,14 @@ $ curl -fsSL https://scopra-six.vercel.app/install.sh | sh
 The script downloads the release archive for your architecture, checks its
 SHA-256 against the release's `checksums.txt`, and opens an interactive
 installer. The installer checks the system first (Linux, systemd user session,
-rootless Podman 4.0+ with cgroups v2), then asks where to put the binaries,
-whether to pin a sandbox image, and whether Mio should run as a systemd user
-service. Nothing changes until you confirm. If rootless Podman is missing — or
-installed without the cgroup controllers Scopra needs — the checks screen offers
-to fix it: it prints every command first and runs nothing until you press `y`.
+rootless Podman 4.0+ with cgroups v2 in a transient delegated service), then asks
+where to put the binaries, whether to pin a sandbox image, and whether Mio should
+run as a systemd user service. The generated unit requests the same controllers.
+Nothing changes until you confirm. If rootless Podman is missing — or the
+service context lacks cgroup controllers — the checks screen may offer an
+opt-in fix: it prints every command first and runs nothing until you press `y`.
+An explicit no-service install also checks the current process context where you
+will start `scoprad`.
 
 Every variant — scripted installs, a pinned version, a custom directory, a pinned
 image, verifying the archive by hand — is in
@@ -193,7 +196,10 @@ $ curl -fsSL https://scopra-six.vercel.app/install.sh | SCOPRA_VERSION=v0.1.0-al
 
 **Choose the directory and skip the service** — `--dir` defaults to
 `$XDG_BIN_HOME` when it is absolute, otherwise `~/.local/bin`; `--no-service`
-installs only the command line:
+installs without a systemd unit. Because you start `scoprad` yourself in this
+mode, the installer also verifies that Podman has the required controllers in
+your current process context; otherwise rerun without `--no-service` and choose
+the delegated systemd service:
 
 ```console
 $ curl -fsSL https://scopra-six.vercel.app/install.sh | sh -s -- --dir ~/.local/bin --no-service

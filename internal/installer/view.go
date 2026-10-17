@@ -230,18 +230,6 @@ func (m *Model) drawChecks(frame *tui.Frame, x, y, width, height int) {
 		frame.Put(x, row, "Everything Scopra needs is here. Press enter to continue.", styleAccent)
 		return
 	}
-	if m.relogin {
-		row++
-		for _, line := range tui.Wrap("The cgroup delegation drop-in is installed, but systemd applies it when your user manager starts.", width) {
-			frame.Put(x, row, line, styleAccent)
-			row++
-		}
-		for _, line := range tui.Wrap("Log out, log back in, and run the installer again: nothing else is needed.", width) {
-			frame.Put(x, row, line, styleWarn)
-			row++
-		}
-		return
-	}
 	if m.setup != nil {
 		frame.Put(x, row, "Press f and the installer can fix this for you.", styleAccent)
 		return
@@ -352,7 +340,7 @@ func (m *Model) drawService(frame *tui.Frame, x, y, width int) {
 		detail string
 	}{
 		{"Install a systemd user service (recommended)", "starts with your session and restarts after a crash"},
-		{"Only the command line", "you start scoprad yourself when you need it"},
+		{"Only the command line", "manual launch; current cgroup is checked"},
 	}
 	for index, option := range options {
 		selected := index == m.serviceChoice
@@ -502,9 +490,6 @@ func (m *Model) hints() []string {
 		}
 		if Ready(m.checks) {
 			return []string{"enter continue", "q quit"}
-		}
-		if m.relogin {
-			return []string{"enter exit", "q quit"}
 		}
 		if m.setup != nil {
 			return []string{"f fix this", "q quit"}

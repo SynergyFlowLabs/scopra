@@ -3,6 +3,7 @@ package installer
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -74,9 +75,13 @@ type Environment struct {
 	// package, or delegate the cgroup controllers Podman needs. It returns
 	// false when there is no plan the installer is willing to run.
 	Provision func(ctx context.Context) (Provision, bool)
-	// NeedsRelogin reports that the fix is installed but not active yet:
-	// systemd only applies a delegation change when the user manager starts.
-	NeedsRelogin func(ctx context.Context) bool
+	// ProbePodmanInfo runs Podman's read-only info command in the cgroup
+	// context Scopra's delegated systemd service will use. Tests may replace
+	// it; production uses a short-lived transient user service.
+	ProbePodmanInfo func(ctx context.Context) ([]byte, error)
+	// ProbeCurrentPodmanInfo checks the caller's cgroup, for the explicit
+	// no-service path where the user will start scoprad manually.
+	ProbeCurrentPodmanInfo func(ctx context.Context) ([]byte, error)
 }
 
 // StateDir is the Mio state directory the installer reports and the service
@@ -95,12 +100,13 @@ func (env Environment) StateDirectory() (string, error) {
 func DefaultEnvironment() Environment {
 	stateDir, err := localipc.ResolveStateDir("")
 	return Environment{
-		GOOS:         runtime.GOOS,
-		StateDir:     stateDir,
-		StateDirErr:  err,
-		Run:          runCommand,
-		Provision:    defaultProvision,
-		NeedsRelogin: defaultNeedsRelogin,
+		GOOS:                   runtime.GOOS,
+		StateDir:               stateDir,
+		StateDirErr:            err,
+		Run:                    runCommand,
+		Provision:              defaultProvision,
+		ProbePodmanInfo:        defaultPodmanInfo,
+		ProbeCurrentPodmanInfo: defaultDirectPodmanInfo,
 	}
 }
 
@@ -118,17 +124,26 @@ func defaultProvision(ctx context.Context) (Provision, bool) {
 	}
 	// Podman is installed. If the only thing missing is cgroup controller
 	// delegation, the fix is a systemd drop-in rather than a package.
-	output, err := runCommand(ctx, "podman", "info", "--format", "json")
+	output, err := defaultPodmanInfo(ctx)
 	if err != nil {
-		return Provision{}, false
+		if errors.Is(err, errSystemdRunExecutableMissing) || errors.Is(err, errPodmanExecutableMissing) {
+			return Provision{}, false
+		}
+		// The delegated probe is authoritative for a pass. A direct info
+		// query is used only to decide whether the opt-in user@ drop-in
+		// could address a missing controller; it never makes preflight pass.
+		output, err = defaultDirectPodmanInfo(ctx)
+		if err != nil {
+			return Provision{}, false
+		}
 	}
 	info, err := hollow.ParsePodmanInfo(output)
 	if err != nil || !info.DelegationMissing() {
 		return Provision{}, false
 	}
-	// The drop-in is already there, so running the commands again would
-	// change nothing; the remaining step is a new login, and the installer
-	// says so instead of looping.
+	// The drop-in is already present. The delegated probe has tested the
+	// context Scopra will use, so repeating the same system-level commands
+	// cannot repair a remaining failure.
 	if DelegationConfigured(DelegateDropInPath) {
 		return Provision{}, false
 	}
@@ -139,22 +154,52 @@ func defaultProvision(ctx context.Context) (Provision, bool) {
 	return DetectDelegationFix(root, hasProgram, filepath.Join(stateDir, "installer"))
 }
 
-// defaultNeedsRelogin reports whether the only remaining gap is one systemd
-// closes at the next login: the delegation drop-in is in place, and Podman
-// still does not see the controllers in this session.
-func defaultNeedsRelogin(ctx context.Context) bool {
-	if !DelegationConfigured(DelegateDropInPath) {
-		return false
+// defaultPodmanInfo runs Podman's read-only host probe in a transient systemd
+// user service with explicit controller delegation. This mirrors the
+// execution context of scoprad.service instead of the terminal's app scope.
+func defaultPodmanInfo(ctx context.Context) ([]byte, error) {
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	output, err := runCommand(ctx, "podman", "info", "--format", "json")
+	podman, err := exec.LookPath("podman")
 	if err != nil {
-		return false
+		return nil, fmt.Errorf("%w: %v", errPodmanExecutableMissing, err)
 	}
-	info, err := hollow.ParsePodmanInfo(output)
+	podman, err = filepath.Abs(podman)
 	if err != nil {
-		return false
+		return nil, err
 	}
-	return info.DelegationMissing()
+	systemdRun, err := exec.LookPath("systemd-run")
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", errSystemdRunExecutableMissing, err)
+	}
+	systemdRun, err = filepath.Abs(systemdRun)
+	if err != nil {
+		return nil, err
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, commandTimeout)
+	defer cancel()
+	return hollow.RunDelegatedPodmanInfo(probeCtx, runCommand, systemdRun, podman)
+}
+
+// defaultDirectPodmanInfo runs a bounded probe in the caller's cgroup. It can
+// classify a provisioning failure and verifies the explicit no-service path;
+// its result is never accepted as proof that a delegated service is ready.
+func defaultDirectPodmanInfo(ctx context.Context) ([]byte, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	podman, err := exec.LookPath("podman")
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", errPodmanExecutableMissing, err)
+	}
+	podman, err = filepath.Abs(podman)
+	if err != nil {
+		return nil, err
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, commandTimeout)
+	defer cancel()
+	return runCommand(probeCtx, podman, "info", "--format", "json")
 }
 
 // hasProgram reports whether name is on PATH. It is a variable so tests can
@@ -167,6 +212,11 @@ var hasProgram = func(name string) bool {
 // commandTimeout bounds every preflight command. A hung Podman must not hang
 // the installer.
 const commandTimeout = 10 * time.Second
+
+var (
+	errPodmanExecutableMissing     = errors.New("podman executable not found")
+	errSystemdRunExecutableMissing = errors.New("systemd-run executable not found")
+)
 
 // maxCommandOutput bounds the output the installer keeps from a command.
 const maxCommandOutput = 1 << 20
@@ -260,13 +310,49 @@ func (env Environment) stateDirCheck() Check {
 	return check
 }
 
+func (env Environment) podmanInfo(ctx context.Context) ([]byte, error) {
+	if env.ProbePodmanInfo == nil {
+		return nil, errors.New("installer: no delegated Podman probe is configured")
+	}
+	return env.ProbePodmanInfo(ctx)
+}
+
 func (env Environment) podmanCheck(ctx context.Context) Check {
+	output, err := env.podmanInfo(ctx)
+	missing := errors.Is(err, errPodmanExecutableMissing)
+	return podmanInfoCheck(output, err, true, missing)
+}
+
+// PodmanCurrentContextCheck verifies the cgroup of a manually launched daemon.
+// It must not be substituted for the delegated-service probe used by a
+// systemd-managed install.
+func (env Environment) PodmanCurrentContextCheck(ctx context.Context) Check {
+	if env.ProbeCurrentPodmanInfo == nil {
+		return podmanInfoCheck(nil, errors.New("installer: no current-context Podman probe is configured"), false, false)
+	}
+	output, err := env.ProbeCurrentPodmanInfo(ctx)
+	missing := errors.Is(err, errPodmanExecutableMissing) || errors.Is(err, exec.ErrNotFound)
+	return podmanInfoCheck(output, err, false, missing)
+}
+
+func podmanInfoCheck(output []byte, err error, delegated, missing bool) Check {
 	check := Check{ID: "podman", Title: "Rootless Podman 4.0+", Required: true}
-	output, err := env.Run(ctx, "podman", "info", "--format", "json")
 	if err != nil {
 		check.Status = StatusFailed
-		check.Detail = "podman is not available"
-		check.Fix = "Install Podman 4.0 or later, then run `podman info` once to create its configuration."
+		switch {
+		case missing:
+			check.Detail = "podman is not available"
+			check.Fix = "Install Podman 4.0 or later, then run `podman info` once to create its configuration."
+		case errors.Is(err, errSystemdRunExecutableMissing):
+			check.Detail = "systemd-run is not available"
+			check.Fix = "Install systemd-run or add it to PATH, then run the installer again."
+		case delegated:
+			check.Detail = "the delegated systemd service probe could not run"
+			check.Fix = "Check that `systemd-run --user` can start a transient service with cgroup delegation, then run the installer again."
+		default:
+			check.Detail = "the Podman probe in the current process context could not run"
+			check.Fix = "Check that `podman info --format json` succeeds in the context where you will start scoprad."
+		}
 		return check
 	}
 	info, err := hollow.ParsePodmanInfo(output)
@@ -279,11 +365,19 @@ func (env Environment) podmanCheck(ctx context.Context) Check {
 	if err := info.Check(); err != nil {
 		check.Status = StatusFailed
 		check.Detail = containmentDetail(err)
-		check.Fix = "Run rootless Podman 4.0+ with cgroup v2 delegation; see ADR-010 for the exact requirements."
+		if delegated {
+			check.Fix = "Run rootless Podman 4.0+ with cgroup v2 delegation; see ADR-010 for the exact requirements."
+		} else {
+			check.Fix = "Choose Scopra's systemd user service, which requests cgroup delegation, or start scoprad from a context with the required controllers."
+		}
 		return check
 	}
 	check.Status = StatusOK
-	check.Detail = "podman " + info.Version + ", rootless, cgroups " + info.CgroupVersion
+	contextDetail := "(delegated service)"
+	if !delegated {
+		contextDetail = "(current process context)"
+	}
+	check.Detail = "podman " + info.Version + ", rootless, cgroups " + info.CgroupVersion + " " + contextDetail
 	return check
 }
 

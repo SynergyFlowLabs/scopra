@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"time"
 
 	"github.com/SynergyFlowLabs/scopra/internal/hollow"
@@ -16,9 +17,10 @@ var containmentHelperTimeout = 10 * time.Second
 
 // diagnoseContainment checks whether this host can offer ADR-010's rootless
 // containment and, when sandboxImage is set, whether that image is present.
-// It is read-only: it runs only `podman info --format json` and, for a pinned
-// image, `podman image exists`. It never pulls, starts, or removes anything,
-// and it contacts Mio only through the existing daemon check.
+// It is read-only: it runs `podman info --format json` in a transient,
+// delegated systemd user service and, for a pinned image, `podman image
+// exists`. It never pulls, starts, or removes a container, and it contacts Mio
+// only through the existing daemon check.
 //
 // The statuses keep a healthy host quiet and a broken execution setup
 // visible: a missing podman or image is a warning, because status and
@@ -35,14 +37,41 @@ func diagnoseContainment(ctx context.Context, sandboxImage string) doctorCheck {
 				"so restart scoprad after installing it.",
 		}
 	}
-
-	output, err := runPodmanHelper(ctx, podman, "info", "--format", "json")
+	podman, err = filepath.Abs(podman)
 	if err != nil {
 		return doctorCheck{
 			Name:   checkNameContainment,
 			Status: checkFail,
-			Detail: "podman info failed: " + err.Error(),
-			Hint:   "Run `podman info` yourself; Mio refuses every run when its preflight check fails.",
+			Detail: "the podman path could not be resolved: " + err.Error(),
+			Hint:   "Check that podman is executable from PATH; Mio refuses every run when its preflight check fails.",
+		}
+	}
+
+	systemdRun, err := exec.LookPath("systemd-run")
+	if err != nil {
+		return doctorCheck{
+			Name:   checkNameContainment,
+			Status: checkFail,
+			Detail: "systemd-run was not found; Mio cannot probe its delegated service context",
+			Hint:   "Install systemd-run or add it to PATH; Mio refuses every run when its preflight check fails.",
+		}
+	}
+	systemdRun, err = filepath.Abs(systemdRun)
+	if err != nil {
+		return doctorCheck{
+			Name:   checkNameContainment,
+			Status: checkFail,
+			Detail: "the systemd-run path could not be resolved: " + err.Error(),
+			Hint:   "Check that systemd-run is executable from PATH; Mio refuses every run when its preflight check fails.",
+		}
+	}
+	output, err := hollow.RunDelegatedPodmanInfo(ctx, runPodmanHelper, systemdRun, podman)
+	if err != nil {
+		return doctorCheck{
+			Name:   checkNameContainment,
+			Status: checkFail,
+			Detail: "delegated systemd Podman probe failed: " + err.Error(),
+			Hint:   "Check that `systemd-run --user` can start a transient service with cgroup delegation; Mio refuses every run when its preflight check fails.",
 		}
 	}
 	info, err := hollow.ParsePodmanInfo(output)

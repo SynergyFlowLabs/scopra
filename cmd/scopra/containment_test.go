@@ -15,12 +15,17 @@ import (
 // is set, the test binary acts as podman instead of running tests, so that
 // the containment check can be exercised without Podman installed.
 const doctorFakePodmanEnv = "SCOPRA_DOCTOR_FAKE_PODMAN"
+const doctorFakeSystemdRunEnv = "SCOPRA_DOCTOR_FAKE_SYSTEMD_RUN"
 
 // testSandboxImage is a reference pinned by digest, as ADR-010 requires.
 const testSandboxImage = "runner@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 func TestMain(m *testing.M) {
-	if dir := os.Getenv(doctorFakePodmanEnv); dir != "" {
+	invokedAs := filepath.Base(os.Args[0])
+	if dir := os.Getenv(doctorFakeSystemdRunEnv); invokedAs == "systemd-run" && dir != "" {
+		os.Exit(fakeSystemdRun(dir, os.Args[1:]))
+	}
+	if dir := os.Getenv(doctorFakePodmanEnv); invokedAs == "podman" && dir != "" {
 		os.Exit(fakePodman(dir, os.Args[1:]))
 	}
 	if dir := os.Getenv(fakeSystemctlEnv); dir != "" {
@@ -93,8 +98,25 @@ func fakePodman(dir string, args []string) int {
 	return 125
 }
 
-// startFakePodman creates a scenario directory and a PATH entry whose podman
-// is this test binary, then selects the scenario for the test.
+// fakeSystemdRun accepts only the delegated Podman info service used by doctor.
+// It records the transient-unit arguments and dispatches the Podman argv to the
+// test binary's fake implementation without invoking a shell.
+func fakeSystemdRun(dir string, args []string) int {
+	appendDoctorLine(dir, "systemd-run.log", strings.Join(args, " "))
+	if doctorFileExists(filepath.Join(dir, "systemd-run-fails")) {
+		fmt.Fprintln(os.Stderr, "systemd-run: delegated service unavailable")
+		return 125
+	}
+	separator := slices.Index(args, "--")
+	if separator < 0 || separator+1 >= len(args) || filepath.Base(args[separator+1]) != "podman" {
+		fmt.Fprintf(os.Stderr, "fake systemd-run: unexpected argv %q\n", args)
+		return 125
+	}
+	return fakePodman(dir, args[separator+2:])
+}
+
+// startFakePodman creates a scenario directory and PATH entries for fake
+// podman and systemd-run executables, then selects the scenario for the test.
 func startFakePodman(t *testing.T, files map[string]string) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -112,12 +134,29 @@ func startFakePodman(t *testing.T, files map[string]string) string {
 	if err := os.Symlink(executable, filepath.Join(binDir, "podman")); err != nil {
 		t.Fatalf("create the fake podman symlink: %v", err)
 	}
+	if err := os.Symlink(executable, filepath.Join(binDir, "systemd-run")); err != nil {
+		t.Fatalf("create the fake systemd-run symlink: %v", err)
+	}
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv(doctorFakePodmanEnv, dir)
+	t.Setenv(doctorFakeSystemdRunEnv, dir)
 	// A race-enabled test binary sleeps for a second before exiting unless
 	// told otherwise, and every fake podman call is one.
 	t.Setenv("GORACE", "atexit_sleep_ms=0")
 	return dir
+}
+
+// fakeSystemdRunCalls returns the transient-unit calls that the scenario received.
+func fakeSystemdRunCalls(t *testing.T, dir string) []string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(dir, "systemd-run.log"))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		t.Fatalf("ReadFile(systemd-run.log) error = %v", err)
+	}
+	return strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
 }
 
 // fakePodmanCalls returns the podman calls that the scenario received.
@@ -176,6 +215,10 @@ func TestRunDoctorReportsContainmentReady(t *testing.T) {
 	if calls, want := fakePodmanCalls(t, fake), []string{"info --format json", "image exists " + testSandboxImage}; !slices.Equal(calls, want) {
 		t.Fatalf("podman calls = %q, want exactly %q", calls, want)
 	}
+	calls := fakeSystemdRunCalls(t, fake)
+	if len(calls) != 1 || !strings.Contains(calls[0], "--property=Delegate=cpu cpuset io memory pids") || !strings.Contains(calls[0], "info --format json") {
+		t.Fatalf("systemd-run calls = %q, want one delegated Podman info probe", calls)
+	}
 }
 
 func TestRunDoctorContainmentStatuses(t *testing.T) {
@@ -206,8 +249,8 @@ func TestRunDoctorContainmentStatuses(t *testing.T) {
 			fake:       map[string]string{"info-fails": ""},
 			image:      testSandboxImage,
 			wantStatus: "fail",
-			wantDetail: "podman info failed",
-			wantHint:   "Run `podman info`",
+			wantDetail: "delegated systemd Podman probe failed",
+			wantHint:   "systemd-run --user",
 		},
 		"podman runs as root": {
 			fake:       map[string]string{"info.json": podmanInfoJSON("5.2.0", false, "v2", "cpu,memory,pids")},
@@ -335,7 +378,7 @@ func TestRunDoctorContainmentHelperIsBounded(t *testing.T) {
 	elapsed := time.Since(begin)
 
 	containment := findCheck(t, report, "containment")
-	if containment.Status != "fail" || !strings.Contains(containment.Detail, "podman info failed") {
+	if containment.Status != "fail" || !strings.Contains(containment.Detail, "delegated systemd Podman probe failed") {
 		t.Fatalf("containment = %+v, want a failing podman info after the deadline", containment)
 	}
 	// The fake sleeps for five seconds; doctor must not wait for it.

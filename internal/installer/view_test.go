@@ -227,23 +227,24 @@ func TestSetupScreenShowsEveryCommand(t *testing.T) {
 	}
 }
 
-func TestChecksScreenExplainsAFixThatNeedsANewLogin(t *testing.T) {
+func TestChecksScreenExplainsADelegatedServiceProbeFailure(t *testing.T) {
 	model := newTestModel()
 	begin(model)
-	model.Update(Message{Checks: failChecks(), Relogin: true})
+	checks := failChecks()
+	checks[0].Detail = "the delegated systemd service probe could not run"
+	checks[0].Fix = "Check that systemd-run --user can start a transient service with cgroup delegation."
+	model.Update(Message{Checks: checks})
 	view := model.View(100, 30, tui.StyleSheet{})
 	for _, want := range []string{
-		"The cgroup delegation drop-in is installed",
-		"applies it when your user manager",
-		"Log out, log back in, and run the installer again",
-		"enter exit",
+		"delegated systemd service probe could not run",
+		"systemd-run --user can start a transient service",
 	} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("checks screen is missing %q:\n%s", want, view)
 		}
 	}
-	if strings.Contains(view, "Press f") {
-		t.Fatalf("checks screen still offers a fix that is already installed:\n%s", view)
+	if strings.Contains(view, "Log out, log back in") || strings.Contains(view, "Press f") {
+		t.Fatalf("checks screen offers an unverified login/repeated-fix remedy:\n%s", view)
 	}
 }
 
@@ -260,14 +261,22 @@ func TestChecksScreenReportsAFailedFix(t *testing.T) {
 	}
 }
 
+func TestServiceScreenExplainsManualContextValidation(t *testing.T) {
+	model := modelAtService(t)
+	view := model.View(100, 30, tui.StyleSheet{})
+	if !strings.Contains(view, "manual launch; current cgroup is checked") {
+		t.Fatalf("service screen does not explain the no-service context check:\n%s", view)
+	}
+}
+
 func TestSetupScreenDescribesACgroupFix(t *testing.T) {
 	model := newTestModel()
 	begin(model)
 	plan := Provision{
-		Title:        "Delegate cgroup controllers",
-		Summary:      "Podman is installed, but your user session is not delegated the cgroup controllers Scopra's limits need: cpu, memory, and pids.",
-		Note:         "This writes a systemd drop-in for the user manager and reloads systemd.",
-		NeedsRelogin: true,
+		Title:                  "Delegate cgroup controllers",
+		Summary:                "Podman is installed, but Scopra could not confirm the user manager's delegation of cpu, memory, and pids.",
+		Note:                   "This writes a systemd drop-in for the user manager and reloads systemd.",
+		VerifyDelegationDropIn: true,
 		Commands: [][]string{
 			{"sudo", "mkdir", "-p", "/etc/systemd/system/user@.service.d"},
 			{"sudo", "cp", "/home/u/.local/state/scopra/installer/99-scopra-delegate.conf", "/etc/systemd/system/user@.service.d/99-scopra-delegate.conf"},
@@ -277,7 +286,7 @@ func TestSetupScreenDescribesACgroupFix(t *testing.T) {
 	model.Key(tui.Key{Type: tui.KeyRune, Rune: 'f'})
 	view := model.View(120, 30, tui.StyleSheet{})
 	for _, want := range []string{
-		"not delegated the cgroup controllers",
+		"could not confirm the user manager's delegation",
 		"sudo mkdir -p /etc/systemd/system/user@.service.d",
 		"sudo cp /home/u/.local/state/scopra/installer/99-scopra-delegate.conf",
 		"This writes a systemd drop-in",

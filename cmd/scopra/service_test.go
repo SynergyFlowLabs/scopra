@@ -142,6 +142,7 @@ func expectedUnit(execStart string) string {
 		"\n" +
 		"[Service]\n" +
 		"Type=simple\n" +
+		"Delegate=cpu cpuset io memory pids\n" +
 		"ExecStart=" + execStart + "\n" +
 		"Restart=on-failure\n" +
 		"RestartSec=2\n" +

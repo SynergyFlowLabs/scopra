@@ -40,7 +40,7 @@
 <p>One command, on a Linux machine with a terminal:</p>
 <pre><code class="language-console">$ curl -fsSL https://scopra-six.vercel.app/install.sh | sh
 </code></pre>
-<p>The script downloads the release archive for your architecture, checks its SHA-256 against the release&#39;s <code>checksums.txt</code>, and opens an interactive installer. The installer checks the system first (Linux, systemd user session, rootless Podman 4.0+ with cgroups v2), then asks where to put the binaries, whether to pin a sandbox image, and whether Mio should run as a systemd user service. Nothing changes until you confirm. If rootless Podman is missing — or installed without the cgroup controllers Scopra needs — the checks screen offers to fix it: it prints every command first and runs nothing until you press <code>y</code>.</p>
+<p>The script downloads the release archive for your architecture, checks its SHA-256 against the release&#39;s <code>checksums.txt</code>, and opens an interactive installer. The installer checks the system first (Linux, systemd user session, rootless Podman 4.0+ with cgroups v2 in a transient delegated service), then asks where to put the binaries, whether to pin a sandbox image, and whether Mio should run as a systemd user service. The generated unit requests the same controllers. Nothing changes until you confirm. If rootless Podman is missing — or the service context lacks cgroup controllers — the checks screen may offer an opt-in fix: it prints every command first and runs nothing until you press <code>y</code>. An explicit no-service install also checks the current process context where you will start <code>scoprad</code>.</p>
 <p>Every variant — scripted installs, a pinned version, a custom directory, a pinned image, verifying the archive by hand — is in <a href="#detailed-install-commands">Detailed install commands</a> below. The full reference is <a href="/docs/operations/installation.html">Installing Scopra</a>: the flags, the requirements, the exact files an install writes, verification, and troubleshooting.</p>
 <hr>
 <h2 id="why-scopra">Why Scopra</h2>
@@ -154,7 +154,7 @@ go build -o bin/scoprad ./cmd/scoprad
 <p><strong>Pin a version</strong> — <a href="https://scopra-six.vercel.app/releases/latest.txt" rel="noopener noreferrer"><code>/releases/latest.txt</code></a> names the current tag; setting <code>SCOPRA_VERSION</code> repeats an exact install:</p>
 <pre><code class="language-console">$ curl -fsSL https://scopra-six.vercel.app/install.sh | SCOPRA_VERSION=v0.1.0-alpha.7 sh
 </code></pre>
-<p><strong>Choose the directory and skip the service</strong> — <code>--dir</code> defaults to <code>$XDG_BIN_HOME</code> when it is absolute, otherwise <code>~/.local/bin</code>; <code>--no-service</code> installs only the command line:</p>
+<p><strong>Choose the directory and skip the service</strong> — <code>--dir</code> defaults to <code>$XDG_BIN_HOME</code> when it is absolute, otherwise <code>~/.local/bin</code>; <code>--no-service</code> installs without a systemd unit. Because you start <code>scoprad</code> yourself in this mode, the installer also verifies that Podman has the required controllers in your current process context; otherwise rerun without <code>--no-service</code> and choose the delegated systemd service:</p>
 <pre><code class="language-console">$ curl -fsSL https://scopra-six.vercel.app/install.sh | sh -s -- --dir ~/.local/bin --no-service
 </code></pre>
 <p><strong>Pin the sandbox image</strong> — Mio never pulls an image, so the digest must already be in local storage:</p>

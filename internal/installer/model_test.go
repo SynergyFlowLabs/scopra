@@ -173,6 +173,21 @@ func TestServiceChoiceDecidesThePlan(t *testing.T) {
 	}
 }
 
+func TestNoServiceFlagSkipsTheServiceChoice(t *testing.T) {
+	model := modelAtImage(t)
+	model.SetNoService()
+	press(model, tui.KeyEnter)
+	if model.Screen != ScreenRunning {
+		t.Fatalf("screen = %v, want running without a service prompt", model.Screen)
+	}
+	if model.Options().Service {
+		t.Fatalf("options = %#v, want service disabled", model.Options())
+	}
+	if intent := model.Intent(); intent != IntentInstall {
+		t.Fatalf("intent = %v, want install", intent)
+	}
+}
+
 func TestServiceIsNotOfferedWithoutADaemon(t *testing.T) {
 	model := NewModel("v1.2.3", "/tmp/scopra-test/bin", "", false)
 	model.Screen = ScreenService
