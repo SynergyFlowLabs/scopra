@@ -2,8 +2,8 @@
 
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
-**Current increment:** Hollow preflight checks (Step 23, increment 2 of ADR-010)
-**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
+**Current increment:** The `scoprad --sandbox-image` setting (Step 24, increment 3a-1 of ADR-010 as amended)
+**Status:** Proposed. The ADR-010 amendment and the checklist below await the maintainer's confirmation, and no code has been written. CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -1790,3 +1790,35 @@ Non-goals:
   - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64.
   - The tree is current.
 - Pushes to `arena/c7a368c1-scopra`: test checkpoint `6f1064b` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.
+
+### 2026-10-17 — Step 24 (proposed): the `scoprad --sandbox-image` setting (ADR-010 amendment, increment 3a-1)
+
+- Selection: after Step 23 the default was (a). The runner splits into parts testable here against a fake Podman, plus verification on a real host, starting with a short proposal for how Mio learns the image. The maintainer replied "continue". Implementation starts only after confirmation; a "continue" accepts the proposal.
+- Research, from Podman v6.1.4's documentation and source code:
+  - `podman run` exits with status 125 for Podman's own errors, 126 when the command cannot be invoked, 127 when it is not found, and otherwise with the command's exit code. A command that itself exits with 125 to 127 is therefore indistinguishable by status alone.
+  - `podman inspect` reports `State.Status`, `Running`, `OOMKilled`, `ExitCode`, `Error`, `StartedAt`, and `FinishedAt`, so the amendment derives results from it.
+  - `scoprad` currently takes `--state-dir` and `--version`.
+- Decisions proposed in the ADR-010 amendment that most need a maintainer's view:
+  - the image is a command-line flag only for now, with a persisted setting deferred to the service installation;
+  - increment 3 is split into 3a, against a fake Podman, and 3b, on a real host;
+  - results come from `podman inspect`, never from `podman run`'s exit status;
+  - `execution.started` is sent once `State.StartedAt` is set;
+  - preflight and an image-presence check run before every execution.
+
+#### Acceptance checklist (proposed, not yet agreed)
+
+- [ ] The ADR-010 amendment is accepted, with any changes the maintainer asks for, and the ADR index is updated.
+- [ ] `hollow` exports the image rule that `PodmanRunArgs` uses (for example `ValidateImage`), and its tests are unchanged.
+- [ ] `scoprad --sandbox-image=REF`:
+  - a valid reference is accepted, and Mio starts and serves status as before;
+  - a malformed or empty one is a usage error (exit status 2) whose message states the rule, reported before the lock, the socket, or the registry are touched;
+  - a repeated flag behaves as the existing flags do;
+  - the value reaches Mio's configuration for later use by the runner.
+- [ ] Tests come first, the usage text and `cmd/scoprad/README.md` are updated, and full verification passes.
+
+Non-goals:
+- Any execution path.
+- A persisted configuration.
+- Reporting the setting in `status` or `doctor`.
+- Checking that the image exists.
+- The runner (3a-2 and 3a-3).

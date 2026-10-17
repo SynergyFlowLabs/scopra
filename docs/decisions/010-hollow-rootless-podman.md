@@ -160,3 +160,86 @@ The command can change the workspace when access is `read-write`, and nothing el
 - **Relabelling the workspace:** rejected. It rewrites the user's files.
 - **gVisor, Kata, or Firecracker:** deferred. They are stronger, but beyond the alpha and harder to run rootless.
 - **The Podman remote API socket:** rejected. It exposes a powerful socket, and the local client is enough.
+
+## Amendment — 2026-10-17 (proposed, awaiting confirmation): image setting and runner plan
+
+### Image setting
+
+- `scoprad --sandbox-image=REF` sets the image for one run of Mio.
+- `REF` must pass the same rule that `hollow.PodmanRunArgs` applies: a name, then `@sha256:` and 64 lowercase hexadecimal characters.
+- A malformed value is a usage error (exit status 2) that is reported before Mio takes its lock or touches the state directory.
+- Without the flag, Mio starts as it does today and will reject every execution with `containment_unavailable`. No execution path exists yet, so nothing visible changes until then.
+- Mio never pulls the image. Whether it exists locally is checked before each run (see below).
+- **Command line only, for now.** A persisted setting needs a durable place and format, which arrive with the Linux service installation and get their own decision then. `scopra status` and `scopra doctor` do not report the setting yet, because that would change the status reply (ADR-003).
+
+### Splitting increment 3
+
+**3a, buildable without Podman:** the runner, tested against a fake Podman, a helper process in the tests that imitates `podman run`, `inspect`, `kill`, `rm`, and `ps` with scripted behaviour. It proves Mio's own logic:
+
+- process handling;
+- the start notice;
+- ADR-009 output chunks;
+- the timeout and cancellation;
+- the mapping to result states;
+- cleanup.
+
+It cannot prove isolation.
+
+**3b, which needs a host with rootless Podman:** the same runner against real Podman, verifying every argument above, followed by increment 4. The arguments to verify are:
+
+- `passthrough` logging;
+- `--memory-swap` equal to `--memory`;
+- the entrypoint override;
+- the `/tmp` tmpfs replacing the default one;
+- CSV-quoted mounts;
+- `label=disable`.
+
+### Runner rules
+
+**Before the run**
+
+- Mio runs the absolute path of `podman` that it resolves once at startup.
+- Before each execution it runs the preflight check (`podman info`) and `podman image exists REF`. A failure rejects the request with `containment_unavailable`.
+
+**Launch and start notice**
+
+- Mio launches `podman run` with the arguments above, standard input from `/dev/null`, and stdout and stderr on pipes.
+- It polls `podman inspect` until `State.StartedAt` is set or `podman` exits. It then sends `execution.started` with that time, truncated to milliseconds, so the notice reports the command's start rather than the launch of Podman.
+
+**Output**
+
+- Mio reads both pipes concurrently.
+- Chunks hold at most 64 KiB and are numbered in one sequence, in the order they are read.
+- Once the bytes sent reach `limits.outputBytes`, Mio keeps reading but discards the rest and marks the output truncated.
+
+**Timeout and cancellation**
+
+- Mio's timer starts at launch. When it expires, Mio runs `podman kill --signal=KILL` on the container and reports `timed_out`.
+- A cancel does the same and reports `cancelled`.
+- The first kill wins.
+
+**Result**
+
+The result comes from `podman inspect`, never from `podman run`'s own exit status. That status is 125, 126, or 127 for Podman's own failures, which a command can also return. The mapping is:
+
+- a container that never started is `errored`, with `start_failed`;
+- `OOMKilled` is `out_of_memory`;
+- otherwise `State.ExitCode` 0 is `succeeded`, and 1 to 255 is `failed`.
+
+With `passthrough` logging, Podman's own error text for a start failure may appear in the stderr stream. Increment 3b must confirm this.
+
+**Cleanup**
+
+- `podman rm --force` removes the container after its result.
+- At startup, Mio removes every container that carries a `scopra.action-hash` label.
+
+### Revised increments
+
+1. Done: the argument builder (Step 22).
+2. Done: the preflight check (Step 23).
+3. The runner, in parts:
+   - **3a-1:** the image setting (Step 24).
+   - **3a-2:** the runner's launch, start notice, output chunks, normal exits, and cleanup, against the fake Podman.
+   - **3a-3:** timeout, cancellation, out-of-memory and start-failure mapping, the image-presence check, and startup cleanup, against the fake Podman.
+   - **3b:** verification on a real rootless host.
+4. Adversarial tests, which also need that host.
