@@ -26,7 +26,11 @@ version, and the wire protocol is versioned separately (see ADR-002 and ADR-009)
   raw-mode input, ANSI key decoding, and a cell-grid renderer;
   `internal/installer` holds the state machine, preflight, and install.
   `scripts/release.sh` builds `linux/amd64` and `linux/arm64` archives with the
-  version stamped into both binaries, plus `checksums.txt`.
+  version stamped into both binaries, plus `checksums.txt`; `--publish` copies
+  them into the documentation site under `/releases/<tag>/` and rewrites
+  `/releases/latest.txt`, so the script, the docs, and the verified bytes share
+  one origin. The site build keeps `/releases/` when it rebuilds the rest of the
+  site.
 - **Documentation site (ADR-015).** <https://scopra-six.vercel.app> publishes the
   README, the PRD, the ADRs, the security documents, and the community files as a
   static site. It is generated from the repository's Markdown by `tools/docsite`
@@ -57,10 +61,26 @@ version, and the wire protocol is versioned separately (see ADR-002 and ADR-009)
 
 ### Changed
 
+- **Releases are served by the documentation site.** `install.sh` reads
+  `/releases/latest.txt` and downloads from `/releases/<tag>/` instead of
+  `github.com/.../releases/download/...`. GitHub releases stay as a human-facing
+  mirror only; nothing in the install path calls the GitHub API.
 - `localipc.WorkspaceError` is now `localipc.ReplyError`, since the logs reply
   uses the same typed error. The wire format is unchanged.
 - `Daemon.EnableExecutions` now takes the executor and the run journal, and
   requires both.
+
+### Fixed
+
+- **The installer's terminal dropped every key press.** Raw mode was configured
+  with a read timeout, and a quiet tenth of a second arrives as a zero-length
+  read that Go reports as `io.EOF`; the reader treated it as the end of input,
+  exited, and left the interface running with no keyboard. Reads now block
+  until a byte arrives, and a separate idle timer decides when a pending escape
+  sequence is complete, so a lone `Escape` still registers and arrow keys split
+  across reads still decode. `internal/tui` gained terminal event tests covering
+  a quiet terminal, a lone escape, a split sequence, end of input, and
+  cancellation.
 
 ## [0.0.0] - 2026-10-17
 

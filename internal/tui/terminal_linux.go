@@ -8,12 +8,21 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
 // ErrNotInteractive reports that no terminal is available for an interactive
 // session.
 var ErrNotInteractive = errors.New("no interactive terminal is available")
+
+// escapeTimeout is how long the decoder waits for the rest of a sequence
+// before treating a lone Escape as a key press.
+const escapeTimeout = 60 * time.Millisecond
+
+// idleFlushInterval bounds how often the decoder checks for a pending
+// sequence that has gone quiet.
+const idleFlushInterval = 20 * time.Millisecond
 
 // Event is what the terminal reports to the application.
 type Event struct {
@@ -93,11 +102,11 @@ func (t *Terminal) Enter() error {
 	raw.Lflag &^= syscall.ECHO | syscall.ECHONL | syscall.ICANON | syscall.ISIG | syscall.IEXTEN
 	raw.Cflag &^= syscall.CSIZE | syscall.PARENB
 	raw.Cflag |= syscall.CS8
-	// VMIN=0 with VTIME=1 decodes to "return whatever is available after at
-	// most a tenth of a second". That timeout doubles as the escape-sequence
-	// flush, and keeps the reader cancellable.
-	raw.Cc[syscall.VMIN] = 0
-	raw.Cc[syscall.VTIME] = 1
+	// Reads block until at least one byte arrives. Deciding when an escape
+	// sequence is complete is the event loop's job (see Events), so the
+	// terminal itself never has to time out.
+	raw.Cc[syscall.VMIN] = 1
+	raw.Cc[syscall.VTIME] = 0
 	if err := setTermios(t.in.Fd(), &raw); err != nil {
 		return err
 	}
@@ -150,6 +159,7 @@ func (t *Terminal) Events(ctx context.Context) <-chan Event {
 					if errors.Is(err, syscall.EINTR) || errors.Is(err, syscall.EAGAIN) {
 						continue
 					}
+					// Anything else means the terminal is gone.
 					return
 				}
 				data := make([]byte, count)
@@ -163,10 +173,25 @@ func (t *Terminal) Events(ctx context.Context) <-chan Event {
 		}()
 
 		decoder := &Decoder{}
+		// idle decides when a pending escape sequence is final. A lone Escape
+		// has to become a key, but ESC [ has to wait for its last byte, so the
+		// decoder is flushed only after a quiet moment.
+		idle := time.NewTicker(idleFlushInterval)
+		defer idle.Stop()
+		lastInput := time.Now()
 		for {
 			select {
 			case <-ctx.Done():
 				return
+			case <-idle.C:
+				if !decoder.Pending() || time.Since(lastInput) < escapeTimeout {
+					continue
+				}
+				for _, key := range decoder.FlushPending() {
+					if !sendEvent(ctx, events, Event{Key: key}) {
+						return
+					}
+				}
 			case <-readDone:
 				for _, key := range decoder.FlushPending() {
 					if !sendEvent(ctx, events, Event{Key: key}) {
@@ -179,6 +204,7 @@ func (t *Terminal) Events(ctx context.Context) <-chan Event {
 					return
 				}
 			case data := <-incoming:
+				lastInput = time.Now()
 				var keys []Key
 				if len(data) == 0 {
 					keys = decoder.FlushPending()

@@ -172,9 +172,14 @@ func buildSite(options siteOptions) error {
 	return nil
 }
 
+// releaseDirectory is published verbatim. It holds the release archives that
+// install.sh downloads, which are built by scripts/release.sh rather than
+// generated from Markdown, so a site rebuild must not remove it.
+const releaseDirectory = "releases"
+
 // resetOutput clears the output directory so a page that is no longer
 // generated cannot survive in the published site. It refuses to remove the
-// repository itself.
+// repository itself, and it keeps the release directory.
 func resetOutput(root, out string) error {
 	cleaned := filepath.Clean(out)
 	if cleaned == "." || cleaned == ".." || cleaned == string(filepath.Separator) {
@@ -191,7 +196,31 @@ func resetOutput(root, out string) error {
 	if absoluteOut == absoluteRoot || strings.HasPrefix(absoluteRoot+string(filepath.Separator), absoluteOut+string(filepath.Separator)) {
 		return fmt.Errorf("refusing to clear output directory %q: it contains the repository", out)
 	}
-	return os.RemoveAll(absoluteOut)
+	// Release archives are not generated, so move them aside, clear the rest,
+	// and put them back. A failure here refuses the build rather than deleting
+	// published archives.
+	preserved := ""
+	if info, err := os.Stat(filepath.Join(absoluteOut, releaseDirectory)); err == nil && info.IsDir() {
+		preserved = absoluteOut + ".releases-preserved"
+		if err := os.RemoveAll(preserved); err != nil {
+			return err
+		}
+		if err := os.Rename(filepath.Join(absoluteOut, releaseDirectory), preserved); err != nil {
+			return fmt.Errorf("preserve the release directory: %w", err)
+		}
+	}
+	if err := os.RemoveAll(absoluteOut); err != nil {
+		return err
+	}
+	if preserved != "" {
+		if err := os.MkdirAll(absoluteOut, 0o755); err != nil {
+			return err
+		}
+		if err := os.Rename(preserved, filepath.Join(absoluteOut, releaseDirectory)); err != nil {
+			return fmt.Errorf("restore the release directory: %w", err)
+		}
+	}
+	return nil
 }
 
 // collectDocuments reads the configured sources and derives each title.

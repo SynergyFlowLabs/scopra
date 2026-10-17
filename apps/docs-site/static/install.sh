@@ -3,21 +3,22 @@
 #
 #   curl -fsSL https://scopra-six.vercel.app/install.sh | sh
 #
-# Downloads the release archive for this machine, verifies its SHA-256 against
-# the release's checksums.txt, unpacks it into a temporary directory, and hands
-# the terminal to `scopra install`, which moves the binaries into place.
+# Resolves the current release, downloads the archive for this machine, verifies
+# its SHA-256 against the release's checksums.txt, unpacks it into a temporary
+# directory, and hands the terminal to `scopra install`, which moves the
+# binaries into place.
 #
 # Environment:
-#   SCOPRA_VERSION   a release tag such as v0.1.0-alpha.1 (default: latest)
+#   SCOPRA_VERSION   a release tag such as v0.1.0-alpha.1 (default: the version
+#                    published in /releases/latest.txt)
 #
 # The script is POSIX sh: it runs under dash, ash, and busybox. It never uses
 # sudo, never writes outside the temporary directory and the install directory
 # the interactive installer asks for, and never evaluates downloaded text.
 set -eu
 
-repository="SynergyFlowLabs/scopra"
-releases="https://github.com/${repository}/releases"
-version="${SCOPRA_VERSION:-latest}"
+site="https://scopra-six.vercel.app"
+version="${SCOPRA_VERSION:-}"
 
 say() { printf '%s\n' "$*" >&2; }
 die() {
@@ -42,12 +43,16 @@ aarch64 | arm64) arch=arm64 ;;
 *) die "unsupported architecture: $(uname -m)" ;;
 esac
 
-archive="scopra_${os}_${arch}.tar.gz"
-if [ "$version" = latest ]; then
-	base="${releases}/latest/download"
-else
-	base="${releases}/download/${version}"
-fi
+fetch() {
+	# fetch URL: print the body to stdout
+	if command -v curl >/dev/null 2>&1; then
+		curl -fsSL --retry 3 --retry-delay 1 --connect-timeout 15 --max-time 60 "$1"
+	elif command -v wget >/dev/null 2>&1; then
+		wget -q -T 30 -O - "$1"
+	else
+		die "curl or wget is required to download Scopra"
+	fi
+}
 
 download() {
 	# download URL DESTINATION
@@ -70,6 +75,23 @@ sha256_of() {
 	fi
 }
 
+if [ -z "$version" ]; then
+	version=$(fetch "${site}/releases/latest.txt") || die "cannot read ${site}/releases/latest.txt"
+fi
+# The version names a path, so it is checked before it is used: one leading v,
+# then only digits, letters, dots, dashes, underscores, and plus signs.
+case "$version" in
+v[0-9]*) ;;
+*) die "unexpected release version: ${version}" ;;
+esac
+case "$version" in
+*[!A-Za-z0-9._+-]*) die "unexpected release version: ${version}" ;;
+esac
+[ ${#version} -le 64 ] || die "unexpected release version: ${version}"
+
+base="${site}/releases/${version}"
+archive="scopra_${os}_${arch}.tar.gz"
+
 workdir=$(mktemp -d "${TMPDIR:-/tmp}/scopra-install.XXXXXX") || die "cannot create a temporary directory"
 cleanup() { rm -rf "$workdir"; }
 trap cleanup EXIT
@@ -77,9 +99,9 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 trap 'exit 129' HUP
 
-say "Downloading Scopra for ${os}/${arch} (${version})…"
-download "${base}/checksums.txt" "${workdir}/checksums.txt" || die "cannot download checksums.txt; the release may not exist"
-download "${base}/${archive}" "${workdir}/${archive}" || die "cannot download ${archive}"
+say "Downloading Scopra ${version} for ${os}/${arch}…"
+download "${base}/checksums.txt" "${workdir}/checksums.txt" || die "cannot download ${version}/checksums.txt"
+download "${base}/${archive}" "${workdir}/${archive}" || die "cannot download ${version}/${archive}"
 
 # A release check that fails closed: exactly one checksum line must name this
 # archive, and it must be a well-formed SHA-256 digest.

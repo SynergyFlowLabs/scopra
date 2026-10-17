@@ -49,22 +49,35 @@ It is POSIX `sh` (dash, ash, busybox), `set -eu`, and does exactly this:
 
 1. refuses any platform other than Linux, with the reason, before downloading;
 2. maps `uname -m` to `amd64` or `arm64`;
-3. downloads `checksums.txt` and `scopra_linux_<arch>.tar.gz` from
-   `https://github.com/SynergyFlowLabs/scopra/releases/latest/download` (or a tag
-   from `SCOPRA_VERSION`) with `curl -f` or `wget`;
-4. requires **exactly one** checksum line naming the archive, of the right shape,
+3. reads `/releases/latest.txt` for the current tag (or uses `SCOPRA_VERSION`);
+4. downloads `/releases/<tag>/checksums.txt` and
+   `/releases/<tag>/scopra_linux_<arch>.tar.gz` with `curl -f` or `wget`;
+5. requires **exactly one** checksum line naming the archive, of the right shape,
    and compares it with `sha256sum` or `shasum -a 256`;
-5. unpacks into a `mktemp -d` directory that a trap removes on exit;
-6. executes `scopra install "$@"` and returns its status.
+6. unpacks into a `mktemp -d` directory that a trap removes on exit;
+7. executes `scopra install "$@"` and returns its status.
 
 It never uses `sudo`, never evaluates downloaded text, never installs anything
 itself, and never writes outside the temporary directory. Because it passes its
 arguments through, `sh -s -- --yes --dir /opt/bin` works for scripted installs.
 
-The site build publishes the script rather than GitHub, so the copy-paste URL is
-the same host as the documentation, and a fix to the script ships with the next
-site deployment. The release assets remain on GitHub, where the checksums live
-beside them.
+**The release archives are served by the site itself**, under
+`/releases/<tag>/`, with a one-line `/releases/latest.txt` naming the current
+tag. The script, its documentation, and the archives it downloads therefore
+share one origin, one TLS certificate, and one deployment: there is no second
+host to keep in step, and no redirect or API call stands between the copy-paste
+command and the bytes it verifies. GitHub Releases would have worked, but it
+adds a second distribution channel with its own upload step, asset limits, and
+redirect chain while the site build already has to publish the script.
+
+`scripts/release.sh vX.Y.Z --publish` is what keeps the two layers in sync: it
+builds the archives, then copies them and `checksums.txt` into
+`apps/docs-site/public/releases/<tag>/` and rewrites `latest.txt`. The archives
+are committed with the site, so a deployment is a fixed, reviewable set of bytes
+— `go test ./tools/docsite` regenerates the site and fails when the committed
+output differs. Publishing is a separate flag so that a local build for testing
+never moves the `latest` pointer by accident. The site build (`tools/docsite`)
+preserves `public/releases/` when it rebuilds the rest of the site.
 
 ### `scopra install` — the interactive installer
 
@@ -101,12 +114,19 @@ there is one implementation of the install and two front-ends.
 
 ### Releases and the version stamp
 
-`scripts/release.sh vX.Y.Z` cross-compiles `linux/amd64` and `linux/arm64` with
-`CGO_ENABLED=0` and `-trimpath`, stamps the tag into both binaries with
-`-X …/internal/buildinfo.VersionOverride`, and writes one archive per platform
-plus `checksums.txt`. The archives keep stable names, so `releases/latest/download`
-resolves without knowing the tag. `scopra version` reports the stamp; an invalid
-stamp is ignored, so a typo cannot produce a lying version.
+`scripts/release.sh vX.Y.Z [--publish]` cross-compiles `linux/amd64` and
+`linux/arm64` with `CGO_ENABLED=0` and `-trimpath`, stamps the tag into both
+binaries with `-X …/internal/buildinfo.VersionOverride`, and writes one archive
+per platform plus `checksums.txt`. Suffixing `--publish` copies them to
+`apps/docs-site/public/releases/<tag>/` and points `latest.txt` at the tag, which
+is what `install.sh` reads. `scopra version` reports the stamp; an invalid stamp
+is ignored, so a typo cannot produce a lying version.
+
+The archives live in the repository rather than in a binary store: two
+platforms, about six megabytes, and a handful of releases is small enough for
+Git to carry, and it makes what users download byte-for-byte the same thing the
+site test compares against. A release is therefore a commit plus a deployment,
+which is a workflow the project already has.
 
 ## Consequences
 

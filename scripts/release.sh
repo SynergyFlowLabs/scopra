@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 # Builds the release archives that install.sh downloads.
 #
-#   scripts/release.sh v0.1.0-alpha.1
+#   scripts/release.sh v0.1.0-alpha.1 [--publish]
+#
+# With --publish the archives are copied into the documentation site under
+# /releases/<tag>/ and /releases/latest.txt is updated. The site is served by
+# Vercel from apps/docs-site/public, which is committed, so publishing is a copy
+# followed by `make site` and a commit; the generator preserves `releases/`.
 #
 # Every archive contains scopra, scoprad, the licence, and the readme. The
 # version is stamped into both binaries, so `scopra version` reports the tag
@@ -13,8 +18,13 @@
 set -euo pipefail
 
 version="${1:-}"
+publish="${2:-}"
 if [ -z "$version" ]; then
-	echo "usage: scripts/release.sh vX.Y.Z" >&2
+	echo "usage: scripts/release.sh vX.Y.Z [--publish]" >&2
+	exit 2
+fi
+if [ -n "$publish" ] && [ "$publish" != "--publish" ]; then
+	echo "unknown option: $publish" >&2
 	exit 2
 fi
 case "$version" in
@@ -62,3 +72,12 @@ done
 )
 echo "wrote $out/checksums.txt"
 cat "$out/checksums.txt"
+
+if [ "$publish" = "--publish" ]; then
+	site="apps/docs-site/public/releases"
+	mkdir -p "$site/$version"
+	cp "$out"/*.tar.gz "$out/checksums.txt" "$site/$version/"
+	printf '%s\n' "$version" >"$site/latest.txt"
+	echo "published $version into $site"
+	echo "next: make site, then commit apps/docs-site/public"
+fi

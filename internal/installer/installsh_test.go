@@ -45,13 +45,13 @@ func TestInstallScriptFailsClosedByConstruction(t *testing.T) {
 			t.Fatalf("install.sh must not contain %q", forbidden)
 		}
 	}
-	for _, required := range []string{"set -eu", "sha256sum", "checksum mismatch", "mktemp -d", "trap cleanup EXIT", "SCOPRA_VERSION"} {
+	for _, required := range []string{"set -eu", "sha256sum", "checksum mismatch", "mktemp -d", "trap cleanup EXIT", "SCOPRA_VERSION", "latest.txt"} {
 		if !strings.Contains(script, required) {
 			t.Fatalf("install.sh must contain %q", required)
 		}
 	}
-	if strings.Contains(script, "latest/download/checksums.txt") {
-		t.Fatal("install.sh must build the release URL from one base, not hard-code a version")
+	if strings.Contains(script, "releases/latest/download") {
+		t.Fatal("install.sh must resolve a version and build one URL, not guess a path")
 	}
 }
 
@@ -71,7 +71,7 @@ func codeOnly(script string) string {
 
 func TestInstallScriptRefusesMacOS(t *testing.T) {
 	workdir := t.TempDir()
-	script := writeTestScript(t, workdir, "file://"+filepath.Join(workdir, "releases"))
+	script := writeTestScript(t, workdir, "file://"+filepath.Join(workdir, "site"))
 	marker := filepath.Join(workdir, "ran")
 	installFakeUname(t, workdir, "Darwin", "x86_64")
 	command := exec.Command("sh", script)
@@ -97,10 +97,11 @@ func TestInstallScriptDownloadsVerifiesAndRuns(t *testing.T) {
 	}
 	workdir := t.TempDir()
 	marker := filepath.Join(workdir, "ran.txt")
-	release := filepath.Join(workdir, "releases", "latest", "download")
+	release := filepath.Join(workdir, "site", "releases", "v1.2.3")
 	writeFakeRelease(t, release, "linux", "amd64", true)
+	writeLatest(t, filepath.Join(workdir, "site", "releases"), "v1.2.3")
 	installFakeUname(t, workdir, "Linux", "x86_64")
-	script := writeTestScript(t, workdir, "file://"+filepath.Join(workdir, "releases"))
+	script := writeTestScript(t, workdir, "file://"+filepath.Join(workdir, "site"))
 
 	command := exec.Command("sh", script, "--yes")
 	command.Env = []string{
@@ -132,10 +133,11 @@ func TestInstallScriptRejectsABadChecksum(t *testing.T) {
 		t.Skip("curl is not available")
 	}
 	workdir := t.TempDir()
-	release := filepath.Join(workdir, "releases", "latest", "download")
+	release := filepath.Join(workdir, "site", "releases", "v1.2.3")
 	writeFakeRelease(t, release, "linux", "amd64", false)
+	writeLatest(t, filepath.Join(workdir, "site", "releases"), "v1.2.3")
 	installFakeUname(t, workdir, "Linux", "x86_64")
-	script := writeTestScript(t, workdir, "file://"+filepath.Join(workdir, "releases"))
+	script := writeTestScript(t, workdir, "file://"+filepath.Join(workdir, "site"))
 	marker := filepath.Join(workdir, "ran")
 	command := exec.Command("sh", script)
 	command.Env = []string{
@@ -162,10 +164,11 @@ func TestInstallScriptHonoursThePinnedVersion(t *testing.T) {
 		t.Skip("curl is not available")
 	}
 	workdir := t.TempDir()
-	release := filepath.Join(workdir, "releases", "download", "v1.2.3")
+	release := filepath.Join(workdir, "site", "releases", "v1.2.3")
 	writeFakeRelease(t, release, "linux", "amd64", true)
+	writeLatest(t, filepath.Join(workdir, "site", "releases"), "v9.9.9")
 	installFakeUname(t, workdir, "Linux", "x86_64")
-	script := writeTestScript(t, workdir, "file://"+filepath.Join(workdir, "releases"))
+	script := writeTestScript(t, workdir, "file://"+filepath.Join(workdir, "site"))
 	command := exec.Command("sh", script)
 	command.Env = []string{
 		"PATH=" + filepath.Join(workdir, "bin") + ":" + os.Getenv("PATH"),
@@ -178,7 +181,7 @@ func TestInstallScriptHonoursThePinnedVersion(t *testing.T) {
 	}
 }
 
-// writeTestScript copies install.sh and points its release base at a local
+// writeTestScript copies install.sh and points its site URL at a local
 // directory. The replacement is deliberately narrow: one assignment line.
 func writeTestScript(t *testing.T, workdir, base string) string {
 	t.Helper()
@@ -186,14 +189,14 @@ func writeTestScript(t *testing.T, workdir, base string) string {
 	lines := strings.Split(script, "\n")
 	replaced := false
 	for index, line := range lines {
-		if strings.HasPrefix(line, "releases=") {
-			lines[index] = "releases=" + quoteForShell(base)
+		if strings.HasPrefix(line, "site=") {
+			lines[index] = "site=" + quoteForShell(base)
 			replaced = true
 			break
 		}
 	}
 	if !replaced {
-		t.Fatal("install.sh no longer has a single releases= line to point at a test release")
+		t.Fatal("install.sh no longer has a single site= line to point at a test release")
 	}
 	target := filepath.Join(workdir, "install.sh")
 	if err := os.WriteFile(target, []byte(strings.Join(lines, "\n")), 0o755); err != nil {
@@ -216,6 +219,17 @@ func installFakeUname(t *testing.T, workdir, osName, machine string) {
 	}
 	script := "#!/bin/sh\ncase \"$1\" in\n-s) echo " + osName + " ;;\n-m) echo " + machine + " ;;\n*) echo " + osName + " ;;\nesac\n"
 	if err := os.WriteFile(filepath.Join(bin, "uname"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// writeLatest publishes the version that install.sh resolves as latest.
+func writeLatest(t *testing.T, releasesDir, version string) {
+	t.Helper()
+	if err := os.MkdirAll(releasesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(releasesDir, "latest.txt"), []byte(version+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

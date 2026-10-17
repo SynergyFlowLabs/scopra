@@ -78,8 +78,8 @@ $ curl -fsSL https://scopra-six.vercel.app/install.sh | SCOPRA_VERSION=v0.1.0-al
 ## Verify the download yourself
 
 ```console
-$ version=$(curl -fsSL https://api.github.com/repos/SynergyFlowLabs/scopra/releases/latest | grep -m1 '"tag_name"' | cut -d'"' -f4)
-$ base="https://github.com/SynergyFlowLabs/scopra/releases/download/$version"
+$ version=$(curl -fsSL https://scopra-six.vercel.app/releases/latest.txt)
+$ base="https://scopra-six.vercel.app/releases/$version"
 $ curl -fsSLO "$base/scopra_linux_amd64.tar.gz" -O "$base/checksums.txt"
 $ grep " scopra_linux_amd64.tar.gz$" checksums.txt | sha256sum -c -
 $ tar xzf scopra_linux_amd64.tar.gz
@@ -133,12 +133,21 @@ stay in `$XDG_STATE_HOME/scopra` until you delete that directory.
 
 ## How releases are built
 
-`scripts/release.sh vX.Y.Z` cross-compiles `scopra` and `scoprad` with `-trimpath`
-and `CGO_ENABLED=0`, stamps the version into both binaries
-(`-X …/internal/buildinfo.VersionOverride`), packs
-`scopra_linux_amd64.tar.gz` and `scopra_linux_arm64.tar.gz` with the licence and
-readme, and writes `checksums.txt`. The archives and the checksum file are
-uploaded to a GitHub release; `install.sh` resolves `releases/latest/download`,
-or a tag from `SCOPRA_VERSION`. The source of truth for the script is
-`apps/docs-site/static/install.sh`, published at `/install.sh` by the same site
-build that publishes this page.
+`scripts/release.sh vX.Y.Z [--publish]` cross-compiles `scopra` and `scoprad`
+with `-trimpath` and `CGO_ENABLED=0`, stamps the version into both binaries
+(`-X …/internal/buildinfo.VersionOverride`), packs `scopra_linux_amd64.tar.gz`
+and `scopra_linux_arm64.tar.gz` with the licence and readme, and writes
+`checksums.txt` into `dist/`.
+
+With `--publish` it also copies the two archives and `checksums.txt` into
+`apps/docs-site/public/releases/<tag>/` and writes
+`apps/docs-site/public/releases/latest.txt` with the tag on a single line. The
+site build preserves that directory, so the next deployment serves
+`/releases/<tag>/…` and `/releases/latest.txt`. `install.sh` reads
+`latest.txt` — or a tag from `SCOPRA_VERSION` — and downloads from the same
+origin it came from. Commit both the archives and `latest.txt`: the site is
+built from the repository, and `go test ./tools/docsite` fails if the committed
+output and the sources disagree.
+
+The source of truth for the script is `apps/docs-site/static/install.sh`,
+published at `/install.sh` by the same site build that publishes this page.
