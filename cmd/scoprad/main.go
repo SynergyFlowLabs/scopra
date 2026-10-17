@@ -11,7 +11,10 @@ import (
 	"syscall"
 
 	"github.com/SynergyFlowLabs/scopra/internal/buildinfo"
+	"github.com/SynergyFlowLabs/scopra/internal/hollow"
 	"github.com/SynergyFlowLabs/scopra/internal/localipc"
+	"github.com/SynergyFlowLabs/scopra/internal/workspace"
+	"github.com/SynergyFlowLabs/scopra/internal/workspace/registry"
 )
 
 func main() {
@@ -43,37 +46,98 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if ctx == nil {
 		return localipc.ErrInvalidContext
 	}
-	flags := flag.NewFlagSet("scoprad", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	flags.Usage = func() { printUsage(stderr) }
-	stateDir := flags.String("state-dir", "", "Mio state directory")
-	showVersion := flags.Bool("version", false, "print daemon version")
-	if err := flags.Parse(args); err != nil {
-		return &usageError{err: err}
-	}
-	if *showVersion {
-		if flags.NArg() != 0 {
-			return failUsage(stderr, "--version takes no positional arguments")
-		}
-		_, err := fmt.Fprintf(stdout, "scoprad %s\n", buildinfo.Version())
+	config, err := parseFlags(args, stderr)
+	if err != nil {
 		return err
 	}
-	if flags.NArg() != 0 {
-		return failUsage(stderr, "scoprad runs in the foreground and takes no positional arguments")
+	if config.showVersion {
+		_, err := fmt.Fprintf(stdout, "scoprad %s\n", buildinfo.Version())
+		return err
 	}
 	if err := ctx.Err(); err != nil {
 		return nil
 	}
 
-	daemon, err := localipc.Listen(*stateDir, buildinfo.Version())
+	daemon, err := localipc.Listen(config.stateDir, buildinfo.Version())
 	if err != nil {
 		return fmt.Errorf("start Scopra Mio: %w", err)
+	}
+	// The daemon now holds the state-directory lock, which makes Mio the
+	// registry's only writer (ADR-005). Mio refuses to serve if the registry
+	// is unusable, and serves workspace commands from it otherwise (ADR-006).
+	workspaces, err := openWorkspaceRegistry(daemon.StateDir())
+	if err == nil {
+		err = daemon.EnableWorkspaces(workspaces)
+	}
+	if err != nil {
+		return errors.Join(fmt.Errorf("start Scopra Mio: %w", err), daemon.Close())
 	}
 	if _, err := fmt.Fprintln(stderr, "scoprad: listening"); err != nil {
 		_ = daemon.Close()
 		return fmt.Errorf("report daemon startup: %w", err)
 	}
 	return daemon.Serve(ctx)
+}
+
+// daemonConfig is what scoprad's command line sets.
+type daemonConfig struct {
+	stateDir string
+	// sandboxImage is the Hollow container image, pinned by digest, for the
+	// runner (ADR-010 increment 3a-2). Empty means none is configured, so
+	// every execution will be rejected with containment_unavailable.
+	sandboxImage string
+	showVersion  bool
+}
+
+// parseFlags parses and validates scoprad's command line. Every problem is a
+// usage error found before Mio touches its state directory; a malformed
+// --sandbox-image is one even together with --version.
+func parseFlags(args []string, stderr io.Writer) (daemonConfig, error) {
+	flags := flag.NewFlagSet("scoprad", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	flags.Usage = func() { printUsage(stderr) }
+	var config daemonConfig
+	flags.StringVar(&config.stateDir, "state-dir", "", "Mio state directory")
+	flags.StringVar(&config.sandboxImage, "sandbox-image", "", "Hollow container image, pinned by digest (ADR-010)")
+	flags.BoolVar(&config.showVersion, "version", false, "print daemon version")
+	if err := flags.Parse(args); err != nil {
+		return daemonConfig{}, &usageError{err: err}
+	}
+	imageSet := false
+	flags.Visit(func(f *flag.Flag) { imageSet = imageSet || f.Name == "sandbox-image" })
+	if imageSet && hollow.ValidateImage(config.sandboxImage) != nil {
+		return daemonConfig{}, failUsage(stderr, "--sandbox-image %q must be %s", config.sandboxImage, hollow.ImageRule)
+	}
+	if config.showVersion && flags.NArg() != 0 {
+		return daemonConfig{}, failUsage(stderr, "--version takes no positional arguments")
+	}
+	if flags.NArg() != 0 {
+		return daemonConfig{}, failUsage(stderr, "scoprad runs in the foreground and takes no positional arguments")
+	}
+	return config, nil
+}
+
+// newWorkspaceValidator returns the ADR-004 workspace validator that Mio uses.
+// Besides the filesystem root and the user's home directories, it protects
+// Mio's state directory, so that no workspace can contain Mio's socket, lock,
+// or registry.
+func newWorkspaceValidator(stateDir string) (*workspace.Validator, error) {
+	return workspace.NewValidator(stateDir)
+}
+
+// openWorkspaceRegistry loads the workspace registry from Mio's state
+// directory, which the caller must hold locked. Recorded workspaces are
+// revalidated before use, not here, so a missing workspace does not stop Mio.
+func openWorkspaceRegistry(stateDir string) (*registry.Registry, error) {
+	validator, err := newWorkspaceValidator(stateDir)
+	if err != nil {
+		return nil, fmt.Errorf("prepare workspace validation: %w", err)
+	}
+	workspaces, err := registry.Open(stateDir, validator)
+	if err != nil {
+		return nil, fmt.Errorf("open workspace registry: %w", err)
+	}
+	return workspaces, nil
 }
 
 func failUsage(writer io.Writer, format string, values ...any) error {
@@ -84,7 +148,7 @@ func failUsage(writer io.Writer, format string, values ...any) error {
 }
 
 func printUsage(writer io.Writer) {
-	_, _ = fmt.Fprintln(writer, "usage: scoprad [--state-dir PATH] [--version]")
+	_, _ = fmt.Fprintln(writer, "usage: scoprad [--state-dir PATH] [--sandbox-image NAME@sha256:DIGEST] [--version]")
 }
 
 type usageError struct {

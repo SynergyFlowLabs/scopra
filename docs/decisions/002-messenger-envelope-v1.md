@@ -26,3 +26,13 @@ Cloud-to-daemon messages carry an authenticated envelope and an arbitrary typed 
 ## Security Considerations
 
 The envelope is untrusted until cryptographic verification and local authorization succeed. `DecodeEnvelope` only parses and validates structure. Callers must fail closed, verify the proof against the expected issuer and device audience, enforce sequence/nonce replay state, validate the typed payload, and apply local maximum policy before any action.
+
+## Amendment — 2026-10-17: daemon-to-cloud execution messages
+
+ADR-009 adds `execution.started` and `execution.output` to the closed set of version 1 message types. The set now holds seven types:
+
+- `execution.request`, `execution.result`, `execution.started`, `execution.output`, and `execution.cancel`;
+- `machine.revocation`;
+- `message.ack`.
+
+Nothing depended on version 1 yet, so no version bump was needed. Each payload type has a decoder that the envelope offers only for its own message type, such as `Envelope.ExecutionOutput()`, so a payload is never decoded under another type's rules.

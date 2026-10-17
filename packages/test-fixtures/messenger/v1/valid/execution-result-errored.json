@@ -1,0 +1,15 @@
+{
+  "executionId": "exe_01HZX3",
+  "actionHash": "b4f47c942fc6499aea49d76df1f89c630f8683bd69c98f292b9e03eed4dd44e2",
+  "state": "errored",
+  "error": {
+    "code": "start_failed",
+    "message": "executable not found: go"
+  },
+  "output": {
+    "stdoutBytes": 0,
+    "stderrBytes": 0,
+    "truncated": false,
+    "chunks": 0
+  }
+}

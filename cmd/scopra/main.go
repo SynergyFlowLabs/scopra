@@ -23,20 +23,9 @@ func main() {
 		stop()
 	}()
 
-	if err := run(ctx, os.Args[1:], os.Stdout, os.Stderr); err != nil {
-		switch {
-		case errors.Is(err, flag.ErrHelp):
-			return
-		case errors.Is(err, context.Canceled):
-			os.Exit(130)
-		default:
-			var usageErr *usageError
-			if errors.As(err, &usageErr) {
-				os.Exit(2)
-			}
-			fmt.Fprintln(os.Stderr, "error:", err)
-			os.Exit(1)
-		}
+	if code := exitCode(run(ctx, os.Args[1:], os.Stdout, os.Stderr), os.Stderr); code != 0 {
+		stop()
+		os.Exit(code)
 	}
 }
 
@@ -51,6 +40,10 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	switch args[0] {
 	case "status":
 		return runStatus(ctx, args[1:], stdout, stderr)
+	case "doctor":
+		return runDoctor(ctx, args[1:], stdout, stderr)
+	case "workspace":
+		return runWorkspace(ctx, args[1:], stdout, stderr)
 	case "version", "--version":
 		if len(args) != 1 {
 			return failUsage(stderr, "version takes no arguments")
@@ -90,6 +83,25 @@ func runStatus(ctx context.Context, args []string, stdout, stderr io.Writer) err
 	return err
 }
 
+// exitCode reports err on stderr unless it was already reported, and returns
+// the exit status: 0 for success and help, 2 for usage errors (reported with
+// the usage text), 130 when interrupted, and 1 otherwise. Error text is
+// escaped, because it can include paths and messages from Mio.
+func exitCode(err error, stderr io.Writer) int {
+	switch {
+	case err == nil, errors.Is(err, flag.ErrHelp):
+		return 0
+	case errors.Is(err, context.Canceled):
+		return 130
+	}
+	var usageErr *usageError
+	if errors.As(err, &usageErr) {
+		return 2
+	}
+	_, _ = fmt.Fprintln(stderr, "error:", terminalSafe(err.Error()))
+	return 1
+}
+
 func failUsage(writer io.Writer, format string, values ...any) error {
 	message := fmt.Sprintf(format, values...)
 	_, _ = fmt.Fprintf(writer, "scopra: %s\n", message)
@@ -98,7 +110,19 @@ func failUsage(writer io.Writer, format string, values ...any) error {
 }
 
 func printUsage(writer io.Writer) {
-	_, _ = fmt.Fprintln(writer, "usage: scopra status [--state-dir PATH] [--json] | version")
+	_, _ = fmt.Fprint(writer, `usage: scopra <command> [flags]
+
+commands:
+  status [--state-dir PATH] [--json]               query Scopra Mio's local IPC status
+  doctor [--state-dir PATH] [--json]               run read-only local diagnostics
+  workspace add [--state-dir PATH] [--json] PATH   register a workspace directory with Mio
+  workspace list [--state-dir PATH] [--json]       list registered workspaces
+  workspace remove [--state-dir PATH] [--json] (ID | --path PATH)
+                                                   remove a registration; the directory is not changed
+  version                                          print the scopra version
+
+Flags go before PATH or ID.
+`)
 }
 
 type usageError struct {

@@ -1,5 +1,6 @@
 // Package localipc provides bounded, same-user Unix-socket communication for
-// Scopra's local daemon and CLI. It currently exposes status only.
+// Scopra's local daemon and CLI: Mio's status (ADR-003) and, once enabled, its
+// workspace commands (ADR-006).
 package localipc
 
 import (
@@ -44,31 +45,86 @@ var (
 	ErrDaemonAlreadyServing = errors.New("localipc: daemon Serve may only be called once")
 )
 
-// Daemon is the foreground local status service. It intentionally exposes no
-// execution or workspace-mutating operation.
+// Daemon is Mio's foreground local IPC service. It serves status, workspace
+// registration commands once EnableWorkspaces is called (ADR-006), and local
+// execution.run once EnableExecutions is called (ADR-011). A Daemon holds an
+// exclusive lock on its state directory until it can no longer act, so at
+// most one Mio serves a state directory at a time.
 type Daemon struct {
 	listener      *net.UnixListener
+	stateDir      string
 	socketPath    string
 	socketInfo    os.FileInfo
 	daemonVersion string
+	lock          *os.File
+	workspaces    WorkspaceRegistry // nil until EnableWorkspaces
+	executor      Executor          // nil until EnableExecutions
+	// frameWriteTimeout bounds writing each reply frame of a run.
+	frameWriteTimeout time.Duration
+	runs              chan struct{} // one token per execution in progress
 
 	closeOnce sync.Once
 	closeErr  error
 	serveMu   sync.Mutex
 	served    bool
+	lockOnce  sync.Once
+	lockErr   error
 }
 
-// DefaultStateDir returns the per-user cache location used for Mio's local
-// runtime socket. The returned directory is not created by this function.
+// DefaultStateDir returns Mio's default state directory, which holds its socket
+// and lock file and must survive restarts and cache cleaning. Following the XDG
+// Base Directory specification, it is $XDG_STATE_HOME/scopra, or
+// $HOME/.local/state/scopra when XDG_STATE_HOME is unset or empty. A relative
+// location fails closed with ErrInsecureStateDir instead of being resolved
+// against the working directory. The directory is not created.
 func DefaultStateDir() (string, error) {
-	cacheDir, err := os.UserCacheDir()
+	if stateHome := os.Getenv("XDG_STATE_HOME"); stateHome != "" {
+		if !filepath.IsAbs(stateHome) {
+			return "", fmt.Errorf("%w: $XDG_STATE_HOME must be an absolute path", ErrInsecureStateDir)
+		}
+		return filepath.Join(stateHome, "scopra"), nil
+	}
+	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", fmt.Errorf("locate user cache directory: %w", err)
+		return "", fmt.Errorf("locate user state directory: %w", err)
 	}
-	if !filepath.IsAbs(cacheDir) {
-		return "", fmt.Errorf("%w: user cache directory must be absolute", ErrInsecureStateDir)
+	if !filepath.IsAbs(home) {
+		return "", fmt.Errorf("%w: home directory must be an absolute path", ErrInsecureStateDir)
 	}
-	return filepath.Join(cacheDir, "scopra", "run"), nil
+	return filepath.Join(home, ".local", "state", "scopra"), nil
+}
+
+// PlatformSupported reports whether authenticated local IPC is available on
+// this operating system. Where it is not, Listen, Status, and CheckStateDir
+// fail closed with ErrUnsupportedPlatform.
+func PlatformSupported() bool { return platformSupported() }
+
+// ResolveStateDir returns the absolute, cleaned state directory that Listen and
+// Status use for stateDir, substituting DefaultStateDir when stateDir is empty.
+// It neither inspects nor creates the directory.
+func ResolveStateDir(stateDir string) (string, error) { return resolveStateDir(stateDir) }
+
+// CheckStateDir applies Listen's state-directory checks without creating,
+// modifying, removing, or locking anything. A nil error means the directory
+// exists, is private to the effective user, has no unsafe ancestors, leaves
+// room for Mio's socket path, and holds no unsafe lock file. An error matching
+// os.ErrNotExist means the directory has not been created yet. CheckStateDir
+// never opens the lock file, so it cannot make a concurrent daemon start fail.
+func CheckStateDir(stateDir string) error {
+	if !platformSupported() {
+		return ErrUnsupportedPlatform
+	}
+	stateDir, err := resolveStateDir(stateDir)
+	if err != nil {
+		return err
+	}
+	if _, err := socketPathFor(stateDir); err != nil {
+		return err
+	}
+	if _, err := validateStateDir(stateDir); err != nil {
+		return err
+	}
+	return checkLockFile(stateDir)
 }
 
 // Listen creates a private Unix socket for a foreground Mio daemon.
@@ -92,6 +148,18 @@ func Listen(stateDir, daemonVersion string) (*Daemon, error) {
 	if _, err := prepareStateDir(stateDir); err != nil {
 		return nil, err
 	}
+	// Lock before touching the socket so that stale-socket recovery cannot race
+	// with another starting daemon.
+	lock, err := lockStateDir(stateDir)
+	if err != nil {
+		return nil, err
+	}
+	started := false
+	defer func() {
+		if !started {
+			_ = lock.Close()
+		}
+	}()
 	if err := removeStaleSocket(socketPath); err != nil {
 		return nil, err
 	}
@@ -129,12 +197,28 @@ func Listen(stateDir, daemonVersion string) (*Daemon, error) {
 		return nil, err
 	}
 
+	started = true
 	return &Daemon{
-		listener:      listener,
-		socketPath:    socketPath,
-		socketInfo:    socketInfo,
-		daemonVersion: daemonVersion,
+		listener:          listener,
+		stateDir:          stateDir,
+		socketPath:        socketPath,
+		socketInfo:        socketInfo,
+		daemonVersion:     daemonVersion,
+		lock:              lock,
+		frameWriteTimeout: defaultFrameWriteTimeout,
+		runs:              make(chan struct{}, maxConcurrentRuns),
 	}, nil
+}
+
+// StateDir returns the absolute state directory that the daemon serves and
+// holds locked. The lock lasts until Close or, once Serve has started, until
+// Serve returns, so a caller may keep single-writer state in this directory
+// in the meantime.
+func (d *Daemon) StateDir() string {
+	if d == nil {
+		return ""
+	}
+	return d.stateDir
 }
 
 // Serve accepts bounded, one-request status connections until ctx is canceled
@@ -157,7 +241,11 @@ func (d *Daemon) Serve(ctx context.Context) (serveErr error) {
 	d.serveMu.Unlock()
 
 	if ctx.Err() != nil {
-		return d.Close()
+		closeErr := d.Close()
+		if err := d.releaseLock(); closeErr == nil {
+			closeErr = err
+		}
+		return closeErr
 	}
 
 	closeWatch := make(chan struct{})
@@ -179,6 +267,10 @@ func (d *Daemon) Serve(ctx context.Context) (serveErr error) {
 		}
 		handlers.Wait()
 		<-watcherDone
+		// No request can still act on the state directory; hand it over.
+		if err := d.releaseLock(); serveErr == nil && err != nil {
+			serveErr = err
+		}
 	}()
 
 	for {
@@ -200,7 +292,7 @@ func (d *Daemon) Serve(ctx context.Context) (serveErr error) {
 			go func() {
 				defer handlers.Done()
 				defer func() { <-connections }()
-				d.handleConnection(connection)
+				d.handleConnection(ctx, connection)
 			}()
 		default:
 			_ = connection.Close()
@@ -209,7 +301,9 @@ func (d *Daemon) Serve(ctx context.Context) (serveErr error) {
 }
 
 // Close releases the listener and removes only the socket inode created by
-// Listen. It is safe to call repeatedly and during Serve shutdown.
+// Listen. It is safe to call repeatedly and during Serve shutdown. If Serve
+// was never called, Close also releases the state-directory lock; otherwise
+// Serve releases it after in-flight requests finish.
 func (d *Daemon) Close() error {
 	if d == nil {
 		return nil
@@ -237,99 +331,132 @@ func (d *Daemon) Close() error {
 			d.closeErr = fmt.Errorf("remove local socket: %w", err)
 		}
 	})
+	if d.serveStarted() {
+		return d.closeErr
+	}
+	if err := d.releaseLock(); err != nil && d.closeErr == nil {
+		return err
+	}
 	return d.closeErr
+}
+
+func (d *Daemon) serveStarted() bool {
+	d.serveMu.Lock()
+	defer d.serveMu.Unlock()
+	return d.served
 }
 
 // Status queries the read-only Mio status command over the authenticated local
 // socket. It never falls back to an unauthenticated transport.
 func Status(ctx context.Context, stateDir string) (StatusResponse, error) {
-	if ctx == nil {
-		return StatusResponse{}, ErrInvalidContext
-	}
-	if !platformSupported() {
-		return StatusResponse{}, ErrUnsupportedPlatform
-	}
-
-	stateDir, err := resolveStateDir(stateDir)
+	encoded, requestID, err := roundTrip(ctx, stateDir, request{Command: statusCommand}, "status")
 	if err != nil {
 		return StatusResponse{}, err
+	}
+	return decodeResponse(encoded, requestID)
+}
+
+// roundTrip sends one request to Mio over the socket in stateDir and returns
+// the encoded reply with the request ID that the reply must carry. The request
+// is validated before the filesystem or the socket is touched.
+func roundTrip(ctx context.Context, stateDir string, message request, operation string) ([]byte, string, error) {
+	if ctx == nil {
+		return nil, "", ErrInvalidContext
+	}
+	if !platformSupported() {
+		return nil, "", ErrUnsupportedPlatform
+	}
+	requestID, err := newRequestID()
+	if err != nil {
+		return nil, "", err
+	}
+	message.ProtocolVersion = protocolVersion
+	message.RequestID = requestID
+	encodedRequest, err := encodeRequest(message)
+	if err != nil {
+		return nil, "", err
+	}
+
+	unixConnection, err := dialMio(ctx, stateDir)
+	if err != nil {
+		return nil, "", err
+	}
+	defer unixConnection.Close()
+	stopCancellation := context.AfterFunc(ctx, func() { _ = unixConnection.Close() })
+	defer stopCancellation()
+
+	if err := setConnectionDeadline(ctx, unixConnection); err != nil {
+		return nil, "", contextualError(ctx, "set IPC deadline", err)
+	}
+	if err := writeFrame(unixConnection, encodedRequest); err != nil {
+		return nil, "", contextualError(ctx, "write "+operation+" request", err)
+	}
+	encodedResponse, err := readFrame(unixConnection)
+	if err != nil {
+		return nil, "", contextualError(ctx, "read "+operation+" response", err)
+	}
+	return encodedResponse, requestID, nil
+}
+
+// dialMio connects to Mio's socket in stateDir after checking the state
+// directory and the socket, and returns the connection once the peer is
+// authenticated as the effective UID. It never falls back to an
+// unauthenticated transport.
+func dialMio(ctx context.Context, stateDir string) (*net.UnixConn, error) {
+	stateDir, err := resolveStateDir(stateDir)
+	if err != nil {
+		return nil, err
 	}
 	socketPath, err := socketPathFor(stateDir)
 	if err != nil {
-		return StatusResponse{}, err
+		return nil, err
 	}
 	if _, err := validateStateDir(stateDir); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return StatusResponse{}, ErrDaemonUnavailable
+			return nil, ErrDaemonUnavailable
 		}
-		return StatusResponse{}, err
+		return nil, err
 	}
 	socketInfo, err := os.Lstat(socketPath)
 	if errors.Is(err, os.ErrNotExist) {
-		return StatusResponse{}, ErrDaemonUnavailable
+		return nil, ErrDaemonUnavailable
 	}
 	if err != nil {
-		return StatusResponse{}, fmt.Errorf("inspect daemon socket: %w", err)
+		return nil, fmt.Errorf("inspect daemon socket: %w", err)
 	}
 	if err := validateSocketInfo(socketInfo); err != nil {
-		return StatusResponse{}, err
+		return nil, err
 	}
 
 	dialer := net.Dialer{Timeout: connectionTimeout}
 	connection, err := dialer.DialContext(ctx, "unix", socketPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) || isStaleSocketProbeError(err) {
-			return StatusResponse{}, ErrDaemonUnavailable
+			return nil, ErrDaemonUnavailable
 		}
-		return StatusResponse{}, fmt.Errorf("connect to Mio: %w", err)
+		return nil, fmt.Errorf("connect to Mio: %w", err)
 	}
 	unixConnection, ok := connection.(*net.UnixConn)
 	if !ok {
 		_ = connection.Close()
-		return StatusResponse{}, ErrUnsupportedPlatform
+		return nil, ErrUnsupportedPlatform
 	}
-	defer unixConnection.Close()
-	stopCancellation := context.AfterFunc(ctx, func() { _ = unixConnection.Close() })
-	defer stopCancellation()
-
 	peerUID, err := peerUID(unixConnection)
 	if err != nil {
-		return StatusResponse{}, contextualError(ctx, "authenticate Mio peer", err)
+		_ = unixConnection.Close()
+		return nil, contextualError(ctx, "authenticate Mio peer", err)
 	}
 	if err := authorizePeer(peerUID, effectiveUID()); err != nil {
-		return StatusResponse{}, err
+		_ = unixConnection.Close()
+		return nil, err
 	}
-	if err := setConnectionDeadline(ctx, unixConnection); err != nil {
-		return StatusResponse{}, contextualError(ctx, "set IPC deadline", err)
-	}
-
-	requestID, err := newRequestID()
-	if err != nil {
-		return StatusResponse{}, err
-	}
-	encodedRequest, err := encodeRequest(request{
-		ProtocolVersion: protocolVersion,
-		RequestID:       requestID,
-		Command:         statusCommand,
-	})
-	if err != nil {
-		return StatusResponse{}, err
-	}
-	if err := writeFrame(unixConnection, encodedRequest); err != nil {
-		return StatusResponse{}, contextualError(ctx, "write status request", err)
-	}
-	encodedResponse, err := readFrame(unixConnection)
-	if err != nil {
-		return StatusResponse{}, contextualError(ctx, "read status response", err)
-	}
-	response, err := decodeResponse(encodedResponse, requestID)
-	if err != nil {
-		return StatusResponse{}, err
-	}
-	return response, nil
+	return unixConnection, nil
 }
 
-func (d *Daemon) handleConnection(connection *net.UnixConn) {
+// handleConnection answers the one request on connection. Only reading the
+// request is bounded by connectionTimeout; an execution.run reply then lasts
+// until the run ends, and ctx, which ends with Serve, cancels the run.
+func (d *Daemon) handleConnection(ctx context.Context, connection *net.UnixConn) {
 	defer connection.Close()
 	if err := connection.SetDeadline(time.Now().Add(connectionTimeout)); err != nil {
 		return
@@ -346,16 +473,32 @@ func (d *Daemon) handleConnection(connection *net.UnixConn) {
 	if err != nil {
 		return
 	}
-	encodedResponse, err := encodeResponse(StatusResponse{
-		ProtocolVersion: protocolVersion,
-		RequestID:       message.RequestID,
-		Status:          statusRunning,
-		DaemonVersion:   d.daemonVersion,
-	})
+	if message.Command == runCommand {
+		d.serveRun(ctx, connection, message, peerUID)
+		return
+	}
+	encodedResponse, err := d.reply(message)
 	if err != nil {
 		return
 	}
 	_ = writeFrame(connection, encodedResponse)
+}
+
+// reply returns the encoded reply to a decoded request, or an error when the
+// request must go unanswered.
+func (d *Daemon) reply(message request) ([]byte, error) {
+	if message.Command == statusCommand {
+		return encodeResponse(StatusResponse{
+			ProtocolVersion: protocolVersion,
+			RequestID:       message.RequestID,
+			Status:          statusRunning,
+			DaemonVersion:   d.daemonVersion,
+		})
+	}
+	if d.workspaces == nil {
+		return nil, fmt.Errorf("%w: workspace commands are not enabled", ErrInvalidMessage)
+	}
+	return d.replyToWorkspaceCommand(message)
 }
 
 func removeStaleSocket(path string) error {
