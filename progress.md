@@ -2,7 +2,7 @@
 
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
-**Current increment:** `scopra run` (Step 29, increment 3 of ADR-011)
+**Current increment:** `scopra doctor` containment readiness (Step 30)
 **Status:** Implemented on `arena/fe74ddf7-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
@@ -2342,3 +2342,98 @@ The remaining survivor (`arguments = nil`) was unreachable code and was removed:
 Coverage: `cmd/scopra` 91.9% (the new `run.go` functions are 85–100%), `internal/localipc` 85.3%, `internal/execution` 100.0%, `internal/hollow` 98.0%, `cmd/scoprad` 73.1%.
 
 Commit `12bd706` (`feat(cli): add scopra run`) holds the implementation and the documentation updates, `a9d9564` records this log, `b4c0904` adds the `cmd/scopra/README.md` section, and `c244e01` corrects the ADR index's ADR-010 status summary. All were pushed to `arena/fe74ddf7-scopra` (`7808799..c244e01`), so PR #3 picks them up; the PR's title and body were updated to cover increments 2 and 3. CI is out of scope, as recorded in the Baseline section.
+
+### 2026-10-17 — Step 30: `scopra doctor` containment readiness
+
+- Selection: the maintainer replied "continue" to the proposal after Step 29. Real-host verification (ADR-011 increment 4) still cannot run here (no Podman, no cgroups), so this step makes the most likely runtime refusal — `containment_unavailable` — visible before a run.
+- Shape: a new read-only `containment` check in `scopra doctor`, after `daemon`:
+  - `podman` is resolved with `exec.LookPath`, exactly as Mio resolves it once at startup;
+  - the ADR-010 preflight is reused through `hollow.ParsePodmanInfo` and `PodmanInfo.Check`: Podman 4.0 or later, rootless, cgroups v2, and the cpu, memory, and pids controllers;
+  - with `--sandbox-image`, `hollow.ValidateImage` checks the pinned-digest rule and `podman image exists` checks local storage. Mio never pulls, so a missing image is a finding, not something doctor fixes;
+  - every helper call gets a 10-second deadline; doctor never pulls, starts, or changes anything, and still contacts no new endpoint.
+- Statuses, so that a healthy host is not noisy and a broken execution setup is not hidden:
+  - no `podman` → `warn`: status, workspaces, and Mio still work, but every run is refused;
+  - `podman info` fails, or the host fails ADR-010 → `fail`: containment exists but cannot work;
+  - no `--sandbox-image` → `warn`: the host qualifies, but the image is unknown and Mio refuses every run without one;
+  - an image that is not pinned by digest, or is not in local storage → `fail`: the configured setup cannot run;
+  - everything present → `pass`.
+- `--sandbox-image` is doctor's own flag and does not contact Mio; an invalid value is reported as a failing check rather than a usage error, so the report explains it.
+- `containment` leaves `notChecked` (now enrollment, relay, policy, and execution remain); the closing line changes from "does not mean Scopra can authorize or execute commands" to "does not mean Scopra has authorized anything or run a command", which is what the check can and cannot say.
+- No schema change: `schemaVersion` stays 1; checks and fields may be added, as documented.
+
+#### Acceptance checklist (agreed before implementation)
+
+- [x] The `containment` check runs after `daemon` and is skipped when the platform check fails; its name is `containment` in text and JSON.
+- [x] It reuses the ADR-010 preflight and image rule (`hollow.ParsePodmanInfo`, `PodmanInfo.Check`, `hollow.ValidateImage`) instead of duplicating them, and bounds each `podman` call with a deadline.
+- [x] Statuses and hints are as above; every `warn` and `fail` names what to do next.
+- [x] It is read-only: only `podman info --format json` and `podman image exists IMAGE`; no pull, run, rm, ps, or socket request beyond the existing `daemon` check; it changes no file and creates no state.
+- [x] `scopra doctor` accepts `--sandbox-image`; an invalid value is a failing check, not a usage error; positional arguments are still refused.
+- [x] Tests are hermetic: the package controls `PATH`, and a fake `podman` (the test binary, as in `cmd/scoprad`) scripts every status. A table covers all statuses, the exact calls are asserted, the deadline is tested, and the unsupported-platform skip is covered.
+- [x] Existing doctor expectations are updated for a host without `podman` (`containment=warn`, overall `warn`), and no test depends on the host's real Podman.
+- [x] `containment` is removed from `notChecked`; the closing line is reworded; ADR-010, ADR-011, `cmd/scopra/README.md`, the root README, the plan, and the system overview are updated; `docs/repository-tree.txt` is regenerated; `make security-test` covers the read-only test.
+
+Non-goals: running a container, pulling an image, installing Podman, probing Mio's configured image (doctor does not ask Mio), and real-host verification (ADR-011 increment 4).
+
+#### Test-first record
+
+Tests added before the implementation:
+
+- `cmd/scopra/containment_test.go`: the package `TestMain`, a fake `podman` built from the test binary (the pattern `cmd/scoprad` already uses), and eight tests:
+  - a ready host, with the exact podman calls asserted;
+  - a status table with eleven cases: no podman, `podman info` failing, invalid `info` output, rootful Podman, cgroups v1, an undelegated controller, Podman 3.4, no image, an unpinned image, a missing image, and a failing image query;
+  - a read-only security test that allows only `info --format json` and `image exists` and proves the state directory is unchanged;
+  - a deadline test with a fake that sleeps for five seconds.
+- `cmd/scopra/doctor_test.go`: every existing expectation gained the `containment` check, the `notChecked` list lost `containment`, and the human report test now checks the reworded closing line.
+
+Red run: `go test ./cmd/scopra/` failed to build on `undefined: containmentHelperTimeout` — the tests were in place and the check was not. After the implementation, three subtests failed and all three were test-setup errors, not code errors:
+
+- the warn cases used a private state directory without Mio, so the `daemon` check failed and doctor exited 1; they now start a status daemon, as the other doctor tests do;
+- the unpinned-image case had no fake podman, so the missing-podman warning pre-empted the image rule; it now uses a healthy fake host.
+
+#### Implementation and verification record
+
+- **`cmd/scopra/containment.go`:** `diagnoseContainment` and `runPodmanHelper`, with a 10-second `containmentHelperTimeout`.
+  - `exec.LookPath("podman")` mirrors Mio's one-time resolution; nothing is cached or installed.
+  - The host check reuses `hollow.ParsePodmanInfo` and `PodmanInfo.Check`, so doctor and Mio cannot disagree about ADR-010's requirements.
+  - The image check reuses `hollow.ValidateImage` and then runs `podman image exists`; exit code 1 is the documented "not present" answer, any other failure is reported as such.
+  - Every helper call runs under a deadline derived from doctor's context, with `WaitDelay`, so a hung Podman cannot stall the report.
+- **`cmd/scopra/doctor.go`:**
+  - `--sandbox-image` is doctor's own flag; an invalid value is reported by the check, so the report explains it instead of a usage error.
+  - `diagnose` gained the image parameter and appends `containment` after `daemon`; it is skipped when the platform check fails, because the rest of doctor is Linux-only too.
+  - `containment` left `notChecked`; the closing line now says a pass does not mean Scopra "has authorized anything or run a command".
+  - `schemaVersion` stays 1: a new check is an additive change, as the README already promises.
+- **Test harness:** `TestMain` points `PATH` at a private empty directory, so no doctor test can see the host's Podman; `startFakePodman` prepends a directory whose `podman` is the test binary and sets `SCOPRA_DOCTOR_FAKE_PODMAN` plus `GORACE=atexit_sleep_ms=0`, as `cmd/scoprad` does.
+
+**Mutation testing** (sequential, against `containment.go` and `doctor.go`): 19 mutations, all caught. The first round caught 14. Two survived and both exposed missing tests:
+
+- a parse error from `podman info` with exit status 0 was never exercised, so a mutant that ignored it went unnoticed; an invalid-output case now covers it;
+- the reworded closing line was not asserted; the human test now requires it and rejects the old wording.
+
+Three mutants failed to build and were rewritten to compile (an unused variable or import), after which all three were caught.
+
+**Security review.** The check adds no authority and no write:
+- It runs exactly two read-only Podman queries, and a test asserts the exact calls;
+- it never pulls, starts, removes, or inspects a container, and never touches the registry, the state directory, or a workspace;
+- it does not ask Mio for anything new, so the status reply and the IPC surface are unchanged;
+- Podman's output is untrusted input: `ParsePodmanInfo` bounds it at 1 MiB, requires exactly one object of the expected shape, and validation fails closed;
+- the report escapes paths and error text with `terminalSafe` in human mode, and JSON encoding handles it in `--json` mode;
+- a missing or broken Podman is a finding, never a reason to fall back to anything.
+
+Residual risk: doctor checks the image it is given, not the one Mio is running with, so a mismatch stays possible; the hint says to pass the same `--sandbox-image`. The check is also a point-in-time observation; Mio re-runs the same preflight before every run.
+
+**Smoke test with the real `scopra` binary and a scripted Podman:**
+
+| Case | Result |
+|---|---|
+| ready host, image present | `[pass] containment: rootless Podman 5.2.0 with cgroups v2 and the cpu, memory, and pids controllers delegated; the sandbox image is in local storage` (doctor still exits 1 because Mio is not running) |
+| image missing | `containment=fail`, "not in local storage, and Mio never pulls images", with the pull hint |
+| `podman info` fails | `containment=fail`, "podman info failed: exit status 125" |
+| no podman on `PATH` | `containment=warn`, "the podman command was not found" |
+| unpinned image | `containment=fail`, the ADR-010 digest rule quoted in the detail |
+| calls observed | only `info --format json` and `image exists IMAGE` |
+
+**Verification, all passing** (Go 1.26.9): `make lint`, `make test`, `make security-test`, `CGO_ENABLED=0 go test ./...`, and build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64; `gofmt -l` and `git diff --check` are clean.
+
+Coverage: `cmd/scopra` 92.9% in total; `diagnoseContainment` is 100% and `runPodmanHelper` 85.7% (the nil-context guard is unused in practice).
+
+Commit `556f74f` (`feat(doctor): check containment readiness`) holds the implementation, the tests, and the documentation; a second commit records this log. Both were pushed to `arena/fe74ddf7-scopra`, so PR #3 picks them up. CI remains out of scope.
