@@ -191,7 +191,7 @@ $ curl -fsSL https://scopra-six.vercel.app/install.sh | sh -s -- --yes
 names the current tag; setting `SCOPRA_VERSION` repeats an exact install:
 
 ```console
-$ curl -fsSL https://scopra-six.vercel.app/install.sh | SCOPRA_VERSION=v0.1.0-alpha.7 sh
+$ curl -fsSL https://scopra-six.vercel.app/install.sh | SCOPRA_VERSION=v0.1.0-alpha.8 sh
 ```
 
 **Choose the directory and skip the service** — `--dir` defaults to

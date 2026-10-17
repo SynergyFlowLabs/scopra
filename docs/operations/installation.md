@@ -179,7 +179,7 @@ not install silently because there was nobody to confirm.
 `install.sh` follows the latest release. To install a specific tag:
 
 ```console
-$ curl -fsSL https://scopra-six.vercel.app/install.sh | SCOPRA_VERSION=v0.1.0-alpha.7 sh
+$ curl -fsSL https://scopra-six.vercel.app/install.sh | SCOPRA_VERSION=v0.1.0-alpha.8 sh
 ```
 
 ## Verify the download yourself

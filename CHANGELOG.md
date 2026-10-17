@@ -109,9 +109,10 @@ version, and the wire protocol is versioned separately (see ADR-002 and ADR-009)
   guessed that a new login was required. Diagnostics from the affected host
   disproved that explanation: `cpu` was available at the user-manager boundary,
   while the terminal's `app.slice` exposed only `memory` and `pids`. The
-  unreleased correction above probes the actual delegated service context and
-  removes the relogin heuristic; it also checks the current process context
-  before accepting a no-service install.
+  cgroup-preflight correction above probes the actual delegated service context
+  and removes the relogin heuristic; it also checks the current process context
+  before accepting a no-service install. It is included in
+  `v0.1.0-alpha.8`.
 - **A scripted install printed a command that could not run.** `scopra install
   --yes` described the delegation drop-in with a `cp` from the state directory,
   but only the interactive path staged that file, so the command failed with
