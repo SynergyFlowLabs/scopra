@@ -31,12 +31,6 @@ rootless Podman 4.0+ with cgroups v2), then asks where to put the binaries,
 whether to pin a sandbox image, and whether Mio should run as a systemd user
 service. Nothing changes until you confirm, and it never uses `sudo`.
 
-Scripted installs use the same path without the interface:
-
-```console
-$ curl -fsSL https://scopra-six.vercel.app/install.sh | sh -s -- --yes
-```
-
 Every variant — scripted installs, a pinned version, a custom directory, a pinned
 image, verifying the archive by hand — is in
 [Detailed install commands](#detailed-install-commands) below. The full

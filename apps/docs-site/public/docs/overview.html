@@ -41,9 +41,6 @@
 <pre><code class="language-console">$ curl -fsSL https://scopra-six.vercel.app/install.sh | sh
 </code></pre>
 <p>The script downloads the release archive for your architecture, checks its SHA-256 against the release&#39;s <code>checksums.txt</code>, and opens an interactive installer. The installer checks the system first (Linux, systemd user session, rootless Podman 4.0+ with cgroups v2), then asks where to put the binaries, whether to pin a sandbox image, and whether Mio should run as a systemd user service. Nothing changes until you confirm, and it never uses <code>sudo</code>.</p>
-<p>Scripted installs use the same path without the interface:</p>
-<pre><code class="language-console">$ curl -fsSL https://scopra-six.vercel.app/install.sh | sh -s -- --yes
-</code></pre>
 <p>Every variant — scripted installs, a pinned version, a custom directory, a pinned image, verifying the archive by hand — is in <a href="#detailed-install-commands">Detailed install commands</a> below. The full reference is <a href="/docs/operations/installation.html">Installing Scopra</a>: the flags, the requirements, the exact files an install writes, verification, and troubleshooting.</p>
 <hr>
 <h2 id="why-scopra">Why Scopra</h2>
