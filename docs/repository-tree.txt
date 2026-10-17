@@ -161,6 +161,9 @@
 ./internal/identity
 ./internal/identity/README.md
 ./internal/localipc
+./internal/localipc/executions.go
+./internal/localipc/executions_linux_test.go
+./internal/localipc/executions_test.go
 ./internal/localipc/frame.go
 ./internal/localipc/ipc_test.go
 ./internal/localipc/lock.go

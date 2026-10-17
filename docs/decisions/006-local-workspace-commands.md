@@ -64,3 +64,7 @@ The threat model routes agents through Scopra Caloris and Scopra Goldstone, neve
 - **Close the connection on application errors:** rejected. Users need to know why `add` failed.
 - **`protocolVersion` 2:** rejected. The commands are additive, and a new version would break status between versions.
 - **A separate admin socket or an access token:** rejected for now. Same-UID code can read any token the user can, so neither would add a boundary.
+
+## Note — 2026-10-17: local execution
+
+ADR-011 qualifies the sentence above that every execution needs a grant, policy evaluation, approval where policy requires it, and Rupes. A **local** run is the user's own action on the local socket, contained in Hollow, so it needs no grant or approval. Delegated execution through Caloris still needs everything that sentence lists, and the local maximum policy will apply to local runs once Resolution and Rupes exist.

@@ -58,6 +58,10 @@ type Daemon struct {
 	daemonVersion string
 	lock          *os.File
 	workspaces    WorkspaceRegistry // nil until EnableWorkspaces
+	executor      Executor          // nil until EnableExecutions
+	// frameWriteTimeout bounds writing each reply frame of a run.
+	frameWriteTimeout time.Duration
+	runs              chan struct{} // one token per execution in progress
 
 	closeOnce sync.Once
 	closeErr  error

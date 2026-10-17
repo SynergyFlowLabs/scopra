@@ -3,7 +3,7 @@
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
 **Current increment:** Local execution over IPC, the protocol (Step 27, increment 1 of ADR-011)
-**Status:** Proposed. The ADR-011 draft and the checklist below await the maintainer's confirmation, and no code has been written. CI is out of scope for now at the maintainer's request
+**Status:** In progress on `arena/c7a368c1-scopra`: ADR-011 and the acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -2071,7 +2071,7 @@ Non-goals:
   - this record, in a follow-up commit. My script that writes the record asserted 6 checklist boxes when the section has 7, so it failed, and the commit, which was not chained to the script, went ahead without the record.
 - CI was not checked, at the maintainer's request.
 
-### 2026-10-17 — Step 27 (proposed): local execution over IPC, the protocol (ADR-011, increment 1 of 4)
+### 2026-10-17 — Step 27: local execution over IPC, the protocol (ADR-011, increment 1 of 4)
 
 - Selection: after Step 26 the default was (a), proposing local execution end to end through Mio and Hollow (the plan's "local execution" task for Mariner, and the first step towards the exit gate's "Direct execution works in rootless containment"). The maintainer replied "Continue". Implementation starts only after confirmation; a "continue" accepts the proposal.
 - Research:
@@ -2085,9 +2085,12 @@ Non-goals:
   - a 30-second write deadline, cancellation when the client disconnects, and at most 4 concurrent runs, rejecting a fifth with `busy`;
   - `scopra run` defaults (read-only access, 10 minutes, 2 GiB, 2 CPUs, 512 processes, 16 MiB of output), raw output by default with `--json` available, and exit statuses 124, 130, and 137 as shells use them.
 
-#### Acceptance checklist (proposed, not yet agreed)
+- Confirmation: the maintainer replied "Continue", accepting ADR-011, including that local runs need no grant or approval, and the checklist below as written.
+- Design detail settled before coding: Mio splices the client's `run` fields, unchanged, into a complete ADR-007 request with its own principals, IDs, and times, and decodes the whole request with `protocol.DecodeExecutionRequest`. The client's text therefore gets every Messenger strictness rule (`null`, escapes, exact keys, field rules), which IPC v1's checks alone do not cover.
 
-- [ ] ADR-011 is accepted, with any changes the maintainer asks for, and indexed. ADR-006 gains a dated note that ADR-011 qualifies its execution sentence for local runs.
+#### Acceptance checklist (agreed before implementation)
+
+- [x] ADR-011 is accepted, with any changes the maintainer asks for, and indexed. ADR-006 gains a dated note that ADR-011 qualifies its execution sentence for local runs.
 - [ ] `internal/localipc` serves `execution.run` when an executor is enabled (as `EnableWorkspaces` enables workspace commands). It decodes the request with an exact key set and ADR-007's field rules for the command, access, limits, and reason, and a malformed request gets no reply.
 - [ ] **Streaming:** the executor's start notice, output, and result are written as `started`, `output`, and `result` frames. Output is split to at most 32768 bytes per frame, and every frame stays within 64 KiB.
 - [ ] **Bounds:**
@@ -2107,7 +2110,27 @@ Non-goals:
   Status and workspace commands are unchanged. The race detector is on, and full verification passes.
 
 Non-goals (later increments):
-- Mio wiring to Hollow, workspace revalidation, and building the request (increment 2).
+- Mio wiring to Hollow and workspace revalidation (increment 2). Building the request moved into this increment; see the deviation below.
 - `scopra run` (increment 3).
 - Real Podman (increment 4, with ADR-010's 3b).
 - Audit.
+
+#### Deviation from the agreed non-goals (recorded before implementation)
+
+ADR-011's increment list and the non-goals above put "building the request" in increment 2. Two agreed boxes of this increment need it, so it moves here:
+- Applying ADR-007's field rules means decoding a complete request, which this increment does by splicing the client's fields into one.
+- The `busy` refusal is an ADR-009 `result`, which must carry the request's `executionId` and `actionHash`.
+
+`internal/localipc` is part of Mio and holds the peer UID, so it builds the request: `local:<uid>`, `local`, `local-socket`, a random `local-` execution ID and nonce, a one-hour window, and network `none`. Increment 2 keeps Podman resolution, leftover cleanup, workspace revalidation, and running Hollow.
+
+A related rule: an executor that returns an error, or a result or event that does not belong to its request, is a Mio fault, and Mio closes the connection without a `result`. The client reports `ErrNoRunResult`, so it never shows an invented outcome.
+
+#### Test-first record
+
+Tests added before any implementation:
+- `internal/localipc/executions_test.go` (unit tests, all platforms): the wire form of a run, client-side validation before sending, Mio's request fields, ADR-007 rules on the client's own text, the output-frame bound, and the client's frame reader in order and on 22 invalid sequences.
+- `internal/localipc/executions_linux_test.go` (a real in-process Mio, a fake executor): frame shapes and order with splitting at 32768 bytes, the request Mio built from the peer, 12 malformed requests, the fifth-run `busy` refusal, cancellation on disconnect, on a stalled reader, and on shutdown, the 2-second request deadline versus a longer run, executor faults, and enabling.
+
+Expected failures, shown before implementing:
+1. **Build red:** `go test ./internal/localipc/` failed with 18 missing identifiers, including `RunExecution`, `RunRequest`, `RunEvents`, `Executor`, `ExecutionEvents`, `ErrNoRunResult`, `EnableExecutions`, `buildExecutionRequest`, `readRunReplies`, and the frame encoders.
+2. **Runtime red:** with a compiling skeleton whose bodies return "not implemented", all 19 new tests fail, and the 67 existing tests in the package still pass.
