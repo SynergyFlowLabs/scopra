@@ -134,13 +134,20 @@ func TestSecurity_RunRejectsAMalformedSandboxImageBeforeTouchingState(t *testing
 	} {
 		t.Run(name, func(t *testing.T) {
 			stateDir := filepath.Join(t.TempDir(), "run")
-			var stdout, stderr bytes.Buffer
-			err := run(t.Context(), append([]string{"--state-dir", stateDir}, args...), &stdout, &stderr)
+			// Any stderr write cancels the context, so a broken check that
+			// lets Mio start ends the run promptly instead of serving forever.
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			var stdout bytes.Buffer
+			stderr := &cancelOnWrite{cancel: cancel}
+			err := run(ctx, append([]string{"--state-dir", stateDir}, args...), &stdout, stderr)
 			var usageErr *usageError
 			if !errors.As(err, &usageErr) {
 				t.Fatalf("run(%q) error = %v, want a usage error", args, err)
 			}
-			if !strings.Contains(stderr.String(), "--sandbox-image") || !strings.Contains(stderr.String(), "@sha256:") ||
+			// The usage line also mentions @sha256:, so check the rule's own words.
+			if !strings.Contains(stderr.String(), "--sandbox-image") ||
+				!strings.Contains(stderr.String(), "followed by 64 lowercase hexadecimal characters") ||
 				!strings.Contains(stderr.String(), "usage: scoprad") {
 				t.Fatalf("run(%q) stderr = %q, want the rule and the usage", args, stderr.String())
 			}

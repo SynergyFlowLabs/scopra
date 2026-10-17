@@ -3,7 +3,7 @@
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
 **Current increment:** The `scoprad --sandbox-image` setting (Step 24, increment 3a-1 of ADR-010 as amended)
-**Status:** In progress on `arena/c7a368c1-scopra`: the ADR-010 amendment and the acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
+**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -25,7 +25,7 @@ This file is the running engineering log. Each increment records scope, verifica
 
 1. **Protocol foundation** — envelope v1 structural validation, strict execution request v1 decoding (ADR-007), the canonical request and action hash (ADR-008), and every execution lifecycle message: results, start notices, output chunks, and cancellation (ADR-009) are implemented and locally verified. The plan's first Messenger task is complete, and reference payloads in `packages/test-fixtures/messenger/v1` pin the version 1 wire format. Approval records, compatibility tests across protocol versions, cryptographic verification, replay storage, and compatibility/version guarantees remain pending.
 2. **Local daemon and CLI** — the initial foreground Mio status service with a persistent per-user state directory and an exclusive state-directory lock, Mariner `scopra status`, a minimal read-only `scopra doctor` (platform, state-directory, workspace-registry, registered-workspace revalidation, and daemon checks), and `scopra workspace add/list/remove` are implemented. Workspace validation (ADR-004) and registry storage (ADR-005) exist; Mio checks its registry at startup and serves add, list, and remove over local IPC (ADR-006). Broader doctor checks, execution, service installation, and expanded CLI/IPC authorization remain pending.
-3. **Policy and containment boundary** — implement default-deny policy and rootless containment before enabling execution; no native fallback. ADR-010 decides the rootless Podman backend. Its first two increments, the exact `podman run` argument builder and the fail-closed preflight check in `internal/hollow`, are implemented and verified. The runner and adversarial tests remain, and both need a host with rootless Podman.
+3. **Policy and containment boundary** — implement default-deny policy and rootless containment before enabling execution; no native fallback. ADR-010 decides the rootless Podman backend. Its first two increments, the exact `podman run` argument builder and the fail-closed preflight check in `internal/hollow`, and the `scoprad --sandbox-image` setting are implemented and verified. Still to do: the runner against a fake Podman (3a-2 and 3a-3), then verification on a real host (3b) and the adversarial tests, both of which need rootless Podman.
 4. **Structured execution and audit** — limits, cancellation, bounded output, and attributable events with adversarial tests.
 5. **Enrollment, relay, approvals, and integrations** — proceed only after local foundations and security invariants are testable.
 
@@ -1809,14 +1809,14 @@ Non-goals:
 
 #### Acceptance checklist (agreed before implementation)
 
-- [ ] The ADR-010 amendment is accepted, with any changes the maintainer asks for, and the ADR index is updated.
-- [ ] `hollow` exports the image rule that `PodmanRunArgs` uses (for example `ValidateImage`), and its tests are unchanged.
-- [ ] `scoprad --sandbox-image=REF`:
+- [x] The ADR-010 amendment is accepted, with any changes the maintainer asks for, and the ADR index is updated.
+- [x] `hollow` exports the image rule that `PodmanRunArgs` uses (for example `ValidateImage`), and its tests are unchanged.
+- [x] `scoprad --sandbox-image=REF`:
   - a valid reference is accepted, and Mio starts and serves status as before;
   - a malformed or empty one is a usage error (exit status 2) whose message states the rule, reported before the lock, the socket, or the registry are touched;
   - a repeated flag behaves as the existing flags do;
   - the value reaches Mio's configuration for later use by the runner.
-- [ ] Tests come first, the usage text and `cmd/scoprad/README.md` are updated, and full verification passes.
+- [x] Tests come first, the usage text and `cmd/scoprad/README.md` are updated, and full verification passes.
 
 Non-goals:
 - Any execution path.
@@ -1836,3 +1836,37 @@ Non-goals:
      - `TestRunStartsWithASandboxImage` checks that Mio still starts and reports that it is listening.
 2. **Build failure.** `ValidateImage` and `parseFlags` were undefined.
 3. **Declarations-only skeleton.** `ValidateImage` accepts everything, `parseFlags` returns an empty configuration, and `run` still parses inline. Runtime red: 5 tests failed across 9 subtests. The malformed-image cases were rejected only as an unknown flag, without the rule.
+
+#### Implementation and verification record
+
+- **`internal/hollow`:** `ValidateImage` exports the image rule, and `ImageRule` holds its wording, so `ValidateImage`, `PodmanRunArgs`, and `scoprad` state it identically. `PodmanRunArgs` now calls `ValidateImage`; its message is unchanged, and its tests needed no change.
+- **`cmd/scoprad`:**
+  - `parseFlags` returns a `daemonConfig` holding the state directory, the sandbox image, and whether `--version` was given. It uses `flag.Visit` to tell an empty value from an absent flag, and checks the image before anything else.
+  - A malformed value produces `scoprad: --sandbox-image "<value quoted>" must be name@sha256: followed by 64 lowercase hexadecimal characters` and the usage line.
+  - `run` gets its configuration from `parseFlags`. The image is held for the runner (3a-2).
+- **Smoke test with the built binary:**
+  - a malformed image exits with status 2 and states the rule, and no state directory is created;
+  - a value containing a newline is printed escaped (`"evil\nline"`);
+  - `--help` shows the new usage;
+  - `--version` with a valid image exits with status 0.
+- **Test improvements found by mutation testing:**
+  - With validation disabled, the malformed-image test made Mio serve forever, so the mutation timed out the harness instead of failing a test. The harness restored the file and left no stray processes. The test now cancels its context on any stderr write, so the same fault fails promptly. The harness also runs `go test -timeout 120s` and reports a timed-out test as caught.
+  - The rule check passed even with the rule missing from the message, because the usage line also contains `@sha256:`. It now asserts the rule's own words.
+- Green: all tests pass under the race detector with no skips.
+- Mutation testing, run in one sequential batch, all caught after these fixes: `ValidateImage` accepting everything; the flag never validated, an empty value treated as unset, or validation skipped with `--version`; the message without the rule; the value not stored; the usage text without the flag; a rejection that does not stop startup; the rule text without its digest form; and `PodmanRunArgs` skipping the image check.
+- Coverage: `cmd/scoprad` 69.0% (up from 63.3%), and `internal/hollow` 98.1%.
+- Documentation: `cmd/scoprad/README.md` (usage and the setting), the ADR-010 implementation status, the ADR index, the plan, and the roadmap above. Each says the setting has no visible effect until execution exists.
+- Security review:
+  - The image is fixed by digest, so tags cannot drift.
+  - Malformed input fails before any state is touched.
+  - The value is quoted in messages.
+  - Mio never pulls images.
+  - No high-confidence exploitable issue was found.
+- Local verification passed:
+  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `go test -race -count=1 -timeout 120s ./...` and ten repeated race runs of `internal/hollow` and `cmd/scoprad`;
+  - every package with `CGO_ENABLED=0`;
+  - `git diff --cached --check`;
+  - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64.
+  - The tree is unchanged.
+- Pushes to `arena/c7a368c1-scopra`: the proposal `4be6635`, test checkpoint `918183b` (red by design), then the implementation commit that adds this record. CI was not checked, at the maintainer's request.

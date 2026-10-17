@@ -230,6 +230,8 @@ The result comes from `podman inspect`, never from `podman run`'s own exit statu
 
 With `passthrough` logging, Podman's own error text for a start failure may appear in the stderr stream. Increment 3b must confirm this.
 
+**Implementation status (2026-10-17):** 3a-1 is implemented (Step 24). `scoprad --sandbox-image` is validated by `hollow.ValidateImage` and stated with `hollow.ImageRule`; it is a usage error reported before the state directory is touched, and the value reaches Mio's configuration for the runner.
+
 **Cleanup**
 
 - `podman rm --force` removes the container after its result.

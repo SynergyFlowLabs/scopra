@@ -30,6 +30,9 @@ const (
 	timeoutBackstopSeconds = 10
 )
 
+// ImageRule states the form that every image reference must have (ADR-010).
+const ImageRule = "name@sha256: followed by 64 lowercase hexadecimal characters"
+
 var (
 	// ErrUnmountableWorkspace reports a workspace path that cannot be bind
 	// mounted safely. Mio reports it as workspace_unavailable (ADR-009).
@@ -63,8 +66,8 @@ func PodmanRunArgs(spec RunSpec) ([]string, error) {
 	if !mountablePath(spec.WorkspacePath) {
 		return nil, fmt.Errorf("%w: %q must be a clean absolute path of valid UTF-8 with no control characters", ErrUnmountableWorkspace, spec.WorkspacePath)
 	}
-	if !pinnedImage(spec.Image) {
-		return nil, fmt.Errorf("%w: %q must be name@sha256: followed by 64 lowercase hexadecimal characters", ErrInvalidImage, spec.Image)
+	if err := ValidateImage(spec.Image); err != nil {
+		return nil, err
 	}
 	entrypoint, err := jsonArray(request.Command.Executable)
 	if err != nil {
@@ -108,8 +111,13 @@ func PodmanRunArgs(spec RunSpec) ([]string, error) {
 	return append(args, request.Command.Arguments...), nil
 }
 
-// ValidateImage checks that image is a reference pinned by digest (ADR-010).
+// ValidateImage checks that image is a reference pinned by a SHA-256 digest,
+// the rule that PodmanRunArgs applies (ADR-010). The error wraps
+// ErrInvalidImage, states ImageRule, and quotes image.
 func ValidateImage(image string) error {
+	if !pinnedImage(image) {
+		return fmt.Errorf("%w: %q must be %s", ErrInvalidImage, image, ImageRule)
+	}
 	return nil
 }
 
