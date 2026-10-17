@@ -2,8 +2,8 @@
 
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
-**Current increment:** Local execution over IPC, the protocol (Step 27, increment 1 of ADR-011)
-**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
+**Current increment:** Mio wiring to Hollow (Step 28, increment 2 of ADR-011)
+**Status:** Implemented on `arena/fe74ddf7-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -25,7 +25,7 @@ This file is the running engineering log. Each increment records scope, verifica
 
 1. **Protocol foundation** — envelope v1 structural validation, strict execution request v1 decoding (ADR-007), the canonical request and action hash (ADR-008), and every execution lifecycle message: results, start notices, output chunks, and cancellation (ADR-009) are implemented and locally verified. The plan's first Messenger task is complete, and reference payloads in `packages/test-fixtures/messenger/v1` pin the version 1 wire format. Approval records, compatibility tests across protocol versions, cryptographic verification, replay storage, and compatibility/version guarantees remain pending.
 2. **Local daemon and CLI** — the initial foreground Mio status service with a persistent per-user state directory and an exclusive state-directory lock, Mariner `scopra status`, a minimal read-only `scopra doctor` (platform, state-directory, workspace-registry, registered-workspace revalidation, and daemon checks), and `scopra workspace add/list/remove` are implemented. Workspace validation (ADR-004) and registry storage (ADR-005) exist; Mio checks its registry at startup and serves add, list, and remove over local IPC (ADR-006). Broader doctor checks, execution, service installation, and expanded CLI/IPC authorization remain pending.
-3. **Policy and containment boundary** — implement default-deny policy and rootless containment before enabling execution; no native fallback. ADR-010 decides the rootless Podman backend. Its first two increments, the exact `podman run` argument builder and the fail-closed preflight check in `internal/hollow`, and the `scoprad --sandbox-image` setting are implemented and verified. The runner against a fake Podman, with its timeout, cancellation, per-run preflight, and leftover cleanup (3a-2 and 3a-3), is also done. Still to do: verification on a real host (3b) and the adversarial tests, both of which need rootless Podman, and wiring the runner into Mio.
+3. **Policy and containment boundary** — implement default-deny policy and rootless containment before enabling execution; no native fallback. ADR-010 decides the rootless Podman backend. Its first two increments, the exact `podman run` argument builder and the fail-closed preflight check in `internal/hollow`, and the `scoprad --sandbox-image` setting are implemented and verified. The runner against a fake Podman, with its timeout, cancellation, per-run preflight, and leftover cleanup (3a-2 and 3a-3), is also done, and Mio now wires it into `execution.run` (ADR-011 increment 2), so a local run executes through Hollow when the host has rootless Podman and a pinned image. Still to do: verification on a real host (3b) and the adversarial tests, both of which need rootless Podman, and `scopra run` (increment 3).
 4. **Structured execution and audit** — limits, cancellation, bounded output, and attributable events with adversarial tests.
 5. **Enrollment, relay, approvals, and integrations** — proceed only after local foundations and security invariants are testable.
 
@@ -2178,3 +2178,77 @@ Verification, all passing:
 - `git diff --cached --check`, no skipped tests, and an up-to-date tree.
 
 Coverage of `internal/localipc` rose from 82.3% to 85.3%.
+
+### 2026-10-17 — Step 28: Mio wiring to Hollow (ADR-011, increment 2 of 4)
+
+- New session branch `arena/fe74ddf7-scopra` starts from `main` at `86ed7a6` (PR #2 merge).
+- Selection: the user asked this session to "set up this project and read all the docs and start working on next important things". After Step 27 the next increment in ADR-011 is increment 2, the only step that turns the tested local execution protocol into a working local execution path: Mio resolves Podman, cleans up leftovers, revalidates the workspace, and runs Hollow, still tested against a fake Podman. `scopra run` (increment 3) and real-host verification (increment 4) stay out.
+- Scope decisions to be recorded in ADR-011:
+  - **Execution is always enabled.** Without `--sandbox-image`, or when `podman` cannot be found, Mio does not stay silent: every well-formed run is answered with a `rejected` result and `containment_unavailable`, so clients get a typed refusal instead of `ErrNoRunResult`.
+  - **The workspace is checked first.** Unknown or changed workspaces are refused with `workspace_unavailable` before the containment check, as ADR-011's order says.
+  - **Cleanup failure fails closed.** If the startup removal of labelled leftover containers fails, this Mio process refuses every run with `containment_unavailable` and says so on stderr. It still serves status and workspace commands.
+  - **The client never supplies a path.** The service passes the canonical path from the registry record to Hollow; nothing in the request can select a directory.
+
+#### Acceptance checklist (agreed before implementation)
+
+- [x] `internal/execution` provides a `Service` implementing Mio's executor contract. For each request it:
+  - looks the workspace ID up in the registry and revalidates the recorded workspace with the ADR-004 validator immediately before the run;
+  - rejects with `workspace_unavailable` when the ID is unknown or revalidation fails;
+  - rejects with `containment_unavailable` when no runner is configured, naming the reason;
+  - otherwise calls Hollow with the record's canonical path, forwards the start notice and output chunks unchanged, and returns Hollow's result unchanged;
+  - propagates a Hollow error as an error, so Mio ends the run without inventing a result;
+  - never falls back to native execution.
+- [x] `scoprad` builds one ADR-004 validator and uses it for both the registry and execution revalidation. It resolves `podman` once with `exec.LookPath` and keeps the absolute path.
+- [x] When `--sandbox-image` is set and Podman exists, Mio removes labelled leftover containers before it starts serving. A failure disables executions for this process (fail closed) and is reported on stderr after the listening line.
+- [x] Without an image or Podman, Mio starts and serves exactly as before, and every run is refused with `containment_unavailable`.
+- [x] Status and workspace commands, the IPC wire format, result states, and Hollow's arguments are unchanged.
+- [x] Tests:
+  - `internal/execution` unit tests with a fake registry, validator, and runner: the canonical path, event and result passthrough, unknown and changed workspaces, containment unavailable, runner errors, dependency and context checks, and result validity;
+  - `cmd/scoprad` end-to-end tests through a real Mio with a fake Podman: a run streams its start notice, output, and result; only the registered path is mounted; unknown and replaced workspaces never reach Podman; no image refuses; leftovers are removed at startup; a failed cleanup disables executions while status still answers.
+- [x] `make security-test` includes `internal/execution`; the new tests pass under the race detector and the tree is regenerated.
+
+Non-goals: `scopra run` (increment 3), verification on a real rootless host (increment 3b/4), cancellation UI, approvals, policy, and audit.
+
+#### Test-first record
+
+Tests added before any implementation:
+
+- `internal/execution/service_test.go`: 13 tests (one with four dependency subtests) with a fake registry, validator, and runner.
+- `cmd/scoprad/execution_test.go`: eight end-to-end tests against a real in-process Mio. The fake Podman is the test binary itself (`TestMain` with `SCOPRAD_FAKE_PODMAN`), reached through a `podman` symlink first on `PATH` so that Mio's real `exec.LookPath` runs. It implements `info`, `image exists`, `ps`, `run`, `inspect`, and `rm`, and writes the state files that the runner reads.
+
+Red run:
+
+- `go test ./internal/execution/` failed to build with 18 undefined identifiers, including `Service`, `Events`, `WorkspaceRegistry`, `WorkspaceValidator`, `Runner`, `ErrInvalidService`, and `reject`.
+- `go test ./cmd/scoprad/` compiled and ran. The four run tests failed with `localipc: Mio ended the run without a result: localipc: invalid frame: incomplete frame header`, because Mio did not enable `execution.run`; the leftover test found no removals; the cleanup-failure test timed out waiting for the warning. The existing daemon tests still passed.
+
+#### Implementation and verification record
+
+- **`internal/execution/service.go`:** `Service`, `WorkspaceRegistry`, `WorkspaceValidator`, `Runner`, `Events`, `ErrInvalidService`, and `reject`.
+  - A nil service, context, registry, or validator is `ErrInvalidService`.
+  - An unknown workspace is rejected with `workspace_unavailable` and "the workspace is not registered"; a failed ADR-004 revalidation is rejected with `workspace_unavailable` and "the workspace failed revalidation". Both messages are fixed text.
+  - A nil `Runner` or a non-empty `Unavailable` reason is rejected with `containment_unavailable`; the reason wins over a runner, so a configuration mistake cannot run anything.
+  - Otherwise the service passes the record's canonical path and the caller's events to Hollow and returns its result unchanged. A runner error is returned as an error, so Mio ends the run without inventing a result.
+  - Every rejection recomputes the action hash from the request.
+- **`cmd/scoprad/execution.go`:** `newExecutor` and `localExecutor`.
+  - Fixed refusal and warning text; one `exec.LookPath("podman")` at startup, kept as an absolute path (`LookPath` already fails closed on a relative result).
+  - With an image and Podman, `RemoveLeftovers` runs before serving. On failure, executions are disabled for this process and a warning is returned.
+  - Without an image, execution stays enabled but refuses with `containment_unavailable` naming `--sandbox-image`; without Podman, it names Podman. This keeps the ADR-011 promise that Mio "rejects executions" rather than staying silent.
+- **`cmd/scoprad/main.go`:** `openWorkspaceRegistry` now also returns the validator, which execution reuses. `run` always calls `EnableExecutions` and prints the returned warning after the listening line.
+- **`Makefile`:** `security-test` includes `internal/execution`.
+- **Docs:** ADR-011 gains the increment 2 status and marks increments 1 and 2 done; ADR-010's status notes that Mio now uses the runner; the README, system overview, `internal/execution/README.md`, the repository tree, and this log are updated.
+
+**Mutation testing** (sequential, against the new service, wiring, and startup path): 28 mutations, all caught. 23 were caught on the first round; the other 5 failed to build and were rewritten to compile before being caught. None survived, and none was caught only by a timeout. The mutations covered the nil guards, lookup errors and IDs, rejection codes and messages, revalidation and its order, the unavailable precedence, the canonical path, event forwarding, the action-hash error path, the image and Podman checks, leftover cleanup, and the warning lines.
+
+**Security review.** The client still names only a registered workspace ID, and Mio resolves the path from its own registry and revalidates it immediately before use, so no request field can select a directory. Rejection text is fixed and carries no path. A cleanup failure fails closed. The service adds no writable state and no new trust boundary; same-UID callers already hold the user's authority. Residual risks: a same-UID process can race the window between revalidation and mount; local runs still have no policy, approval, or audit (ADR-011); real Podman is still unverified; and startup cleanup can delay the listening line by up to one 30-second helper deadline per leftover container.
+
+**Verification, all passing** (on Go 1.26.9, the toolchain CI pins, built from the `golang/go` `go1.26.9` tag; the first checks in this session ran on Go 1.27.2 from the PyPI `go-bin` wheel):
+
+- `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+- `go test -race -count=1 -timeout 120s ./...`;
+- `CGO_ENABLED=0 go test ./...`;
+- build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64;
+- `git diff --check`, no skipped tests, and a regenerated tree.
+
+Coverage: `internal/execution` 100.0% (new), `cmd/scoprad` 73.1% (from 55.3%), `internal/localipc` 85.3%, `internal/hollow` 98.0%.
+
+Commit `5751414` (`feat(execution): run local runs in Hollow`) holds the implementation and documentation; this record follows in a second commit. No red checkpoint was pushed for this step, unlike Steps 2 and 3.
