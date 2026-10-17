@@ -2,7 +2,7 @@
 
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
-**Current increment:** Mio wiring to Hollow (Step 28, increment 2 of ADR-011)
+**Current increment:** `scopra run` (Step 29, increment 3 of ADR-011)
 **Status:** Implemented on `arena/fe74ddf7-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
@@ -179,7 +179,7 @@ Non-goals: PID files or lock contents, taking over or killing a running daemon, 
   - Starting eight real `scoprad` processes at once against a stale socket left exactly one reachable daemon in 40 of 40 trials. All 280 losing processes reported the same "already running" error.
 - Security review: covered symlink, FIFO, directory, hard-link, and foreign-owner occupants; validating the opened inode rather than the path; lock lifetime across failure, `Close`, `Serve`, and crash; close-on-exec; and interaction with read-only doctor. No high-confidence exploitable issue was found. The documented limits are that a same-UID process can hold the lock to block Mio, and that deleting the whole state directory while Mio runs is undetected.
 - Local verification passed:
-  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `make lint` and `make security-test`;
   - `go test -race -count=1 -timeout 60s ./...`, plus ten repeated race runs of the IPC, CLI, and daemon packages;
   - `git diff --check`;
   - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64.
@@ -355,7 +355,7 @@ Non-goals: wiring the registry into Mio; workspace IPC commands and CLI; moving 
   - Harness pitfall: the first run backgrounded a shell function, so `$!` was the wrapper subshell. TERM killed the wrapper and orphaned `scoprad`, which kept answering and made one check look wrong. Rerun with the binary itself in the background, every result matched expectations; the orphans were then stopped and removed their sockets.
 - Security review: covered relative values (the working directory could be inside a workspace), lexical `..` cleaning of environment values (every resulting component is still validated and symlinks are rejected), the permissions of created components, error text (it names variables but never echoes their values), compatibility with older binaries, and state directories shared between hosts. No high-confidence exploitable issue was found. The environment is controlled by the same user, which is outside the security boundary.
 - Local verification passed:
-  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `make lint` and `make security-test`;
   - `go test -race -count=1 -timeout 60s ./...` and ten repeated race runs of the IPC, CLI, and daemon packages;
   - the IPC and command packages with `CGO_ENABLED=0`;
   - `git diff --check`;
@@ -419,7 +419,7 @@ Non-goals: workspace IPC commands and the `scopra workspace` CLI; keeping the lo
   - With no `HOME` at all, Mio starts using the account database.
 - Security review: covered the lock-held invariant (the registry is opened only after `Listen`, in exactly the locked directory), fail-closed startup with full cleanup, the two-way directory rule and its canonical comparison, the validator's protection of the state directory for future revalidation, error text (paths are quoted with `%q`, so control characters are escaped), and the window in which the socket is bound before the registry is opened (no request is served). No high-confidence exploitable issue was found. A same-UID process can stop Mio by planting a bad registry, just as it can hold the lock; same-UID processes remain outside the boundary.
 - Local verification passed:
-  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `make lint` and `make security-test`;
   - `go test -race -count=1 -timeout 60s ./...` and ten repeated race runs of the daemon, IPC, and workspace packages;
   - the command and internal packages with `CGO_ENABLED=0`;
   - `git diff --check`;
@@ -507,7 +507,7 @@ Non-goals: the `scopra workspace` CLI; approvals or any other authorization of a
   - status compatibility.
   No high-confidence exploitable issue was found. Same-UID processes can register and remove workspaces, which ADR-006 records as a deliberate limit.
 - Local verification passed:
-  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `make lint` and `make security-test`;
   - `go test -race -count=1 -timeout 120s ./...` and ten repeated race runs of the IPC, daemon, and workspace packages;
   - the command and internal packages with `CGO_ENABLED=0`;
   - `git diff --check`;
@@ -596,7 +596,7 @@ Non-goals: removal by path; confirmation prompts; flags after positional argumen
   - the unchanged ADR-006 trust model: any same-user process can use these commands, and registration authorizes nothing.
   No high-confidence exploitable issue was found.
 - Local verification passed:
-  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `make lint` and `make security-test`;
   - `go test -race -count=1 -timeout 120s ./...` and ten repeated race runs of the CLI and daemon packages;
   - the command and internal packages with `CGO_ENABLED=0`;
   - `git diff --check`;
@@ -680,7 +680,7 @@ Non-goals: revalidating registered workspaces; repairing or removing the file; r
   - After the file is removed, as the hint suggests, the check passes, `scoprad` starts, and doctor passes.
 - Security review: doctor stays read-only, reading through `registry.Check` with the same no-follow, non-blocking, size-capped, and strict rules as `Open`. Reading alongside a running Mio is safe because Mio replaces the file atomically. Paths in hints are escaped in text and JSON-escaped in `--json` output. No high-confidence exploitable issue was found.
 - Local verification passed:
-  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `make lint` and `make security-test`;
   - `go test -race -count=1 -timeout 120s ./...` and ten repeated race runs of the CLI and workspace packages;
   - the command and internal packages with `CGO_ENABLED=0`;
   - `git diff --check`;
@@ -774,7 +774,7 @@ Non-goals: revalidation status in `scopra workspace list`, which needs a wire ch
   - After both registrations were removed with `scopra workspace remove`, as the hint suggests, the directories were kept and doctor passed.
 - Security review: doctor never writes; revalidation is metadata-only and safe alongside a running Mio. Stale paths are escaped in text output (tested with an escape sequence and a newline) and JSON-escaped in `--json` output. Listing at most five entries bounds the detail for a full registry. The warning names only the user's own registrations, which the same user can already list. No high-confidence exploitable issue was found.
 - Local verification passed:
-  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `make lint` and `make security-test`;
   - `go test -race -count=1 -timeout 60s ./...` and ten repeated race runs of the CLI and registry packages;
   - every package with `CGO_ENABLED=0`;
   - `git diff --check`;
@@ -835,7 +835,7 @@ Non-goals:
   - After the file was removed, the plain hint returned.
 - Security review: no new input, output channel, or file access. The hint contains only a fixed check name and is escaped like every other hint. No exploitable issue was found.
 - Local verification passed:
-  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `make lint` and `make security-test`;
   - `go test -race -count=1 -timeout 60s ./...` and ten repeated race runs of the CLI package;
   - every package with `CGO_ENABLED=0`;
   - `git diff --check`;
@@ -936,7 +936,7 @@ Non-goals:
   - Errors quote PATH with `%q` and are escaped again on the terminal.
   - No high-confidence exploitable issue was found.
 - Local verification passed:
-  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `make lint` and `make security-test`;
   - `go test -race -count=1 -timeout 60s ./...` and ten repeated race runs of the CLI package;
   - every package with `CGO_ENABLED=0`;
   - `git diff --check`;
@@ -1101,7 +1101,7 @@ Non-goals:
 - A 30-second fuzz run found no failure.
 - Coverage: protocol 93.9%, unchanged.
 - Local verification passed:
-  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `make lint` and `make security-test`;
   - `go test -race -count=1 -timeout 120s ./...` and ten repeated race runs of the protocol package;
   - every package with `CGO_ENABLED=0`;
   - `git diff --cached --check`;
@@ -1435,7 +1435,7 @@ Non-goals:
   - Every payload stays within the 512 KiB envelope bound, and a maximum chunk encodes to 87,382 characters.
   - No high-confidence exploitable issue was found.
 - Local verification passed on the rebuilt toolchain:
-  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `make lint` and `make security-test`;
   - `go test -race -count=1 -timeout 120s ./...` and ten repeated race runs of the protocol package;
   - every package with `CGO_ENABLED=0`;
   - `git diff --cached --check`;
@@ -1520,7 +1520,7 @@ Non-goals:
   - Its reason is untrusted text under ADR-007's rules.
   - No high-confidence exploitable issue was found.
 - Local verification passed:
-  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `make lint` and `make security-test`;
   - `go test -race -count=1 -timeout 120s ./...` and ten repeated race runs of the protocol package;
   - every package with `CGO_ENABLED=0`;
   - `git diff --cached --check`;
@@ -1706,7 +1706,7 @@ Non-goals:
   - No high-confidence exploitable issue was found.
   - Every Podman behaviour that the vector relies on still has to be confirmed on a real rootless host in increment 3.
 - Local verification passed:
-  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `make lint` and `make security-test`;
   - `go test -race -count=1 -timeout 120s ./...` (8 packages) and ten repeated race runs of `internal/hollow`;
   - every package with `CGO_ENABLED=0`;
   - `git diff --cached --check`;
@@ -1783,7 +1783,7 @@ Non-goals:
   - The real trust question, the `podman` binary on `PATH`, belongs to the runner (increment 3).
   - No high-confidence exploitable issue was found.
 - Local verification passed:
-  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `make lint` and `make security-test`;
   - `go test -race -count=1 -timeout 120s ./...` and ten repeated race runs of `internal/hollow`;
   - every package with `CGO_ENABLED=0`;
   - `git diff --cached --check`;
@@ -1863,7 +1863,7 @@ Non-goals:
   - Mio never pulls images.
   - No high-confidence exploitable issue was found.
 - Local verification passed:
-  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `make lint` and `make security-test`;
   - `go test -race -count=1 -timeout 120s ./...` and ten repeated race runs of `internal/hollow` and `cmd/scoprad`;
   - every package with `CGO_ENABLED=0`;
   - `git diff --cached --check`;
@@ -1973,7 +1973,7 @@ Non-goals (3a-3 and later):
   - Remaining risks for 3a-3 and 3b: a hung `podman inspect` would stall a run until the timeout exists (3a-3), and only a real host can confirm Podman's behaviour (3b).
   - No high-confidence exploitable issue was found.
 - Local verification passed:
-  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `make lint` and `make security-test`;
   - `go test -race -count=1 -timeout 180s ./...` and ten repeated race runs of `internal/hollow`;
   - every package with `CGO_ENABLED=0`;
   - `git diff --cached --check`;
@@ -2059,7 +2059,7 @@ Non-goals:
   - Messages are bounded and printable.
   - No high-confidence exploitable issue was found.
 - Local verification passed on the rebuilt toolchain:
-  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `make lint` and `make security-test`;
   - `go test -race -count=1 -timeout 300s ./...` and five repeated race runs of `internal/hollow`;
   - every package with `CGO_ENABLED=0`;
   - `git diff --cached --check`;
@@ -2171,7 +2171,7 @@ Tests added during implementation:
 - the misbehaving-executor case "an invalid output chunk", and the frame-reader cases "another action hash's result" and "output with a newline".
 
 Verification, all passing:
-- `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+- `make lint` and `make security-test`;
 - `go test -race -count=1 -timeout 60s ./...`, plus five more race runs of `internal/localipc` (and eight of the new tests during development);
 - `CGO_ENABLED=0 go test ./...`;
 - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64;
@@ -2243,7 +2243,7 @@ Red run:
 
 **Verification, all passing** (on Go 1.26.9, the toolchain CI pins, built from the `golang/go` `go1.26.9` tag; the first checks in this session ran on Go 1.27.2 from the PyPI `go-bin` wheel):
 
-- `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+- `make lint` and `make security-test`;
 - `go test -race -count=1 -timeout 120s ./...`;
 - `CGO_ENABLED=0 go test ./...`;
 - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64;
@@ -2254,3 +2254,90 @@ Coverage: `internal/execution` 100.0% (new), `cmd/scoprad` 73.1% (from 55.3%), `
 Commits `5751414` (`feat(execution): run local runs in Hollow`) and `1c6be69` (`docs(progress): record Step 28, Mio wiring to Hollow`) were pushed to `arena/fe74ddf7-scopra`. No red checkpoint was pushed for this step, unlike Steps 2 and 3.
 
 Actions run `39007352867` for `1c6be69` ended in `startup_failure` with zero jobs, the same organization-level failure recorded in the Baseline section. It is not a code-test result; the evidence for this increment is the local verification above.
+
+### 2026-10-17 — Step 29: `scopra run` (ADR-011, increment 3 of 4)
+
+- Selection: the maintainer replied "continue" after Step 28, so the next ADR-011 increment is the Mariner `scopra run` command, which makes local execution usable and closes the plan's "local execution" item for Mariner. Real-host verification (increment 4) still needs rootless Podman and stays out.
+- CLI shape follows ADR-011 exactly:
+
+  ```text
+  scopra run [--state-dir PATH] [--json] (--workspace ID | --path PATH) [--write] [--workdir DIR]
+             [--timeout DURATION] [--memory BYTES] [--cpus N] [--pids N] [--output-limit BYTES]
+             [--reason TEXT] -- EXECUTABLE [ARGUMENT...]
+  ```
+
+  Decisions, now recorded in ADR-011's Implementation Status (increment 3):
+  - **Defaults** are read-only access, `.`, "local run by the workspace owner", 10 minutes, 2 GiB, 2 CPUs, 512 processes, and 16 MiB of output.
+  - **`--cpus` takes a whole number** (1 to 1000), converted exactly to protocol millicores; fractional CPUs are not accepted in this increment. **`--timeout`** must be a whole number of seconds from 1s to 24h, because the protocol carries integer seconds.
+  - **`--path`** uses the same resolution as `workspace remove --path`, so an exact recorded path or the directory it now resolves to both work, and an ambiguous match is refused.
+  - **Output:** without `--json`, stdout and stderr bytes go unchanged to the CLI's streams, as a native run. With `--json`, stdout carries one JSON object per line: the ADR-009 start notice, each output frame as `{executionId, stream, data}` with unpadded base64url data in arrival order (the client receives frames, not ADR-009 chunk numbers), and the ADR-009 result. Diagnostics go to stderr in both modes.
+  - **Exit status:** the command's own code, 124 for `timed_out`, 130 for `cancelled` and for Ctrl-C, 137 for `out_of_memory`, 1 for `rejected`/`errored` after printing the code and message, 2 for usage, and 1 for transport failures. Ctrl-C closes the connection, which cancels the run.
+
+#### Acceptance checklist (agreed before implementation)
+
+- [x] `scopra run` implements the synopsis, defaults, and flag rules above. `--workspace` and `--path` are mutually exclusive and one is required; `--workspace` is checked locally as 32 lowercase hexadecimal characters.
+- [x] Invalid limits, an empty workdir, an empty executable, an invalid reason or working directory, and limits outside ADR-007's ranges are usage errors (exit 2) found before anything is sent to Mio.
+- [x] Human output writes stdout bytes to stdout and stderr bytes to stderr, unchanged. `--json` writes only JSON objects to stdout and no other stdout.
+- [x] Exit statuses are as above, including Ctrl-C → 130 with no error line, and `rejected`/`errored` → 1 with `<code>: <message>` on stderr, escaped.
+- [x] `exitCode` recognizes the new typed status without printing it; the root usage text lists `run`.
+- [x] Tests: a parse/validation table with defaults and every range; end-to-end against an in-process Mio with a fake executor for human and JSON output, flag propagation, `--path` resolution, every exit status, Ctrl-C cancellation, a missing Mio, and validation before dialing.
+- [x] ADR-011 marks increment 3 done; README, the plan, the system overview, `docs/repository-tree.txt`, and this log are updated; `make security-test` covers the new security tests.
+
+Non-goals: real Podman or real-host verification (increment 4), PTY, standard input, artifact output, redaction, approvals, policy, and audit.
+
+#### Test-first record
+
+Tests added before any implementation:
+
+- `internal/localipc/executions_test.go`: `TestValidateRun_ChecksTheRunWithoutDialing`, six rejection cases.
+- `cmd/scopra/run_test.go`: 14 tests.
+  - Parsing: the defaults, overrides, the protocol's boundary values, and a 34-case rejection table that names the check that must reject each case.
+  - End to end, against a real in-process Mio with a fake executor: stream routing, flag propagation, the `--json` line schema and base64url, every exit status, Ctrl-C, a missing Mio, `--path` through an exact and a symlinked path, an unregistered path, a failing stdout, and the help text.
+
+Red run:
+
+- `go test ./internal/localipc/` failed to build on the missing `ValidateRun`.
+- `go test ./cmd/scopra/` failed to build on the missing `parseRunOptions`.
+
+After the first green run, two tests were wrong and the code was right: a bare executable name may contain a space under ADR-007 (`echo hi` is a legal name), and a relative executable without `./` is rejected. The tests now use `bin/echo` and `.` for those cases.
+
+#### Implementation and verification record
+
+- **`cmd/scopra/run.go`:** `runRun`, `executeRun`, `writeOutput`, `runOutcome`, `parseRunOptions`, `wholeSeconds`, `commandExitError`, and `errNoRunSeparator`; defaults and bounds as constants.
+  - **No separate client state:** the command builds `localipc.RunRequest` and reuses `RunExecution`, so output framing, splitting, deadlines, and cancellation are the ones increment 1 tested.
+  - **Validation before the socket:** every check that does not need Mio runs first, through `localipc.ValidateRun`; `--path` is resolved after the other fields are checked with a placeholder registration ID, then checked again with the resolved ID.
+  - **Output:** `--json` adds `"type"` to each canonical payload; writes go to stdout and stderr unchanged otherwise. A failed write ends the command instead of being ignored.
+  - **Exit statuses:** `commandExitError` carries the command's own status, 124, 130, or 137 to `exitCode`, which reports it without printing an error line. `rejected` and `errored` become `<code>: <message>`, which `exitCode` prints escaped.
+- **`cmd/scopra/main.go`:** the `run` command is dispatched and listed in the usage text; `exitCode` recognizes `commandExitError` before its generic failure branch.
+- **`internal/localipc/executions.go`:** `ValidateRun` exposes the client-side ADR-007 check that `RunExecution` already performed, without dialing.
+
+**Mutation testing** (sequential, against `run.go` and `main.go`): 35 mutations, 34 caught and one no longer applicable. The first round caught 23 and its eight survivors exposed weak assertions: the missing-separator, missing-workspace, workspace-ID, timeout-bound, and CPU-bound rejections all happened to be caught by a *later* check, so the tests passed for the wrong reason. The rejection table now asserts the message of the check that must reject each case, and new cases cover `--workspace` alone and a positional before `--`.
+
+The remaining survivor (`arguments = nil`) was unreachable code and was removed: slicing after the executable can never produce nil, and `encodeRun` already encodes nil as the empty array. Two mutations failed to build and were rewritten to compile, after which both were caught. Every mutation that still applies was caught by a test assertion, not a timeout.
+
+**Security review.** The command adds no authority: it can only name a registered workspace, Mio revalidates it before use, and Hollow still runs the command. `--write` is explicit, the default is read-only, and no flag can inject environment variables, a shell, or a mount. Arguments cannot contain NUL (ADR-007) and the executable cannot be a shell string; `--` makes an argument that looks like a flag stay an argument. Terminal output is untrusted: the human mode writes it unchanged, exactly as a native run would, and ADR-011 already says programs should use `--json`. Error text passes through `terminalSafe`. The client prints Mio's rejection text, which is fixed text from Mio, not output.
+
+**Smoke test with the real binaries and a scripted Podman:**
+
+| Case | Result |
+|---|---|
+| `scopra run -- echo hello` | `hello from the sandbox` on stdout, the warning on stderr, exit 0 |
+| `--json` | one `started`, three `output` (split at 32768), one `result`; base64url exact; exit 0 |
+| a command that exits 3 | exit 3, no error line |
+| `--write` | `ro=false` in the mount |
+| `--workdir ../etc` | exit 2, the ADR-007 reason and the usage |
+| no `--` | exit 2, "run needs -- before the command" |
+| Mio without `--sandbox-image` | `error: containment_unavailable: no sandbox image is configured; start Mio with --sandbox-image`, exit 1 |
+| Ctrl-C during a run | exit 130, no error line; the run's context ended |
+
+**Verification, all passing** (Go 1.26.9, the pinned toolchain):
+
+- `make lint` and `make security-test`;
+- `go test -race -count=1 -timeout 120s ./...`, twice;
+- `CGO_ENABLED=0 go test ./...`, three times;
+- build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64;
+- `git diff --check`, no skipped tests, and a regenerated tree.
+
+Coverage: `cmd/scopra` 91.9% (the new `run.go` functions are 85–100%), `internal/localipc` 85.3%, `internal/execution` 100.0%, `internal/hollow` 98.0%, `cmd/scoprad` 73.1%.
+
+Commit `12bd706` (`feat(cli): add scopra run`) holds the implementation and the documentation updates; a second commit records this log. Both were pushed to `arena/fe74ddf7-scopra`, so PR #3 picks them up. CI is out of scope, as recorded in the Baseline section.
