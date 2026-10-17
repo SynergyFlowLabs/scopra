@@ -29,7 +29,9 @@ SHA-256 against the release's `checksums.txt`, and opens an interactive
 installer. The installer checks the system first (Linux, systemd user session,
 rootless Podman 4.0+ with cgroups v2), then asks where to put the binaries,
 whether to pin a sandbox image, and whether Mio should run as a systemd user
-service. Nothing changes until you confirm, and it never uses `sudo`.
+service. Nothing changes until you confirm. If rootless Podman is missing, the
+checks screen offers to install it with your distribution's package manager —
+it prints every command first and runs nothing until you press `y`.
 
 Every variant — scripted installs, a pinned version, a custom directory, a pinned
 image, verifying the archive by hand — is in

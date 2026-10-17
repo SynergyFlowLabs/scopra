@@ -20,6 +20,9 @@ const (
 	ScreenImage
 	// ScreenService asks whether to install the systemd user unit.
 	ScreenService
+	// ScreenSetup offers to install a missing prerequisite with the
+	// distribution's package manager.
+	ScreenSetup
 	// ScreenRunning shows install progress.
 	ScreenRunning
 	// ScreenDone summarizes a successful install.
@@ -40,6 +43,8 @@ const (
 	IntentChecks
 	// IntentInstall means run the install with the chosen options.
 	IntentInstall
+	// IntentProvision means install the missing prerequisite.
+	IntentProvision
 	// IntentQuit means exit, with ExitCode.
 	IntentQuit
 )
@@ -58,6 +63,12 @@ type Message struct {
 	Err error
 	// PathNotice is a shell snippet for a directory that is not on PATH.
 	PathNotice string
+	// Provision is the plan for installing a missing prerequisite, or nil.
+	Provision *Provision
+	// ProvisionDone reports that a provisioning attempt finished, with
+	// ProvisionErr set when it failed.
+	ProvisionDone bool
+	ProvisionErr  error
 	// Tick advances the spinner.
 	Tick bool
 }
@@ -95,6 +106,10 @@ type Model struct {
 	// PathNotice is a shell snippet shown when the install directory is not
 	// on PATH. It is set by the runner.
 	PathNotice string
+	// setup is the plan the interface offers when a prerequisite is missing,
+	// and setupErr is why the last attempt failed, if it did.
+	setup    *Provision
+	setupErr error
 	// width and height are the last drawn size, kept for text layout.
 	width  int
 	height int
@@ -146,11 +161,18 @@ func (m *Model) Options() Options {
 // Update applies one message and returns the model.
 func (m *Model) Update(message Message) {
 	switch {
+	case message.ProvisionDone:
+		m.setupErr = message.ProvisionErr
+		m.Screen = ScreenChecks
+		m.checksRunning = true
+		m.checks = nil
+		return
 	case message.Tick:
 		m.tick++
 		return
 	case message.Checks != nil || message.ChecksErr != nil:
 		m.checks = message.Checks
+		m.setup = message.Provision
 		m.checksRunning = false
 		if message.ChecksErr != nil {
 			m.err = message.ChecksErr
@@ -205,6 +227,8 @@ func (m *Model) Key(key tui.Key) bool {
 		return m.keyWelcome(key)
 	case ScreenChecks:
 		return m.keyChecks(key)
+	case ScreenSetup:
+		return m.keySetup(key)
 	case ScreenLocation:
 		return m.keyLocation(key)
 	case ScreenImage:
@@ -258,6 +282,9 @@ func (m *Model) keyChecks(key tui.Key) bool {
 	case key.Is('q'):
 		m.exit(130)
 		return true
+	case key.Is('f') && m.setup != nil && !m.checksRunning:
+		m.Screen = ScreenSetup
+		return true
 	case key.Type == tui.KeyEnter && !m.checksRunning:
 		if !Ready(m.checks) {
 			return false
@@ -266,6 +293,26 @@ func (m *Model) keyChecks(key tui.Key) bool {
 		m.Dir.Error = ""
 		return true
 	case key.Type == tui.KeyEscape:
+		m.exit(130)
+		return true
+	}
+	return false
+}
+
+// keySetup asks before anything privileged runs. Only an explicit "y" starts
+// the commands; Enter cancels, because confirming a package-manager run should
+// take a deliberate key.
+func (m *Model) keySetup(key tui.Key) bool {
+	switch {
+	case key.Is('y') && m.setup != nil:
+		m.setupErr = nil
+		m.Screen = ScreenChecks
+		m.intent = IntentProvision
+		return true
+	case key.Type == tui.KeyEnter, key.Is('n'), key.Type == tui.KeyEscape:
+		m.Screen = ScreenChecks
+		return true
+	case key.Is('q'):
 		m.exit(130)
 		return true
 	}
@@ -345,6 +392,12 @@ func (m *Model) exit(code int) {
 }
 
 // Running reports whether work is in flight.
+// Setup returns the plan the interface is offering, or nil.
+func (m *Model) Setup() *Provision { return m.setup }
+
+// SetupErr returns why the last provisioning attempt failed, or nil.
+func (m *Model) SetupErr() error { return m.setupErr }
+
 func (m *Model) Running() bool {
 	return m.Screen == ScreenChecks && m.checksRunning || m.Screen == ScreenRunning && m.result == nil && m.err == nil
 }

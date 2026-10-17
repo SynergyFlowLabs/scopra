@@ -159,3 +159,43 @@ func TestTerminalEventsStopOnCancel(t *testing.T) {
 		t.Fatal("events did not close after cancel")
 	}
 }
+
+// TestTerminalPauseWakesABlockedRead checks the mechanism that lets the
+// installer hand the terminal to sudo: a read deadline unblocks the reader,
+// and clearing it lets the same terminal stream events again.
+func TestTerminalPauseWakesABlockedRead(t *testing.T) {
+	terminal, input := pipeTerminal(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	events := terminal.Events(ctx)
+
+	terminal.Pause()
+	time.Sleep(10 * time.Millisecond)
+	terminal.Unpause()
+	if _, err := input.WriteString("x"); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	key, open := waitForKey(t, events)
+	if !open || !key.Is('x') {
+		t.Fatalf("key after unpause = %+v (open %v), want x", key, open)
+	}
+}
+
+// TestTerminalPauseThenCancelStopsTheStream is the teardown half: a paused
+// reader must still notice cancellation instead of blocking the session.
+func TestTerminalPauseThenCancelStopsTheStream(t *testing.T) {
+	terminal, _ := pipeTerminal(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	events := terminal.Events(ctx)
+	terminal.Pause()
+	time.Sleep(10 * time.Millisecond)
+	cancel()
+	select {
+	case _, open := <-events:
+		if open {
+			t.Fatal("event after cancel, want a closed channel")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("a paused stream did not close after cancel")
+	}
+}

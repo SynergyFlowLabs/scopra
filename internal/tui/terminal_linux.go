@@ -130,6 +130,46 @@ func (t *Terminal) Exit() {
 	}
 }
 
+// Suspend restores the terminal so a child process can use it directly: the
+// alternate screen is left, the cursor is shown, and the saved terminal
+// settings are back. Call Resume afterwards.
+func (t *Terminal) Suspend() {
+	if !t.raw {
+		return
+	}
+	t.Write("\x1b[?7h\x1b[?25h\x1b[?1049l")
+	_ = setTermios(t.in.Fd(), &t.saved)
+	t.raw = false
+}
+
+// Resume takes the terminal back after Suspend.
+func (t *Terminal) Resume() error {
+	if t.raw {
+		return nil
+	}
+	return t.Enter()
+}
+
+// Pause makes a blocked read return, so the event loop can be retired before
+// the terminal is handed to a child process. Without it the reader and the
+// child would compete for the same keystrokes.
+func (t *Terminal) Pause() {
+	if t.in != nil {
+		_ = t.in.SetReadDeadline(time.Now())
+	}
+}
+
+// Unpause clears the deadline Pause set, after a child process has finished.
+func (t *Terminal) Unpause() {
+	if t.in != nil {
+		_ = t.in.SetReadDeadline(time.Time{})
+	}
+}
+
+// Devices returns the files the terminal reads from and writes to, so a child
+// process can inherit them while the interface is suspended.
+func (t *Terminal) Devices() (in, out *os.File) { return t.in, t.out }
+
 // Write sends raw bytes to the terminal.
 func (t *Terminal) Write(text string) {
 	_, _ = t.out.WriteString(text)
@@ -157,6 +197,16 @@ func (t *Terminal) Events(ctx context.Context) <-chan Event {
 				count, err := t.in.Read(buffer)
 				if err != nil {
 					if errors.Is(err, syscall.EINTR) || errors.Is(err, syscall.EAGAIN) {
+						continue
+					}
+					if errors.Is(err, os.ErrDeadlineExceeded) {
+						// Pause set the deadline to hand the terminal to a
+						// child process. Wait here until Resume clears it, and
+						// give up if the session is ending.
+						if ctx.Err() != nil {
+							return
+						}
+						time.Sleep(10 * time.Millisecond)
 						continue
 					}
 					// Anything else means the terminal is gone.

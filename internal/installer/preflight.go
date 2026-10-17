@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -68,6 +69,10 @@ type Environment struct {
 	StateDir    string
 	StateDirErr error
 	Run         func(ctx context.Context, name string, args ...string) ([]byte, error)
+	// Provision returns how to install a missing prerequisite with the
+	// distribution's package manager. It returns false when there is no plan
+	// the installer is willing to run.
+	Provision func() (Provision, bool)
 }
 
 // StateDir is the Mio state directory the installer reports and the service
@@ -90,7 +95,25 @@ func DefaultEnvironment() Environment {
 		StateDir:    stateDir,
 		StateDirErr: err,
 		Run:         runCommand,
+		Provision:   defaultProvision,
 	}
+}
+
+// defaultProvision reads the distribution's own description and decides
+// whether Podman can be installed with its package manager.
+func defaultProvision() (Provision, bool) {
+	release, err := os.ReadFile("/etc/os-release")
+	if err != nil {
+		return Provision{}, false
+	}
+	return DetectProvision(release, hasProgram, os.Geteuid() == 0)
+}
+
+// hasProgram reports whether name is on PATH. It is a variable so tests can
+// describe a machine without touching this one.
+var hasProgram = func(name string) bool {
+	_, err := exec.LookPath(name)
+	return err == nil
 }
 
 // commandTimeout bounds every preflight command. A hung Podman must not hang

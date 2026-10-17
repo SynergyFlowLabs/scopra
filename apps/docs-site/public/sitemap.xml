@@ -38,4 +38,5 @@
   <url><loc>https://scopra-six.vercel.app/docs/decisions/014-open-source-no-pricing.html</loc></url>
   <url><loc>https://scopra-six.vercel.app/docs/decisions/015-documentation-site.html</loc></url>
   <url><loc>https://scopra-six.vercel.app/docs/decisions/016-one-command-installer.html</loc></url>
+  <url><loc>https://scopra-six.vercel.app/docs/decisions/017-opt-in-prerequisite-provisioning.html</loc></url>
 </urlset>

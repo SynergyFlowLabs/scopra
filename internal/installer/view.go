@@ -62,7 +62,7 @@ func (m *Model) drawHeader(frame *tui.Frame) {
 // stepIndex maps the screen to the rail position, 0-3.
 func (m *Model) stepIndex() int {
 	switch m.Screen {
-	case ScreenWelcome, ScreenChecks:
+	case ScreenWelcome, ScreenChecks, ScreenSetup:
 		return 0
 	case ScreenLocation:
 		return 1
@@ -122,6 +122,8 @@ func (m *Model) drawBody(frame *tui.Frame) {
 		m.drawWelcome(frame, innerX, top, innerWidth)
 	case ScreenChecks, ScreenRunning:
 		m.drawChecks(frame, innerX, boxY+1, innerWidth, boxHeight-2)
+	case ScreenSetup:
+		m.drawSetup(frame, innerX, boxY+2, innerWidth)
 	case ScreenLocation:
 		m.drawLocation(frame, innerX, boxY+2, innerWidth)
 	case ScreenImage:
@@ -143,6 +145,8 @@ func (m *Model) boxTitle() string {
 		return "welcome"
 	case ScreenChecks:
 		return "system check"
+	case ScreenSetup:
+		return "set up podman"
 	case ScreenLocation:
 		return "where to install"
 	case ScreenImage:
@@ -221,9 +225,13 @@ func (m *Model) drawChecks(frame *tui.Frame, x, y, width, height int) {
 	row++
 	if Ready(m.checks) {
 		frame.Put(x, row, "Everything Scopra needs is here. Press enter to continue.", styleAccent)
-	} else {
-		frame.Put(x, row, "Fix the item above, then run the installer again.", styleWarn)
+		return
 	}
+	if m.setup != nil {
+		frame.Put(x, row, "Press f and the installer can install it for you.", styleAccent)
+		return
+	}
+	frame.Put(x, row, "Fix the item above, then run the installer again.", styleWarn)
 }
 
 func (m *Model) drawSteps(frame *tui.Frame, x, y, width, height int) {
@@ -258,6 +266,39 @@ func (m *Model) drawSteps(frame *tui.Frame, x, y, width, height int) {
 			return
 		}
 	}
+}
+
+// drawSetup shows exactly what will run, and asks for one deliberate key. It
+// is the only screen that can lead to a privileged command.
+func (m *Model) drawSetup(frame *tui.Frame, x, y, width int) {
+	y = m.text(frame, x, y, width, styleText,
+		"Scopra needs rootless Podman 4.0+, and this machine does not have it yet.",
+		"",
+		"The installer can run these commands for you:",
+		"",
+	)
+	if m.setup != nil {
+		for _, line := range m.setup.CommandLines() {
+			for _, wrapped := range tui.Wrap(line, width-2) {
+				frame.Put(x+2, y, wrapped, styleAccent)
+				y++
+			}
+		}
+	}
+	y++
+	y = m.text(frame, x, y, width, styleMuted,
+		"They install from your distribution's repositories. sudo asks for your password; Scopra never stores it, and nothing else on the system changes.",
+	)
+	if m.setupErr != nil {
+		y++
+		for _, line := range tui.Wrap("The last attempt failed: "+m.setupErr.Error(), width) {
+			frame.Put(x, y, line, styleDanger)
+			y++
+		}
+	}
+	y++
+	frame.Put(x, y, "y install now", styleAccent)
+	frame.Put(x+16, y, "enter or n cancel", styleFaint)
 }
 
 func (m *Model) drawLocation(frame *tui.Frame, x, y, width int) {
@@ -446,7 +487,12 @@ func (m *Model) hints() []string {
 		if Ready(m.checks) {
 			return []string{"enter continue", "q quit"}
 		}
+		if m.setup != nil {
+			return []string{"f set up podman", "q quit"}
+		}
 		return []string{"q quit"}
+	case ScreenSetup:
+		return []string{"y install now", "n cancel", "q quit"}
 	case ScreenLocation:
 		return []string{"enter continue", "esc back", "q quit"}
 	case ScreenImage:

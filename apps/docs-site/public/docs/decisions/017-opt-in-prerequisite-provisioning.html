@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADR-017: Opt-In Prerequisite Provisioning — Scopra</title>
+<meta name="description" content="ADR-017: Opt-In Prerequisite Provisioning — Scopra documentation.">
+<link rel="canonical" href="https://scopra-six.vercel.app/docs/decisions/017-opt-in-prerequisite-provisioning.html">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0b0e14">
+<meta property="og:type" content="website">
+<meta property="og:title" content="ADR-017: Opt-In Prerequisite Provisioning — Scopra">
+<meta property="og:description" content="ADR-017: Opt-In Prerequisite Provisioning — Scopra documentation.">
+<meta property="og:url" content="https://scopra-six.vercel.app/docs/decisions/017-opt-in-prerequisite-provisioning.html">
+<meta property="og:site_name" content="Scopra">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>Scopra</a>
+  <nav aria-label="Main">
+    <a href="/docs/">Docs</a>
+    <a href="/docs/overview.html">Overview</a>
+    <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">GitHub</a>
+  </nav>
+</header>
+<div class="layout"><nav class="sidebar" aria-label="Documentation"><p class="group">Overview</p><ul><li><a href="/docs/overview.html">Overview</a></li><li><a href="/docs/changelog.html">Changelog</a></li></ul><p class="group">Product</p><ul><li><a href="/docs/prd.html">Product Requirements</a></li><li><a href="/docs/product/alpha-scope.html">Alpha Scope</a></li><li><a href="/docs/product/naming.html">Naming</a></li></ul><p class="group">Architecture</p><ul><li><a href="/docs/architecture/system-overview.html">System Overview</a></li><li><a href="/docs/architecture/domain-model.html">Domain Model</a></li><li><a href="/docs/architecture/protocol.html">Protocol</a></li></ul><p class="group">Security</p><ul><li><a href="/docs/security/threat-model.html">Threat Model</a></li><li><a href="/docs/security/risk-register.html">Risk Register</a></li><li><a href="/docs/security/security-architecture.html">Security Architecture</a></li></ul><p class="group">Decisions</p><ul><li><a href="/docs/decisions.html">Architecture Decision Records</a></li><li><a href="/docs/decisions/001-go-module-layout.html">ADR-001: Initial Go Module Layout</a></li><li><a href="/docs/decisions/002-messenger-envelope-v1.html">ADR-002: Scopra Messenger Envelope v1 Structural Contract</a></li><li><a href="/docs/decisions/003-local-status-ipc.html">ADR-003: Mio Foreground Status Daemon and Local IPC v1</a></li><li><a href="/docs/decisions/004-workspace-validation.html">ADR-004: Workspace Path Validation and Fingerprint v1</a></li><li><a href="/docs/decisions/005-workspace-registry-storage.html">ADR-005: Workspace Registry Storage v1</a></li><li><a href="/docs/decisions/006-local-workspace-commands.html">ADR-006: Local Workspace Commands over IPC v1</a></li><li><a href="/docs/decisions/007-execution-request-v1.html">ADR-007: Execution Request v1 Structural Contract</a></li><li><a href="/docs/decisions/008-canonical-execution-request.html">ADR-008: Canonical Execution Request and Action Hash</a></li><li><a href="/docs/decisions/009-execution-lifecycle-messages.html">ADR-009: Execution States, Results, Output, Errors, and Cancellation</a></li><li><a href="/docs/decisions/010-hollow-rootless-podman.html">ADR-010: Hollow Containment Backend: Rootless Podman</a></li><li><a href="/docs/decisions/011-local-execution.html">ADR-011: Local Execution over the Mio Socket</a></li><li><a href="/docs/decisions/012-systemd-user-service.html">ADR-012: Mio as a systemd User Service</a></li><li><a href="/docs/decisions/013-run-journal.html">ADR-013: Bounded Local Run Journal and scopra logs</a></li><li><a href="/docs/decisions/014-open-source-no-pricing.html">ADR-014: MIT License and No Pricing Model</a></li><li><a href="/docs/decisions/015-documentation-site.html">ADR-015: A Generated Static Documentation Site on Vercel</a></li><li><a href="/docs/decisions/016-one-command-installer.html">ADR-016: One-Command Interactive Installer</a></li><li><a href="/docs/decisions/017-opt-in-prerequisite-provisioning.html" class="current" aria-current="page">ADR-017: Opt-In Prerequisite Provisioning</a></li></ul><p class="group">Planning</p><ul><li><a href="/docs/plan/implementation-plan.html">Implementation Plan</a></li></ul><p class="group">API</p><ul><li><a href="/docs/api/mcp-tools.html">MCP Tools</a></li></ul><p class="group">Operations</p><ul><li><a href="/docs/operations/installation.html">Installing Scopra</a></li><li><a href="/docs/operations/runbooks.html">Runbooks</a></li><li><a href="/docs/operations/deployment.html">Deploying the Site</a></li></ul><p class="group">Community</p><ul><li><a href="/docs/community/security-policy.html">Security Policy</a></li><li><a href="/docs/community/contributing.html">Contributing</a></li><li><a href="/docs/community/code-of-conduct.html">Code of Conduct</a></li></ul></nav><main id="main" class="content"><nav class="breadcrumb" aria-label="Breadcrumb"><a href="/docs/">Docs</a> <span aria-hidden="true">/</span> Decisions</nav><article class="prose"><h1 id="adr-017-opt-in-prerequisite-provisioning">ADR-017: Opt-In Prerequisite Provisioning</h1>
+<p><strong>Status:</strong> Accepted <strong>Date:</strong> 2026-10-17</p>
+<h2 id="context">Context</h2>
+<p>ADR-016 promised one command that produces a working install. In practice the first thing a new machine fails on is the thing Scopra cannot supply itself: rootless Podman. The preflight refuses to continue without it, correctly, and then prints &#34;install Podman 4.0 or later&#34; — which is exactly the manual step the one-command install was supposed to remove. The user is left reading a fix line and typing it into another terminal.</p>
+<p>The distribution already knows how to install Podman. Every supported family has a package manager, a package named <code>podman</code>, and repositories the user already trusts for their system updates. What the installer lacks is not knowledge but permission.</p>
+<p>Two rules from the existing design pull in opposite directions here:</p>
+<ul>
+<li>the install must be <strong>fail-closed</strong> and must not silently change the machine;</li>
+<li>the install must be <strong>one command</strong>, and stopping at the first missing package is a failure of that promise.</li>
+</ul>
+<h2 id="decision">Decision</h2>
+<p><strong>The installer may offer to install a missing prerequisite with the distribution&#39;s own package manager, and only after the user asks for it and confirms the exact commands.</strong></p>
+<p>The rules, in order of importance:</p>
+<ol>
+<li><strong>Nothing runs by default.</strong> The preflight screen gains one line — <code>Press f and the installer can install it for you</code> — and one footer key. The confirmation screen prints every argument vector that will run. <code>y</code> runs them; Enter, <code>n</code>, and Escape cancel. <code>--yes</code> never provisions.</li>
+<li><strong>The plan is derived, not guessed.</strong> <code>/etc/os-release</code> is read for <code>ID</code> and <code>ID_LIKE</code>; a family is chosen from a fixed table; the package manager must be present; and <code>sudo</code> must be present when the process is not root. An unknown distribution or a missing tool produces no plan at all, and the screen falls back to the manual instructions. There is no &#34;try apt, then dnf&#34; fallback.</li>
+<li><strong>Commands are argument vectors.</strong> The installer never builds a shell string and never runs a shell: <code>sudo</code>, <code>dnf</code>, <code>install</code>, <code>-y</code>, <code>podman</code> is executed as <code>argv</code>. Nothing read from <code>os-release</code> or a terminal can become syntax.</li>
+<li><strong>The terminal is handed over, not shared.</strong> Before the child runs, the interface retires its key reader, leaves the alternate screen, and restores the original terminal settings. <code>sudo</code> prompts for a password the way it always does, in the clear, with echo on. The installer never reads, stores, or forwards the password, and it takes the terminal back afterwards.</li>
+<li><strong>The install itself still never escalates.</strong> <code>install.sh</code> runs no privileged command, and <code>scopra install</code> writes only into the install directory and the user unit. Provisioning happens before that, as a separate, deliberate act.</li>
+<li><strong>Failure is reported, not hidden.</strong> The command&#39;s output stays on the screen (the alternate screen is gone while it runs), and a non-zero exit returns the interface to the preflight with the failure line and the manual commands. A package that is too old for Scopra — Ubuntu 22.04 ships Podman 3.4 — shows up as the same failed check, with the version, after the attempt.</li>
+</ol>
+<p>The plan today covers Debian/Ubuntu (<code>apt-get</code> with <code>uidmap</code>, <code>slirp4netns</code>, and <code>fuse-overlayfs</code>, which rootless Podman needs there), Fedora/RHEL and derivatives (<code>dnf</code>), Arch (<code>pacman</code>), openSUSE (<code>zypper</code>), and Alpine (<code>apk</code>).</p>
+<h2 id="consequences">Consequences</h2>
+<ul>
+<li>The one command now ends in a working install on the distributions Scopra supports, including a machine where Podman was missing, without the user leaving the terminal.</li>
+<li>The installer can change the system in a way it could not before. That is a real trust expansion, bounded by: it is opt-in, it is visible before it runs, it runs only the distribution&#39;s package manager against the distribution&#39;s repositories, and it requires an explicit <code>y</code> that cannot be a stray Enter.</li>
+<li><code>sudo</code> is now something the installer can invoke. The documentation, <code>install.sh</code>&#39;s header, the welcome screen, and ADR-016 all had to stop saying &#34;the installer never runs sudo&#34; and start saying &#34;the install never runs sudo; a missing prerequisite is offered with the exact command&#34;.</li>
+<li>Provisioning is Linux-only, like everything else. macOS still exits before it downloads anything.</li>
+<li>A distribution with a Podman older than 4.0 is not fixed by this: the plan installs what the repositories have, and the check then honestly reports the version. Solving that needs a second source (backports, a newer release, or a static build) and a trust decision this ADR does not make.</li>
+<li>The sandbox image is still the user&#39;s choice. The installer does not pull images: a digest is a security decision, and Mio&#39;s rule is that what runs is exactly what is already in local storage.</li>
+</ul>
+<h2 id="alternatives-considered">Alternatives considered</h2>
+<ul>
+<li><strong>Keep printing instructions only.</strong> Rejected: it is the status quo that this ADR exists to fix, and it fails exactly the user who is new to Podman.</li>
+<li><strong>Install without asking.</strong> Rejected without much debate: silent privilege escalation from a <code>curl | sh</code> one-liner is the pattern the project exists to avoid.</li>
+<li><strong>Ask for the password inside the interface.</strong> Rejected: it would mean owning a credential prompt, and a bug there leaks a password. Letting <code>sudo</code> do its own job on a real terminal is both smaller and more familiar.</li>
+<li><strong>Download a static Podman or a release binary.</strong> Rejected: an unverified binary from a non-distribution source, outside the user&#39;s update path, is a worse trust story than the distribution&#39;s own package.</li>
+<li><strong>Auto-detect the package manager by trying each one.</strong> Rejected: a failed <code>dnf</code> on Debian is noise, and &#34;try until something works&#34; is not a security posture.</li>
+<li><strong>Provision the sandbox image too.</strong> Deferred, not rejected: pulling an image needs a digest the user chose, and this installer does not get to choose what the sandbox runs.</li>
+</ul>
+</article><p class="edit-link"><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/docs/decisions/017-opt-in-prerequisite-provisioning.md" rel="noopener noreferrer">Edit this page on GitHub</a></p></main><aside class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#context">Context</a></li><li><a href="#decision">Decision</a></li><li><a href="#consequences">Consequences</a></li><li><a href="#alternatives-considered">Alternatives considered</a></li></ul></aside></div><footer class="site-footer">
+  <div class="footer-inner">
+    <p><strong>Scopra</strong> — controlled execution for AI agents. Free and open source under the <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE">MIT License</a>.</p>
+    <p class="muted">No pricing model, no telemetry, no account. Generated from the Markdown in <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">the repository</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

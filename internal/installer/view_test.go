@@ -1,6 +1,7 @@
 package installer
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -181,5 +182,46 @@ func TestViewUsesColorWhenTheProfileAllowsIt(t *testing.T) {
 	}
 	if !strings.Contains(rendered, "scopra") {
 		t.Fatalf("rendered = %q", rendered)
+	}
+}
+
+func TestChecksScreenOffersTheSetupKey(t *testing.T) {
+	model := newTestModel()
+	begin(model)
+	plan := Provision{Family: "fedora", Manager: "dnf", Packages: []string{"podman"},
+		Commands: [][]string{{"sudo", "dnf", "install", "-y", "podman"}}}
+	model.Update(Message{Checks: failChecks(), Provision: &plan})
+	view := model.View(100, 30, tui.StyleSheet{})
+	if !strings.Contains(view, "Press f and the installer can install it for you.") {
+		t.Fatalf("checks screen does not offer the setup key:\n%s", view)
+	}
+	if !strings.Contains(view, "f set up podman") {
+		t.Fatalf("footer does not name the setup key:\n%s", view)
+	}
+}
+
+func TestSetupScreenShowsEveryCommand(t *testing.T) {
+	model := newTestModel()
+	begin(model)
+	plan := Provision{Family: "debian", Manager: "apt-get", Packages: []string{"podman"},
+		Commands: [][]string{
+			{"sudo", "apt-get", "update"},
+			{"sudo", "apt-get", "install", "-y", "podman", "uidmap"},
+		}}
+	model.Update(Message{Checks: failChecks(), Provision: &plan})
+	model.Key(tui.Key{Type: tui.KeyRune, Rune: 'f'})
+	model.Update(Message{ProvisionDone: true, ProvisionErr: errors.New("sudo: a password is required")})
+	model.Screen = ScreenSetup
+	view := model.View(100, 30, tui.StyleSheet{})
+	for _, want := range []string{
+		"Scopra needs rootless Podman 4.0+",
+		"sudo apt-get update",
+		"sudo apt-get install -y podman uidmap",
+		"y install now",
+		"The last attempt failed: sudo: a password is required",
+	} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("setup screen is missing %q:\n%s", want, view)
+		}
 	}
 }

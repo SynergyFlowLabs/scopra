@@ -48,6 +48,21 @@ func (t *Terminal) Enter() error { return ErrUnsupported }
 // Exit does nothing.
 func (t *Terminal) Exit() {}
 
+// Suspend does nothing: there is no raw mode to restore.
+func (t *Terminal) Suspend() {}
+
+// Resume fails: there is no raw-mode support.
+func (t *Terminal) Resume() error { return ErrUnsupported }
+
+// Pause does nothing.
+func (t *Terminal) Pause() {}
+
+// Unpause does nothing.
+func (t *Terminal) Unpause() {}
+
+// Devices returns the process's own streams.
+func (t *Terminal) Devices() (in, out *os.File) { return os.Stdin, os.Stdout }
+
 // Write sends text to standard output.
 func (t *Terminal) Write(text string) { _, _ = os.Stdout.WriteString(text) }
 

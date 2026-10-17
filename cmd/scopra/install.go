@@ -125,6 +125,14 @@ func runInstallPlain(ctx context.Context, options installer.Options, stdout, std
 		}
 	}
 	if !installer.Ready(checks) {
+		if env.Provision != nil {
+			if plan, ok := env.Provision(); ok {
+				_, _ = fmt.Fprintln(stdout, "\nto install it now, run:")
+				for _, line := range plan.CommandLines() {
+					_, _ = fmt.Fprintf(stdout, "  %s\n", line)
+				}
+			}
+		}
 		return errors.New("preflight failed: " + installer.FailureReason(checks))
 	}
 	result, err := installer.Execute(ctx, options, func(step installer.Step) {

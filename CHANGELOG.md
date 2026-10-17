@@ -12,6 +12,23 @@ version, and the wire protocol is versioned separately (see ADR-002 and ADR-009)
 
 ### Added
 
+- **The installer can set up a missing prerequisite (ADR-017).** When the
+  preflight fails because rootless Podman is absent, the checks screen offers
+  `f` to install it with the distribution's own package manager. A confirmation
+  screen prints every argument vector first; `y` runs them, Enter, `n`, or
+  Escape cancels, and `--yes` never provisions. The plan is derived from
+  `/etc/os-release` and a fixed table — `dnf` on Fedora/RHEL and derivatives,
+  `apt-get` plus `uidmap`, `slirp4netns`, and `fuse-overlayfs` on
+  Debian/Ubuntu, `pacman` on Arch, `zypper` on openSUSE, `apk` on Alpine — and
+  is refused outright on an unknown distribution, a missing package manager, or
+  a non-root process without `sudo`. Commands are argument vectors, never shell
+  strings. Before they run, the interface retires its key reader, leaves the
+  alternate screen, and restores the terminal, so `sudo` prompts normally and
+  the installer never sees the password. On success the preflight runs again and
+  the install continues; on failure the output stays on the screen and the
+  checks screen shows the error next to the manual fix. `scopra install --yes`
+  prints the same commands but never runs them.
+
 - **One-command interactive installer (ADR-016).**
   `curl -fsSL https://scopra-six.vercel.app/install.sh | sh` downloads the
   release archive for the machine, verifies its SHA-256 against the release's

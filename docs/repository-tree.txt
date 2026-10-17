@@ -112,6 +112,7 @@
 ./apps/docs-site/public/docs/decisions/014-open-source-no-pricing.html
 ./apps/docs-site/public/docs/decisions/015-documentation-site.html
 ./apps/docs-site/public/docs/decisions/016-one-command-installer.html
+./apps/docs-site/public/docs/decisions/017-opt-in-prerequisite-provisioning.html
 ./apps/docs-site/public/docs/index.html
 ./apps/docs-site/public/docs/operations
 ./apps/docs-site/public/docs/operations/deployment.html
@@ -209,6 +210,7 @@
 ./docs/decisions/014-open-source-no-pricing.md
 ./docs/decisions/015-documentation-site.md
 ./docs/decisions/016-one-command-installer.md
+./docs/decisions/017-opt-in-prerequisite-provisioning.md
 ./docs/decisions/README.md
 ./docs/operations
 ./docs/operations/deployment.md
@@ -263,6 +265,8 @@
 ./internal/installer/model_test.go
 ./internal/installer/preflight.go
 ./internal/installer/preflight_test.go
+./internal/installer/provision.go
+./internal/installer/provision_test.go
 ./internal/installer/run.go
 ./internal/installer/terminal.go
 ./internal/installer/view.go

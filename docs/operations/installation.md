@@ -8,15 +8,18 @@ $ curl -fsSL https://scopra-six.vercel.app/install.sh | sh
 
 It downloads the release for your architecture, verifies its SHA-256 against the
 release's `checksums.txt`, and hands your terminal to an interactive installer.
-Nothing is changed until you confirm; the installer never runs `sudo` and never
-edits your shell profile.
+Nothing is changed until you confirm. The script itself never runs a privileged
+command and never edits your shell profile: the install writes only into your
+install directory and, if you ask for one, your systemd user unit.
 
 ## What the installer asks
 
 1. **Preflight.** Linux, a systemd user session, a resolvable state directory,
    and rootless Podman 4.0 or later with cgroups v2 delegation. A failed check
    stops the install and shows what to fix; the installer never falls back to
-   running commands without containment.
+   running commands without containment. When Podman is the missing piece and
+   the distribution is one it knows, the screen offers to install it for you
+   (next section).
 2. **Location.** Where to put `scopra` and `scoprad`. The default is
    `$XDG_BIN_HOME` when it is absolute, otherwise `~/.local/bin`.
 3. **Sandbox image** (optional). A container image pinned by digest, such as
@@ -28,6 +31,53 @@ edits your shell profile.
 5. **Install.** It copies the two binaries into place atomically, writes the unit
    if you asked for one, then asks systemd for the service state rather than
    trusting the previous step.
+
+## If Podman is missing
+
+The preflight does not stop at "install it yourself". On a distribution it
+knows, the checks screen adds one line:
+
+```text
+Press f and the installer can install it for you.
+```
+
+`f` opens a screen that prints every command it would run — exactly, argument
+for argument — and nothing runs until you press `y`:
+
+```console
+sudo apt-get update
+sudo apt-get install -y podman uidmap slirp4netns fuse-overlayfs
+```
+
+Enter, `n`, or Escape cancels and leaves the manual instructions in place.
+`--yes` never provisions: an unattended run has no one to ask.
+
+The plan comes from `/etc/os-release` and a fixed table, never from guessing:
+
+| Distribution (`ID` or `ID_LIKE`) | Commands |
+|---|---|
+| Fedora, RHEL, CentOS, Rocky, AlmaLinux, Oracle Linux | `dnf install -y podman` |
+| Debian, Ubuntu, and derivatives such as Mint | `apt-get update`, then `apt-get install -y podman uidmap slirp4netns fuse-overlayfs` |
+| Arch | `pacman -Sy --needed --noconfirm podman` |
+| openSUSE, SLES | `zypper --non-interactive install podman` |
+| Alpine | `apk add --no-cache podman` |
+
+`sudo` is prefixed only when the installer is not already root, and only if
+`sudo` exists. An unknown distribution, a missing package manager, or a
+non-root process without `sudo` produces no plan at all: the installer shows the
+manual command instead of guessing. The packages come from your distribution's
+own repositories; the installer never adds a repository, never downloads a
+binary, and never runs a shell.
+
+While the commands run, the interface steps aside: the terminal is restored, so
+`sudo` asks for your password the way it always does. Scopra never sees it. The
+installer then takes the terminal back, re-runs the preflight, and continues
+with the location step. If a command fails, its output stays on the screen and
+the checks screen shows the error next to the manual instructions.
+
+A distribution whose repositories ship Podman older than 4.0 — Ubuntu 22.04
+has 3.4 — is installed but still refused, with the version named. What the
+installer will not do is install a newer Podman from somewhere else.
 
 The summary screen shows the install directory, the version, the service state,
 and — when the directory is not on `PATH` — the exact `export PATH=…` line to add.
@@ -43,7 +93,9 @@ and — when the directory is not on `PATH` — the exact `export PATH=…` line
 | `curl` or `wget`, `tar`, `sha256sum` or `shasum` | The bootstrap script downloads, unpacks, and verifies. |
 
 The preflight names the exact failing requirement and how to fix it. Ubuntu
-22.04, for example, ships Podman 3.4 and is refused until Podman is upgraded.
+22.04, for example, ships Podman 3.4 and is refused until Podman is upgraded;
+on that distribution the automatic install is offered and stops at the same
+version check.
 
 ## Non-interactive install
 
@@ -123,7 +175,7 @@ stay in `$XDG_STATE_HOME/scopra` until you delete that directory.
 | Symptom | Fix |
 |---|---|
 | `systemctl --user is not answering` | Log in to a systemd user session and run the installer from a login shell. A machine without systemd cannot host `scoprad`; the installer refuses rather than writing a unit nothing will start. |
-| `podman is not available` | Install Podman 4.0 or later, then run `podman info` once to create its configuration. |
+| `podman is not available` | On the checks screen press `f` to have it installed with your distribution's package manager, or install Podman 4.0 or later yourself and run `podman info` once to create its configuration. |
 | `Podman runs as root, not rootless` | Install Podman as your user, not through a root service, and re-run `podman info`. |
 | `cgroups are not v2` / `cgroup controllers not delegated` | The host must boot with cgroup v2 and delegate `cpu`, `memory`, and `pids` to your user session. See ADR-010. |
 | `Your shell does not find scopra yet` | Add the `export PATH=…` line from the summary to `~/.profile` or `~/.zshrc`, then open a new terminal. |

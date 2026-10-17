@@ -316,3 +316,64 @@ func modelAtService(t *testing.T) *Model {
 	}
 	return model
 }
+
+func TestChecksOfferProvisioningOnlyWhenThereIsAPlan(t *testing.T) {
+	model := newTestModel()
+	begin(model)
+	plan := Provision{Family: "fedora", Manager: "dnf", Commands: [][]string{{"sudo", "dnf", "install", "-y", "podman"}}}
+	model.Update(Message{Checks: failChecks(), Provision: &plan})
+	if model.Setup() == nil {
+		t.Fatal("the model should keep the plan it was given")
+	}
+	model.Key(tui.Key{Type: tui.KeyRune, Rune: 'f'})
+	if model.Screen != ScreenSetup {
+		t.Fatalf("screen = %v, want setup", model.Screen)
+	}
+	if intent := model.Intent(); intent != IntentNone {
+		t.Fatalf("opening the setup screen must not run anything, got intent %v", intent)
+	}
+}
+
+func TestSetupScreenNeedsAnExplicitYes(t *testing.T) {
+	model := newTestModel()
+	begin(model)
+	plan := Provision{Family: "fedora", Manager: "dnf", Commands: [][]string{{"sudo", "dnf", "install", "-y", "podman"}}}
+	model.Update(Message{Checks: failChecks(), Provision: &plan})
+	model.Key(tui.Key{Type: tui.KeyRune, Rune: 'f'})
+
+	// Enter is a cancel, not a confirmation: a privileged command must take
+	// a deliberate key.
+	press(model, tui.KeyEnter)
+	if model.Screen != ScreenChecks {
+		t.Fatalf("screen = %v, want back on the checks", model.Screen)
+	}
+	if intent := model.Intent(); intent != IntentNone {
+		t.Fatalf("enter produced intent %v, want nothing", intent)
+	}
+
+	model.Key(tui.Key{Type: tui.KeyRune, Rune: 'f'})
+	model.Key(tui.Key{Type: tui.KeyRune, Rune: 'y'})
+	if intent := model.Intent(); intent != IntentProvision {
+		t.Fatalf("intent = %v, want provision", intent)
+	}
+}
+
+func TestProvisionResultReturnsToTheChecks(t *testing.T) {
+	model := newTestModel()
+	begin(model)
+	model.Update(Message{ProvisionDone: true, ProvisionErr: errors.New("dnf: exit status 1")})
+	if model.Screen != ScreenChecks || !model.Running() {
+		t.Fatalf("screen = %v, running = %v, want a fresh check", model.Screen, model.Running())
+	}
+	if model.SetupErr() == nil {
+		t.Fatal("the failure must be kept for the screen")
+	}
+	// A passing re-check clears the offer.
+	model.Update(Message{Checks: passChecks()})
+	if model.Setup() != nil {
+		t.Fatal("a passing preflight must not keep the plan")
+	}
+	if model.SetupErr() == nil {
+		t.Fatal("the last failure should remain readable until the next attempt")
+	}
+}

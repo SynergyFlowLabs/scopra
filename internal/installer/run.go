@@ -39,7 +39,43 @@ func (r *Runner) Run(ctx context.Context) (int, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	events := r.Terminal.Events(ctx)
+	// The event stream is restarted around a child process that owns the
+	// terminal, so it lives in a variable rather than a fixed channel.
+	streamCtx, streamCancel := context.WithCancel(ctx)
+	events := r.Terminal.Events(streamCtx)
+	defer func() {
+		if streamCancel != nil {
+			streamCancel()
+		}
+	}()
+
+	// stopEvents retires the reader before the terminal is handed to a child;
+	// otherwise both the child and the reader would race for keystrokes.
+	stopEvents := func() {
+		if streamCancel == nil {
+			return
+		}
+		r.Terminal.Pause()
+		streamCancel()
+		streamCancel = nil
+		deadline := time.NewTimer(2 * time.Second)
+		defer deadline.Stop()
+		for {
+			select {
+			case _, open := <-events:
+				if !open {
+					return
+				}
+			case <-deadline.C:
+				return
+			}
+		}
+	}
+	startEvents := func() {
+		streamCtx, streamCancel = context.WithCancel(ctx)
+		events = r.Terminal.Events(streamCtx)
+	}
+
 	messages := make(chan Message, 32)
 
 	width, height := r.Terminal.Size()
@@ -79,6 +115,26 @@ func (r *Runner) Run(ctx context.Context) (int, error) {
 					go r.runChecks(ctx, messages)
 				case IntentInstall:
 					go r.runInstall(ctx, messages)
+				case IntentProvision:
+					plan := r.Model.Setup()
+					if plan != nil {
+						stopEvents()
+						// The child owns the terminal: sudo has to be able to
+						// prompt, and the interface must not read the
+						// password.
+						r.Terminal.Suspend()
+						in, out := r.Terminal.Devices()
+						setupErr := RunProvision(ctx, *plan, Stdio{In: in, Out: out, Err: out})
+						if err := r.Terminal.Resume(); err != nil {
+							return 1, err
+						}
+						r.Terminal.Unpause()
+						startEvents()
+						width, height = r.Terminal.Size()
+						lastWidth, lastHeight = -1, -1
+						messages <- Message{ProvisionDone: true, ProvisionErr: setupErr}
+						go r.runChecks(ctx, messages)
+					}
 				}
 			}
 			draw()
@@ -95,10 +151,28 @@ func (r *Runner) Run(ctx context.Context) (int, error) {
 	}
 }
 
-// runChecks performs the preflight off the drawing path.
+// runChecks performs the preflight off the drawing path. When Podman is the
+// blocker and the distribution is one the installer knows, the message carries
+// the plan the interface offers.
 func (r *Runner) runChecks(ctx context.Context, messages chan<- Message) {
 	checks := r.Env.Checks(ctx)
-	messages <- Message{Checks: checks}
+	message := Message{Checks: checks}
+	if missingPodman(checks) && r.Env.Provision != nil {
+		if plan, ok := r.Env.Provision(); ok {
+			message.Provision = &plan
+		}
+	}
+	messages <- message
+}
+
+// missingPodman reports whether the Podman check is what blocks the install.
+func missingPodman(checks []Check) bool {
+	for _, check := range checks {
+		if check.ID == "podman" && check.Failed() {
+			return true
+		}
+	}
+	return false
 }
 
 // runInstall performs the install off the drawing path, forwarding each step.
