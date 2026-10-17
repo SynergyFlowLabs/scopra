@@ -1,0 +1,2 @@
+6983011c971afa6fecb43032ad8dd065449c5a0915e60557f90f361be52e9f4e  scopra_linux_amd64.tar.gz
+606a26ed0e179a7f8d54e02e90eab0680ffcaf44ae7946b8fe3d26c0f4d48388  scopra_linux_arm64.tar.gz

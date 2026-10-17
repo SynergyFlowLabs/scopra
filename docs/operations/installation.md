@@ -105,6 +105,15 @@ commands run, the installer re-checks; if the controllers are still missing it
 says so plainly: log out, log back in, and run the installer again — the whole
 command, from the top. Nothing else is needed.
 
+That message is the end of the interface, not another round: the checks screen
+stops offering `f`, because running the commands again cannot help, and the
+instruction is printed to your terminal after the screen is restored. It also
+appears on a later run: the installer reads the installed drop-in before it
+offers a fix, so a machine that is waiting for its next login is told exactly
+that instead of being sent through the same steps again. If the drop-in is
+missing after the commands returned success, the installer reports that
+instead — a fix it cannot see is not a fix it claims.
+
 This fix is offered only when it can work: Podman 4.0+ is installed, it runs
 rootless, the host uses cgroups v2, and `systemd` exists. On cgroups v1 the fix
 is a kernel boot parameter and a reboot, so the installer explains instead of
@@ -155,7 +164,7 @@ not install silently because there was nobody to confirm.
 `install.sh` follows the latest release. To install a specific tag:
 
 ```console
-$ curl -fsSL https://scopra-six.vercel.app/install.sh | SCOPRA_VERSION=v0.1.0-alpha.6 sh
+$ curl -fsSL https://scopra-six.vercel.app/install.sh | SCOPRA_VERSION=v0.1.0-alpha.7 sh
 ```
 
 ## Verify the download yourself
@@ -207,7 +216,7 @@ stay in `$XDG_STATE_HOME/scopra` until you delete that directory.
 |---|---|
 | `systemctl --user is not answering` | Log in to a systemd user session and run the installer from a login shell. A machine without systemd cannot host `scoprad`; the installer refuses rather than writing a unit nothing will start. |
 | `podman is not available` | On the checks screen press `f` to have it installed with your distribution's package manager, or install Podman 4.0 or later yourself and run `podman info` once to create its configuration. |
-| `cgroup controllers not delegated: cpu` | Press `f` to write the systemd delegation drop-in, then log out and back in and re-run the installer. On cgroups v1, boot with `systemd.unified_cgroup_hierarchy=1` instead. |
+| `cgroup controllers not delegated: cpu` | Press `f` to write the systemd delegation drop-in. If the installer then says the change applies at your next login, log out and back in (or reboot) and run the installer again. On cgroups v1, boot with `systemd.unified_cgroup_hierarchy=1` instead. |
 | `Podman runs as root, not rootless` | Install Podman as your user, not through a root service, and re-run `podman info`. |
 | `cgroups are not v2` | The host must boot with cgroup v2 (`systemd.unified_cgroup_hierarchy=1`). That is a boot parameter and a reboot, so the installer explains rather than changing it. See ADR-010. |
 | `Your shell does not find scopra yet` | Add the `export PATH=…` line from the summary to `~/.profile` or `~/.zshrc`, then open a new terminal. |

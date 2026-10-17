@@ -74,6 +74,9 @@ type Environment struct {
 	// package, or delegate the cgroup controllers Podman needs. It returns
 	// false when there is no plan the installer is willing to run.
 	Provision func(ctx context.Context) (Provision, bool)
+	// NeedsRelogin reports that the fix is installed but not active yet:
+	// systemd only applies a delegation change when the user manager starts.
+	NeedsRelogin func(ctx context.Context) bool
 }
 
 // StateDir is the Mio state directory the installer reports and the service
@@ -92,11 +95,12 @@ func (env Environment) StateDirectory() (string, error) {
 func DefaultEnvironment() Environment {
 	stateDir, err := localipc.ResolveStateDir("")
 	return Environment{
-		GOOS:        runtime.GOOS,
-		StateDir:    stateDir,
-		StateDirErr: err,
-		Run:         runCommand,
-		Provision:   defaultProvision,
+		GOOS:         runtime.GOOS,
+		StateDir:     stateDir,
+		StateDirErr:  err,
+		Run:          runCommand,
+		Provision:    defaultProvision,
+		NeedsRelogin: defaultNeedsRelogin,
 	}
 }
 
@@ -122,11 +126,35 @@ func defaultProvision(ctx context.Context) (Provision, bool) {
 	if err != nil || !info.DelegationMissing() {
 		return Provision{}, false
 	}
+	// The drop-in is already there, so running the commands again would
+	// change nothing; the remaining step is a new login, and the installer
+	// says so instead of looping.
+	if DelegationConfigured(DelegateDropInPath) {
+		return Provision{}, false
+	}
 	stateDir, err := localipc.ResolveStateDir("")
 	if err != nil || stateDir == "" {
 		return Provision{}, false
 	}
 	return DetectDelegationFix(root, hasProgram, filepath.Join(stateDir, "installer"))
+}
+
+// defaultNeedsRelogin reports whether the only remaining gap is one systemd
+// closes at the next login: the delegation drop-in is in place, and Podman
+// still does not see the controllers in this session.
+func defaultNeedsRelogin(ctx context.Context) bool {
+	if !DelegationConfigured(DelegateDropInPath) {
+		return false
+	}
+	output, err := runCommand(ctx, "podman", "info", "--format", "json")
+	if err != nil {
+		return false
+	}
+	info, err := hollow.ParsePodmanInfo(output)
+	if err != nil {
+		return false
+	}
+	return info.DelegationMissing()
 }
 
 // hasProgram reports whether name is on PATH. It is a variable so tests can

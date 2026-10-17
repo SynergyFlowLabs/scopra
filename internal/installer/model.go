@@ -69,6 +69,9 @@ type Message struct {
 	// ProvisionErr set when it failed.
 	ProvisionDone bool
 	ProvisionErr  error
+	// Relogin reports that the remaining obstacle is a new login, not a
+	// missing fix.
+	Relogin bool
 	// Tick advances the spinner.
 	Tick bool
 }
@@ -110,6 +113,11 @@ type Model struct {
 	// and setupErr is why the last attempt failed, if it did.
 	setup    *Provision
 	setupErr error
+	// relogin is true when the only remaining step is a new login session.
+	relogin bool
+	// ExitNote is printed after the interface is gone, for an instruction
+	// that would be erased with the alternate screen.
+	ExitNote string
 	// width and height are the last drawn size, kept for text layout.
 	width  int
 	height int
@@ -173,6 +181,16 @@ func (m *Model) Update(message Message) {
 	case message.Checks != nil || message.ChecksErr != nil:
 		m.checks = message.Checks
 		m.setup = message.Provision
+		m.relogin = message.Relogin
+		if m.relogin {
+			// The remedy is already installed; say so on the row itself
+			// instead of leaving instructions that no longer apply.
+			for index := range m.checks {
+				if m.checks[index].ID == "podman" && m.checks[index].Status == StatusFailed {
+					m.checks[index].Fix = "The delegation drop-in is installed; systemd applies it at your next login."
+				}
+			}
+		}
 		m.checksRunning = false
 		if message.ChecksErr != nil {
 			m.err = message.ChecksErr
@@ -285,6 +303,13 @@ func (m *Model) keyChecks(key tui.Key) bool {
 	case key.Is('f') && m.setup != nil && !m.checksRunning:
 		m.Screen = ScreenSetup
 		return true
+	case key.Type == tui.KeyEnter && !m.checksRunning && m.relogin:
+		// Nothing else can happen in this session; leave with the one
+		// instruction that does apply, printed after the screen is restored.
+		m.ExitNote = ReloginNote()
+		m.ExitCode = 1
+		m.intent = IntentQuit
+		return true
 	case key.Type == tui.KeyEnter && !m.checksRunning:
 		if !Ready(m.checks) {
 			return false
@@ -306,6 +331,11 @@ func (m *Model) keySetup(key tui.Key) bool {
 	switch {
 	case key.Is('y') && m.setup != nil:
 		m.setupErr = nil
+		// Show the spinner rather than the stale results while the commands
+		// and the re-check run. The plan stays: the runner reads it as the
+		// intent is applied.
+		m.checks = nil
+		m.checksRunning = true
 		m.Screen = ScreenChecks
 		m.intent = IntentProvision
 		return true
@@ -394,6 +424,9 @@ func (m *Model) exit(code int) {
 // Running reports whether work is in flight.
 // Setup returns the plan the interface is offering, or nil.
 func (m *Model) Setup() *Provision { return m.setup }
+
+// Relogin reports that the installer is waiting for a new login session.
+func (m *Model) Relogin() bool { return m.relogin }
 
 // SetupErr returns why the last provisioning attempt failed, or nil.
 func (m *Model) SetupErr() error { return m.setupErr }

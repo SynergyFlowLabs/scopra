@@ -71,6 +71,7 @@ sudo systemctl daemon-reload
 </code></pre>
 <p>The drop-in is <code>[Service]</code> plus <code>Delegate=cpu cpuset io memory pids</code>. It is staged in your state directory first, so every privileged command is an argument vector rather than a shell redirection, and the file it installs is the one printed above.</p>
 <p><strong>systemd applies a delegation change when the user manager starts.</strong> After the commands run, the installer re-checks; if the controllers are still missing it says so plainly: log out, log back in, and run the installer again — the whole command, from the top. Nothing else is needed.</p>
+<p>That message is the end of the interface, not another round: the checks screen stops offering <code>f</code>, because running the commands again cannot help, and the instruction is printed to your terminal after the screen is restored. It also appears on a later run: the installer reads the installed drop-in before it offers a fix, so a machine that is waiting for its next login is told exactly that instead of being sent through the same steps again. If the drop-in is missing after the commands returned success, the installer reports that instead — a fix it cannot see is not a fix it claims.</p>
 <p>This fix is offered only when it can work: Podman 4.0+ is installed, it runs rootless, the host uses cgroups v2, and <code>systemd</code> exists. On cgroups v1 the fix is a kernel boot parameter and a reboot, so the installer explains instead of touching anything.</p>
 <p>The summary screen shows the install directory, the version, the service state, and — when the directory is not on <code>PATH</code> — the exact <code>export PATH=…</code> line to add.</p>
 <h2 id="requirements">Requirements</h2>
@@ -98,7 +99,7 @@ sudo systemctl daemon-reload
 <p>Without a terminal and without <code>--yes</code>, the installer stops and says so: it will not install silently because there was nobody to confirm.</p>
 <h2 id="pin-a-version">Pin a version</h2>
 <p><code>install.sh</code> follows the latest release. To install a specific tag:</p>
-<pre><code class="language-console">$ curl -fsSL https://scopra-six.vercel.app/install.sh | SCOPRA_VERSION=v0.1.0-alpha.6 sh
+<pre><code class="language-console">$ curl -fsSL https://scopra-six.vercel.app/install.sh | SCOPRA_VERSION=v0.1.0-alpha.7 sh
 </code></pre>
 <h2 id="verify-the-download-yourself">Verify the download yourself</h2>
 <pre><code class="language-console">$ version=$(curl -fsSL https://scopra-six.vercel.app/releases/latest.txt)
@@ -129,7 +130,7 @@ $ rm -f ~/.local/bin/scopra ~/.local/bin/scoprad
 <tbody>
 <tr><td><code>systemctl --user is not answering</code></td><td>Log in to a systemd user session and run the installer from a login shell. A machine without systemd cannot host <code>scoprad</code>; the installer refuses rather than writing a unit nothing will start.</td></tr>
 <tr><td><code>podman is not available</code></td><td>On the checks screen press <code>f</code> to have it installed with your distribution&#39;s package manager, or install Podman 4.0 or later yourself and run <code>podman info</code> once to create its configuration.</td></tr>
-<tr><td><code>cgroup controllers not delegated: cpu</code></td><td>Press <code>f</code> to write the systemd delegation drop-in, then log out and back in and re-run the installer. On cgroups v1, boot with <code>systemd.unified_cgroup_hierarchy=1</code> instead.</td></tr>
+<tr><td><code>cgroup controllers not delegated: cpu</code></td><td>Press <code>f</code> to write the systemd delegation drop-in. If the installer then says the change applies at your next login, log out and back in (or reboot) and run the installer again. On cgroups v1, boot with <code>systemd.unified_cgroup_hierarchy=1</code> instead.</td></tr>
 <tr><td><code>Podman runs as root, not rootless</code></td><td>Install Podman as your user, not through a root service, and re-run <code>podman info</code>.</td></tr>
 <tr><td><code>cgroups are not v2</code></td><td>The host must boot with cgroup v2 (<code>systemd.unified_cgroup_hierarchy=1</code>). That is a boot parameter and a reboot, so the installer explains rather than changing it. See ADR-010.</td></tr>
 <tr><td><code>Your shell does not find scopra yet</code></td><td>Add the <code>export PATH=…</code> line from the summary to <code>~/.profile</code> or <code>~/.zshrc</code>, then open a new terminal.</td></tr>

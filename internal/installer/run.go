@@ -3,6 +3,7 @@ package installer
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,6 +21,9 @@ type Runner struct {
 	// the directory, image, and service answers.
 	Base Options
 	Env  Environment
+	// Out receives the closing note once the interface has left the screen,
+	// because the alternate screen would otherwise take it with it.
+	Out io.Writer
 }
 
 // spinnerInterval is how often the progress indicator advances.
@@ -34,6 +38,14 @@ func (r *Runner) Run(ctx context.Context) (int, error) {
 	if err := r.Terminal.Enter(); err != nil {
 		return 1, err
 	}
+	// Defers run last-in-first-out: the note prints after Exit has restored
+	// the screen, so a user who quits never loses the one instruction that
+	// outlives the interface.
+	defer func() {
+		if note := r.Model.ExitNote; note != "" {
+			_, _ = fmt.Fprint(r.out(), note)
+		}
+	}()
 	defer r.Terminal.Exit()
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -125,6 +137,11 @@ func (r *Runner) Run(ctx context.Context) (int, error) {
 						r.Terminal.Suspend()
 						in, out := r.Terminal.Devices()
 						setupErr := RunProvision(ctx, *plan, Stdio{In: in, Out: out, Err: out})
+						// A command that exits zero is not proof the file
+						// landed; the drop-in is the observable result.
+						if setupErr == nil && plan.NeedsRelogin && !DelegationConfigured(DelegateDropInPath) {
+							setupErr = fmt.Errorf("%s was not installed", DelegateDropInPath)
+						}
 						if err := r.Terminal.Resume(); err != nil {
 							return 1, err
 						}
@@ -157,9 +174,17 @@ func (r *Runner) Run(ctx context.Context) (int, error) {
 func (r *Runner) runChecks(ctx context.Context, messages chan<- Message) {
 	checks := r.Env.Checks(ctx)
 	message := Message{Checks: checks}
-	if blocked(checks) && r.Env.Provision != nil {
-		if plan, ok := r.Env.Provision(ctx); ok {
-			message.Provision = &plan
+	if blocked(checks) {
+		// A fix that is already installed and waiting for the next login is
+		// not offered again: repeating privileged commands cannot help, and
+		// a loop looks like a broken installer.
+		switch {
+		case r.Env.NeedsRelogin != nil && r.Env.NeedsRelogin(ctx):
+			message.Relogin = true
+		case r.Env.Provision != nil:
+			if plan, ok := r.Env.Provision(ctx); ok {
+				message.Provision = &plan
+			}
 		}
 	}
 	messages <- message
@@ -207,6 +232,14 @@ func onPath(dir string) bool {
 		}
 	}
 	return false
+}
+
+// out is where the closing note goes; stderr keeps it off a caller's stdout.
+func (r *Runner) out() io.Writer {
+	if r.Out != nil {
+		return r.Out
+	}
+	return os.Stderr
 }
 
 // Summary renders a plain-text result for non-interactive runs.

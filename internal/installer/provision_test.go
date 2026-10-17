@@ -3,6 +3,7 @@ package installer
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -302,5 +303,35 @@ func TestStageProvisionKeepsTheFileForAScriptedRun(t *testing.T) {
 	RemoveStaged(plan)
 	if _, err := os.Stat(staged); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("RemoveStaged() left the file: %v", err)
+	}
+}
+
+func TestDelegationConfiguredReadsTheLastAssignment(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+		want    bool
+	}{
+		{"all three controllers", "[Service]\nDelegate=cpu cpuset io memory pids\n", true},
+		{"extra controllers", "[Service]\nDelegate=cpu memory pids rdma\n", true},
+		{"missing cpu", "[Service]\nDelegate=memory pids\n", false},
+		{"missing pids", "[Service]\nDelegate=cpu memory\n", false},
+		{"last assignment wins", "[Service]\nDelegate=cpu memory pids\nDelegate=memory\n", false},
+		{"delegate yes is not enough", "[Service]\nDelegate=yes\n", false},
+		{"no delegate line", "[Service]\nLimitNOFILE=65535\n", false},
+		{"empty file", "", false},
+	}
+	dir := t.TempDir()
+	for index, test := range cases {
+		path := filepath.Join(dir, fmt.Sprintf("drop-in-%d.conf", index))
+		if err := os.WriteFile(path, []byte(test.content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+		if got := DelegationConfigured(path); got != test.want {
+			t.Fatalf("%s: DelegationConfigured() = %v, want %v", test.name, got, test.want)
+		}
+	}
+	if DelegationConfigured(filepath.Join(dir, "missing.conf")) {
+		t.Fatal("a file that does not exist must not count as configured")
 	}
 }

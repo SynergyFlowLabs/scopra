@@ -94,6 +94,16 @@ at `/etc/systemd/system/user@.service.d/99-scopra-delegate.conf`, followed by
    if the controllers are still missing, the screen says to log out and back in
    rather than pretending the fix failed. That is the one step this design
    cannot automate without destroying the session it is running in.
+4. **A fix that is already installed is not offered again.** The installer reads
+   the drop-in before it offers anything, so a session that is waiting for its
+   next login is told exactly that, once, with no privileged command to repeat.
+   After the commands succeed it also verifies the file it claims to have
+   installed, and reports a drop-in it cannot see as a failure.
+
+   The first shipped version of rule 3 got this wrong: the re-check failed in
+   the same session, the screen offered `f` again, and pressing it re-ran the
+   same four commands. The state the installer could not reach was the one it
+   was already in, and it has to say so instead of looping.
 
 ## Consequences
 

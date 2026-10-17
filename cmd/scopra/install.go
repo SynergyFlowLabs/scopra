@@ -125,7 +125,9 @@ func runInstallPlain(ctx context.Context, options installer.Options, stdout, std
 		}
 	}
 	if !installer.Ready(checks) {
-		if env.Provision != nil {
+		if env.NeedsRelogin != nil && env.NeedsRelogin(ctx) {
+			_, _ = fmt.Fprint(stdout, installer.ReloginNote())
+		} else if env.Provision != nil {
 			if plan, ok := env.Provision(ctx); ok {
 				// The commands refer to a staged file, so stage it before
 				// printing anything: a command that cannot run is worse than

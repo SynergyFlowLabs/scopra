@@ -230,17 +230,33 @@ func TestSetupScreenShowsEveryCommand(t *testing.T) {
 func TestChecksScreenExplainsAFixThatNeedsANewLogin(t *testing.T) {
 	model := newTestModel()
 	begin(model)
-	plan := Provision{
-		Title:        "Delegate cgroup controllers",
-		NeedsRelogin: true,
-		Commands:     [][]string{{"sudo", "systemctl", "daemon-reload"}},
+	model.Update(Message{Checks: failChecks(), Relogin: true})
+	view := model.View(100, 30, tui.StyleSheet{})
+	for _, want := range []string{
+		"The cgroup delegation drop-in is installed",
+		"applies it when your user manager",
+		"Log out, log back in, and run the installer again",
+		"enter exit",
+	} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("checks screen is missing %q:\n%s", want, view)
+		}
 	}
-	model.Update(Message{Checks: failChecks(), Provision: &plan})
-	model.Update(Message{ProvisionDone: true, ProvisionErr: errors.New("cgroup controllers not delegated: cpu")})
+	if strings.Contains(view, "Press f") {
+		t.Fatalf("checks screen still offers a fix that is already installed:\n%s", view)
+	}
+}
+
+func TestChecksScreenReportsAFailedFix(t *testing.T) {
+	model := newTestModel()
+	begin(model)
+	plan := Provision{Title: "Install Podman", Commands: [][]string{{"sudo", "apt-get", "update"}}}
+	model.Update(Message{Checks: failChecks(), Provision: &plan, ProvisionDone: true})
+	model.Update(Message{ProvisionDone: true, ProvisionErr: errors.New("sudo: a password is required")})
 	model.Update(Message{Checks: failChecks(), Provision: &plan})
 	view := model.View(100, 30, tui.StyleSheet{})
-	if !strings.Contains(view, "The change takes effect at your next login") {
-		t.Fatalf("checks screen does not explain the login step:\n%s", view)
+	if !strings.Contains(view, "Press f and the installer can fix this") {
+		t.Fatalf("checks screen does not offer another attempt:\n%s", view)
 	}
 }
 

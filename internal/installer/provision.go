@@ -62,6 +62,51 @@ const delegateDir = "/etc/systemd/system/user@.service.d"
 // delegateName sorts after distribution drop-ins, so this one wins.
 const delegateName = "99-scopra-delegate.conf"
 
+// DelegateDropInPath is the file the delegation plan installs, and the file
+// the installer reads to tell "configured but not active yet" apart from "not
+// configured at all". It is world-readable, so reading it needs no privileges.
+var DelegateDropInPath = filepath.Join(delegateDir, delegateName)
+
+// DelegationConfigured reports whether a drop-in at path already delegates the
+// controllers Scopra needs. A file that cannot be read, or whose last
+// Delegate= line does not name cpu, memory, and pids, counts as not
+// configured: a fix that only half applies is not a fix.
+func DelegationConfigured(path string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	return dropInDelegates(string(data))
+}
+
+// dropInDelegates reads the last Delegate= assignment, which is the one
+// systemd honours when a unit receives several.
+func dropInDelegates(content string) bool {
+	var last []string
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		key, value, ok := strings.Cut(line, "=")
+		if !ok || !strings.EqualFold(strings.TrimSpace(key), "delegate") {
+			continue
+		}
+		last = strings.Fields(strings.TrimSpace(value))
+	}
+	if last == nil {
+		return false
+	}
+	granted := make(map[string]bool, len(last))
+	for _, controller := range last {
+		granted[strings.ToLower(controller)] = true
+	}
+	return granted["cpu"] && granted["memory"] && granted["pids"]
+}
+
+// ReloginNote explains the one step the installer cannot do for the user: a
+// delegation change applies when systemd starts the user manager again.
+func ReloginNote() string {
+	return fmt.Sprintf("\nThe cgroup delegation drop-in is installed at %s.\nsystemd applies it when your user manager starts: log out, log back in, and run the installer again.\n", DelegateDropInPath)
+}
+
 // DetectDelegationFix returns the commands that delegate the cgroup controllers
 // Podman needs to the user manager, or false when the installer cannot do it
 // safely: without systemd, without root or sudo, or without somewhere to stage

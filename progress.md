@@ -2774,3 +2774,67 @@ Commit `26590a6` (`feat(journal): record run metadata and add scopra logs`) hold
     covers the file, its mode, its content, and its removal, and a plain install now prints a `cp` whose source exists.
 - Not verified: a real systemd user manager applying the drop-in. The staged file, the commands, the re-check, and the message are exercised with fakes; whether `Delegate=cpu cpuset io memory pids` is enough on a given distribution is systemd's behaviour, not something this sandbox can show. The re-login requirement is a documented property of `Delegate=` on a running unit, and the installer treats a still-failing check as the truth either way.
 - Out of scope, unchanged: cgroups v1 (a boot parameter and a reboot), restarting `user@.service` for the user (it would kill the session running the installer), pulling sandbox images, and `--yes` provisioning.
+
+### 2026-10-17 — Step 39: the loop after the fix
+
+- Report, with screenshots, from the same machine: after `f` and `y`, the
+  interface closed, the commands ran, and the checks screen came back with the
+  same `cgroup controllers not delegated: cpu` and the same "Press f" offer.
+  Pressing `f` again ran the four commands again. The second run stopped at
+  sudo's password prompt, which the user interrupted.
+- Diagnosis: nothing was wrong with the drop-in. systemd implements
+  `Delegate=` when it starts `user@.service`, so a re-check inside the same
+  session *must* fail; the defect was the interface's state. `defaultProvision`
+  returned the delegation plan every time the check failed, so the screen
+  offered a remedy that was already installed, forever. Two more mistakes
+  followed from the same missing state: the frame was titled "set up podman"
+  even for a cgroup fix, and the installer never checked that the drop-in it
+  claimed to install was on disk.
+- What changed:
+  - `installer.DelegationConfigured` reads a drop-in and accepts it only when
+    its last `Delegate=` assignment names `cpu`, `memory`, and `pids` — the
+    assignment systemd honours — so a half-applied file is not mistaken for a
+    fix. `Delegate=yes` is not accepted: it does not promise the controllers.
+  - `defaultProvision` returns no plan when that file is in place, and the
+    environment gains `NeedsRelogin`, which reports the one remaining gap: the
+    drop-in is installed and `podman info` still lacks the controllers.
+  - The model gains that state. The checks screen says the delegation is
+    configured, systemd applies it when the user manager starts, and the
+    installer should be run again after logging in; `f` is not offered, and
+    Enter exits with status 1. The failing row's own fix text says the same
+    thing instead of advising a change that has already been made.
+  - The instruction outlives the screen: the runner prints `ReloginNote` after
+    the alternate screen is restored, and `scopra install --yes` prints it in
+    place of commands it would only repeat.
+  - The commit verification is honest: after a successful run of a plan with
+    `NeedsRelogin`, the runner checks that the drop-in exists and reports
+    `…was not installed` when it does not.
+  - The setup frame is titled from the plan ("delegate cgroup controllers",
+    "install podman") instead of a hard-coded "set up podman", and pressing `y`
+    clears the stale results so the spinner shows while the commands and the
+    re-check run.
+- Verification:
+  - `provision_test.go`: eight `DelegationConfigured` cases (all three
+    controllers, extras, each missing controller, last assignment wins,
+    `Delegate=yes`, no assignment, empty file) plus a missing path.
+  - `model_test.go`: a relogin result offers no plan, ignores `f`, and Enter
+    quits with status 1 and a note naming the drop-in; `y` keeps the plan the
+    runner reads and reports Running so the spinner draws.
+  - `view_test.go`: the checks screen explains the login step, the footer says
+    `enter exit`, and "Press f" is absent; a failed attempt still offers
+    another one.
+  - End to end through a pty inside a user and mount namespace with
+    `/etc/systemd/system` bind-mounted from a temporary directory, so the real
+    path is exercised: a machine with Podman and no drop-in goes checks → `f`
+    (frame titled `delegate cgroup controllers`) → `y` → the drop-in appears at
+    `/etc/systemd/system/user@.service.d/99-scopra-delegate.conf` with
+    `Delegate=cpu cpuset io memory pids` → the screen becomes the relogin
+    message → Enter exits 1 and the note prints after the screen is restored.
+    A second run, with the drop-in present, goes straight to that message and
+    never offers `f`.
+  - `go test ./...`, `make lint`, and `gofmt` are clean; the site builds and the
+    link checker passes.
+- Not verified: a real Ubuntu host where the drop-in is applied by a new login
+  and the check then passes. This sandbox has no systemd user manager to
+  restart, which is exactly why the installer now stops at that boundary
+  instead of pretending to cross it.

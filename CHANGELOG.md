@@ -105,6 +105,17 @@ version, and the wire protocol is versioned separately (see ADR-002 and ADR-009)
 
 ### Fixed
 
+- **The installer looped on a cgroup delegation fix it had already applied.**
+  A delegation change only takes effect when systemd starts the user manager
+  again, so a re-check in the same session has to fail. The checks screen
+  offered `f` again, and pressing it re-ran the same four commands — a loop
+  with no exit, reported from a real machine. The installer now reads the
+  installed drop-in: when it is present and Podman still reports the
+  controllers missing, the screen says the change applies at the next login,
+  stops offering the fix, and exits with that instruction printed to the
+  terminal after the interface is restored. A later run goes straight to the
+  same message, and a drop-in that is not in place after a successful command
+  run is reported as the failure it is.
 - **A scripted install printed a command that could not run.** `scopra install
   --yes` described the delegation drop-in with a `cp` from the state directory,
   but only the interactive path staged that file, so the command failed with

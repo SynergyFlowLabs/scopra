@@ -60,6 +60,9 @@ Delegate=cpu cpuset io memory pids
 <li><strong>No shell redirection, even for a file.</strong> The drop-in is written to the user&#39;s state directory first, then installed by <code>mkdir</code>, <code>cp</code>, and <code>chmod</code> argument vectors. The screen prints those commands, so the file the user approves is the file that lands.</li>
 <li><strong>Only when it can work.</strong> The offer requires Podman 4.0+, rootless, cgroups v2, and <code>systemctl</code>; on cgroups v1 the fix would be a boot parameter and a reboot, which this installer does not touch.</li>
 <li><strong>Say when it takes effect.</strong> A delegation change applies when the user manager next starts. The installer re-runs the preflight after the commands; if the controllers are still missing, the screen says to log out and back in rather than pretending the fix failed. That is the one step this design cannot automate without destroying the session it is running in.</li>
+<li><p><strong>A fix that is already installed is not offered again.</strong> The installer reads the drop-in before it offers anything, so a session that is waiting for its next login is told exactly that, once, with no privileged command to repeat. After the commands succeed it also verifies the file it claims to have installed, and reports a drop-in it cannot see as a failure.</p>
+<p>The first shipped version of rule 3 got this wrong: the re-check failed in the same session, the screen offered <code>f</code> again, and pressing it re-ran the same four commands. The state the installer could not reach was the one it was already in, and it has to say so instead of looping.</p>
+</li>
 </ol>
 <h2 id="consequences">Consequences</h2>
 <ul>
