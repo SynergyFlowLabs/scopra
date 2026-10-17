@@ -33,8 +33,26 @@ $ git commit -m "docs: rebrand the threat-model section"
 $ git push
 ```
 
-Vercel builds nothing: it serves the committed directory. A deployment for the
-branch appears in the project dashboard and on the pull request.
+Vercel builds nothing: it serves the committed directory. Every push creates a
+**preview** deployment for the branch, and the commit appears in the pull request
+and the project dashboard.
+
+**Production** is whichever deployment is promoted to the production alias. The
+project's production branch is `main`, so once this work is merged, a push to
+`main` promotes automatically. Until then, promotion is explicit: open the
+deployment in the dashboard and choose **Promote to Production**, or create a
+production deployment through the API:
+
+```console
+$ curl -sS -X POST https://api.vercel.com/v13/deployments \
+    -H "Authorization: Bearer $VERCEL_TOKEN" -H 'Content-Type: application/json' \
+    -d '{"name":"scopra","project":"prj_8IUlxMQr92jfileaMhwprRyR6daH",
+         "target":"production",
+         "gitSource":{"type":"github","ref":"arena/fe74ddf7-scopra","repoId":1421444715}}'
+```
+
+The promoted deployment keeps the alias `scopra-six.vercel.app`; previews get
+their own generated hostnames.
 
 Anything that changes a published Markdown file changes the site — including
 `README.md`, `PRD.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`,

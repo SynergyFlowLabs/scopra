@@ -80,9 +80,10 @@ the headers the rest of the project expects: a CSP with `script-src 'none'`,
 a restrictive referrer policy; COOP; and a `Permissions-Policy` that disables
 every feature the site does not use.
 
-Canonical URLs, `sitemap.xml`, and `robots.txt` derive from one base URL.
-Deployments are triggered by a push to the linked branch, and the production URL
-is <https://scopra-six.vercel.app>. The full procedure, including rollback, is in
+Canonical URLs, `sitemap.xml`, and `robots.txt` derive from one base URL. A push
+creates a preview deployment; the production alias <https://scopra-six.vercel.app>
+follows the project's production branch (`main`), and is promoted explicitly
+until this work lands there. The full procedure, including rollback, is in
 `docs/operations/deployment.md`.
 
 ## Consequences
