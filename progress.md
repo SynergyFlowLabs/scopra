@@ -2251,4 +2251,6 @@ Red run:
 
 Coverage: `internal/execution` 100.0% (new), `cmd/scoprad` 73.1% (from 55.3%), `internal/localipc` 85.3%, `internal/hollow` 98.0%.
 
-Commit `5751414` (`feat(execution): run local runs in Hollow`) holds the implementation and documentation; this record follows in a second commit. No red checkpoint was pushed for this step, unlike Steps 2 and 3.
+Commits `5751414` (`feat(execution): run local runs in Hollow`) and `1c6be69` (`docs(progress): record Step 28, Mio wiring to Hollow`) were pushed to `arena/fe74ddf7-scopra`. No red checkpoint was pushed for this step, unlike Steps 2 and 3.
+
+Actions run `39007352867` for `1c6be69` ended in `startup_failure` with zero jobs, the same organization-level failure recorded in the Baseline section. It is not a code-test result; the evidence for this increment is the local verification above.
