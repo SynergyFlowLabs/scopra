@@ -37,7 +37,7 @@ and — when the directory is not on `PATH` — the exact `export PATH=…` line
 | Requirement | Why |
 |---|---|
 | Linux, x86-64 or arm64 | Hollow confines commands with Linux namespaces and cgroups; other platforms are refused before anything is downloaded. |
-| systemd user session | `scopra service install` manages a user unit. Without systemd the command-line install still works. |
+| systemd user session | `scopra service install` manages a user unit, and the installer checks the session before it changes anything. Without one the install stops rather than leaving a service that cannot start. |
 | Rootless Podman 4.0+ | Hollow runs each command in one rootless container (ADR-010). |
 | cgroup v2 with `cpu`, `memory`, and `pids` delegated | The container's limits need them. |
 | `curl` or `wget`, `tar`, `sha256sum` or `shasum` | The bootstrap script downloads, unpacks, and verifies. |
@@ -122,7 +122,7 @@ stay in `$XDG_STATE_HOME/scopra` until you delete that directory.
 
 | Symptom | Fix |
 |---|---|
-| `systemctl --user is not answering` | Log in to a systemd user session (`loginctl enable-linger` is not needed for an interactive session) and run the installer from a login shell. |
+| `systemctl --user is not answering` | Log in to a systemd user session and run the installer from a login shell. A machine without systemd cannot host `scoprad`; the installer refuses rather than writing a unit nothing will start. |
 | `podman is not available` | Install Podman 4.0 or later, then run `podman info` once to create its configuration. |
 | `Podman runs as root, not rootless` | Install Podman as your user, not through a root service, and re-run `podman info`. |
 | `cgroups are not v2` / `cgroup controllers not delegated` | The host must boot with cgroup v2 and delegate `cpu`, `memory`, and `pids` to your user session. See ADR-010. |

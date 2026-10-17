@@ -46,7 +46,7 @@
 <thead><tr><th>Requirement</th><th>Why</th></tr></thead>
 <tbody>
 <tr><td>Linux, x86-64 or arm64</td><td>Hollow confines commands with Linux namespaces and cgroups; other platforms are refused before anything is downloaded.</td></tr>
-<tr><td>systemd user session</td><td><code>scopra service install</code> manages a user unit. Without systemd the command-line install still works.</td></tr>
+<tr><td>systemd user session</td><td><code>scopra service install</code> manages a user unit, and the installer checks the session before it changes anything. Without one the install stops rather than leaving a service that cannot start.</td></tr>
 <tr><td>Rootless Podman 4.0+</td><td>Hollow runs each command in one rootless container (ADR-010).</td></tr>
 <tr><td>cgroup v2 with <code>cpu</code>, <code>memory</code>, and <code>pids</code> delegated</td><td>The container&#39;s limits need them.</td></tr>
 <tr><td><code>curl</code> or <code>wget</code>, <code>tar</code>, <code>sha256sum</code> or <code>shasum</code></td><td>The bootstrap script downloads, unpacks, and verifies.</td></tr>
@@ -95,7 +95,7 @@ $ rm -f ~/.local/bin/scopra ~/.local/bin/scoprad
 <div class="table-wrap"><table>
 <thead><tr><th>Symptom</th><th>Fix</th></tr></thead>
 <tbody>
-<tr><td><code>systemctl --user is not answering</code></td><td>Log in to a systemd user session (<code>loginctl enable-linger</code> is not needed for an interactive session) and run the installer from a login shell.</td></tr>
+<tr><td><code>systemctl --user is not answering</code></td><td>Log in to a systemd user session and run the installer from a login shell. A machine without systemd cannot host <code>scoprad</code>; the installer refuses rather than writing a unit nothing will start.</td></tr>
 <tr><td><code>podman is not available</code></td><td>Install Podman 4.0 or later, then run <code>podman info</code> once to create its configuration.</td></tr>
 <tr><td><code>Podman runs as root, not rootless</code></td><td>Install Podman as your user, not through a root service, and re-run <code>podman info</code>.</td></tr>
 <tr><td><code>cgroups are not v2</code> / <code>cgroup controllers not delegated</code></td><td>The host must boot with cgroup v2 and delegate <code>cpu</code>, <code>memory</code>, and <code>pids</code> to your user session. See ADR-010.</td></tr>
