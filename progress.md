@@ -3,7 +3,7 @@
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
 **Current increment:** Runner timeout, cancellation, preflight, and leftover cleanup (Step 26, increment 3a-3 of ADR-010 as amended)
-**Status:** In progress on `arena/c7a368c1-scopra`: acceptance checklist agreed, tests first; CI is out of scope for now at the maintainer's request
+**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -1988,20 +1988,20 @@ Non-goals (3a-3 and later):
 
 #### Acceptance checklist (agreed before implementation)
 
-- [ ] **Timeout:** Mio's own timer starts at launch with `limits.timeoutSeconds`. When it expires, the runner runs `podman kill --signal=KILL` on the container and reports `timed_out`. If the kill fails while Podman is still running, for example because the container is not yet created, it retries until Podman exits.
-- [ ] **Cancellation:** cancelling `Run`'s context kills the container in the same way and reports `cancelled`.
-- [ ] Rules for both:
+- [x] **Timeout:** Mio's own timer starts at launch with `limits.timeoutSeconds`. When it expires, the runner runs `podman kill --signal=KILL` on the container and reports `timed_out`. If the kill fails while Podman is still running, for example because the container is not yet created, it retries until Podman exits.
+- [x] **Cancellation:** cancelling `Run`'s context kills the container in the same way and reports `cancelled`.
+- [x] Rules for both:
   - the first kill wins;
   - a container that exits on its own before any kill succeeds keeps its natural result;
   - the timer is stopped when the run ends, so no kill happens afterwards.
-- [ ] **Before each run**, after the arguments are validated:
+- [x] **Before each run**, after the arguments are validated:
   - the preflight check (`podman info --format json`, then `ParsePodmanInfo` and `Check`);
   - `podman image exists IMAGE`.
 
   A failure is `rejected` with `containment_unavailable` and a message no longer than 1024 bytes, and Podman is never run.
-- [ ] Every helper call to Podman (`info`, `image exists`, `inspect`, `kill`, `rm`, `ps`) has a deadline of 30 seconds by default, so a hung `podman` cannot stall a run forever. A timed-out final inspect is `errored` with `containment_failed`.
-- [ ] **Leftover cleanup:** `Runner.RemoveLeftovers` lists containers labelled `scopra.action-hash` (`podman ps --all --filter label=scopra.action-hash --format {{.Names}}`). It removes only those named `scopra-` followed by 32 hexadecimal characters, and reports how many it removed.
-- [ ] **Tests:** the fake Podman gains `kill` (which ends the fake `run` process and records exit code 137), `info`, `image exists`, `ps`, and scenarios for each requirement. The race detector is on, and full verification passes.
+- [x] Every helper call to Podman (`info`, `image exists`, `inspect`, `kill`, `rm`, `ps`) has a deadline of 30 seconds by default, so a hung `podman` cannot stall a run forever. A timed-out final inspect is `errored` with `containment_failed`.
+- [x] **Leftover cleanup:** `Runner.RemoveLeftovers` lists containers labelled `scopra.action-hash` (`podman ps --all --filter label=scopra.action-hash --format {{.Names}}`). It removes only those named `scopra-` followed by 32 hexadecimal characters, and reports how many it removed.
+- [x] **Tests:** the fake Podman gains `kill` (which ends the fake `run` process and records exit code 137), `info`, `image exists`, `ps`, and scenarios for each requirement. The race detector is on, and full verification passes.
 
 Non-goals:
 - Wiring the runner or the leftover cleanup into Mio.
@@ -2027,3 +2027,46 @@ Non-goals:
    - The missing-Podman test now expects the preflight rejection.
 3. **Build failure.** `helperTimeout` and `RemoveLeftovers` were undefined. My own test also wrongly compared slices of slices with `slices.Equal`; I fixed that before going on.
 4. **Declarations-only skeleton.** It adds the field, and a `RemoveLeftovers` that does nothing. Runtime red: 9 tests failed. Without kills, the long-running fake containers ran their full 30 seconds.
+
+#### Implementation and verification record
+
+- **`internal/hollow/runner.go`:**
+  - **The killer:** one goroutine owned by `run` waits for whichever comes first: the timeout timer (`limits.timeoutSeconds`), `ctx.Done()`, or Podman's exit.
+    - On a timeout or a cancellation it records the reason, then runs `podman kill --signal=KILL NAME` until a kill succeeds or Podman exits.
+    - `run` waits for the killer before building the result, so the first trigger wins and no kill can follow the removal.
+    - The result is `timed_out` or `cancelled` only if a kill succeeded; otherwise the container's own result stands.
+  - **`preflight`,** after the arguments are validated: `info --format json`, then `ParsePodmanInfo` and `Check`, then `image exists`. Exit status 1 means "not in local storage", and any other failure is reported as such. Messages go through `resultMessage`, which replaces control, format, and separator characters and bounds the text to 1024 bytes on a character boundary.
+  - **Helper calls:** `helperOutput` and `helperRun` give every helper call (`info`, `image exists`, `inspect`, `kill`, `rm`, `ps`) a deadline (30 seconds by default), using `exec.CommandContext` with a `WaitDelay` so that a killed helper cannot hang on its pipes.
+  - **`RemoveLeftovers`** lists labelled containers and removes only those named `scopra-` followed by 32 lowercase hexadecimal characters.
+  - `Run` refuses a nil context (`ErrInvalidRunner`).
+- **`internal/hollow/preflight.go`:** two messages now put the untrusted value last ("Podman is older than 4.0 or reports an unrecognized version: %q" and "cgroups are not v2: %q"), so a bounded message keeps its explanation. Step 23's tests needed no change.
+- **Test changes during implementation:**
+  - the fake's kill uses `os.Process.Kill` instead of `syscall.Kill`, which does not exist on Windows, so the tests compile for windows/amd64;
+  - added tests for printable preflight messages (a Podman path containing a newline), a broken `image exists`, a failing `ps`, `resultMessage` itself, and kill retries at the default interval.
+- Green: all tests pass under the race detector, and the kill tests ran repeatedly with no flakes (8, 15, 5, and 5 extra runs).
+- Mutation testing, run in one sequential batch with `go test -timeout`: 18 deliberate mutations, all caught.
+  - The mutations cover: the timeout or cancellation never killing; the reasons swapped; a successful kill ignored, or failed kills still overriding; no kill retry; preflight skipped, a missing image misread, or `Check` ignored; the message bound off by one or messages unsanitised; the helper deadline dropped or the configured one ignored; leftover names unfiltered, uppercase hexadecimal accepted, or a relative Podman path accepted; a nil context accepted; and the untrusted version placed first in the message.
+  - One of them (a nil context accepted) is caught as a panic in the invalid-input test, confirmed by hand.
+  - Three spot checks after the portable-kill change were still caught.
+  - The mutation harnesses were recreated after the reset wiped `/tmp`.
+- Coverage: `internal/hollow` 98.0%. The only remaining branches are failures to create pipes, and Podman vanishing between preflight and launch.
+- Documentation: the ADR-010 implementation status (3a complete), the ADR index, the plan, and the roadmap above. Each says the runner is tested only against a fake Podman and that Mio does not use it yet.
+- Security review:
+  - Mio initiates and attributes every kill.
+  - No container survives a run, and leftovers from a crash can be removed.
+  - A hung Podman is bounded.
+  - The host and the image are checked before every run, and nothing runs on failure.
+  - Messages are bounded and printable.
+  - No high-confidence exploitable issue was found.
+- Local verification passed on the rebuilt toolchain:
+  - `make bootstrap`, `make lint`, `make test`, and `make security-test`;
+  - `go test -race -count=1 -timeout 300s ./...` and five repeated race runs of `internal/hollow`;
+  - every package with `CGO_ENABLED=0`;
+  - `git diff --cached --check`;
+  - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64.
+  - The tree is unchanged.
+- Pushes to `arena/c7a368c1-scopra`:
+  - test checkpoint `06f25b8` (red by design);
+  - implementation `3e6b63c`;
+  - this record, in a follow-up commit. My script that writes the record asserted 6 checklist boxes when the section has 7, so it failed, and the commit, which was not chained to the script, went ahead without the record.
+- CI was not checked, at the maintainer's request.
