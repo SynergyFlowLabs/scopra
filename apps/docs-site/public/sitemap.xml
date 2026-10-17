@@ -15,6 +15,7 @@
   <url><loc>https://scopra-six.vercel.app/docs/security/security-architecture.html</loc></url>
   <url><loc>https://scopra-six.vercel.app/docs/plan/implementation-plan.html</loc></url>
   <url><loc>https://scopra-six.vercel.app/docs/api/mcp-tools.html</loc></url>
+  <url><loc>https://scopra-six.vercel.app/docs/operations/installation.html</loc></url>
   <url><loc>https://scopra-six.vercel.app/docs/operations/runbooks.html</loc></url>
   <url><loc>https://scopra-six.vercel.app/docs/operations/deployment.html</loc></url>
   <url><loc>https://scopra-six.vercel.app/docs/community/security-policy.html</loc></url>
@@ -36,4 +37,5 @@
   <url><loc>https://scopra-six.vercel.app/docs/decisions/013-run-journal.html</loc></url>
   <url><loc>https://scopra-six.vercel.app/docs/decisions/014-open-source-no-pricing.html</loc></url>
   <url><loc>https://scopra-six.vercel.app/docs/decisions/015-documentation-site.html</loc></url>
+  <url><loc>https://scopra-six.vercel.app/docs/decisions/016-one-command-installer.html</loc></url>
 </urlset>

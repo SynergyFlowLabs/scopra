@@ -16,6 +16,33 @@ It is **free and open-source software** under the [MIT License](LICENSE), with n
 
 ---
 
+## Install
+
+One command, on a Linux machine with a terminal:
+
+```console
+$ curl -fsSL https://scopra-six.vercel.app/install.sh | sh
+```
+
+The script downloads the release archive for your architecture, checks its
+SHA-256 against the release's `checksums.txt`, and opens an interactive
+installer. The installer checks the system first (Linux, systemd user session,
+rootless Podman 4.0+ with cgroups v2), then asks where to put the binaries,
+whether to pin a sandbox image, and whether Mio should run as a systemd user
+service. Nothing changes until you confirm, and it never uses `sudo`.
+
+Scripted installs use the same path without the interface:
+
+```console
+$ curl -fsSL https://scopra-six.vercel.app/install.sh | sh -s -- --yes
+```
+
+See [Installing Scopra](docs/operations/installation.md) for the flags, the
+requirements, the exact files an install writes, verification, and
+troubleshooting. Building from source is covered under [Quick start](#quick-start).
+
+---
+
 ## Why Scopra
 
 Developers paste commands from AI tools into a terminal and paste the output back. That is slow, loses context, and pressures people into granting broad, unmonitored access.
@@ -75,6 +102,9 @@ Scopra is **pre-alpha**. It is not ready for production or sensitive machines.
 - `scopra service install/uninstall/status` for a systemd **user** service (ADR-012).
 - A bounded, metadata-only journal of answered runs and `scopra logs` (ADR-013).
 - Protocol packages for Messenger v1 envelopes, execution requests, and lifecycle messages.
+- A one-command interactive installer (`install.sh` + `scopra install`) with a
+  preflight, a digest-pinned image field, and an optional systemd user service
+  (ADR-016).
 
 **Not implemented yet**
 
@@ -154,6 +184,7 @@ Both binaries default to `$XDG_STATE_HOME/scopra` (`~/.local/state/scopra`). Pas
 | `scopra run (--workspace ID \| --path PATH) -- CMD [ARGS…]` | Run one command in Hollow |
 | `scopra logs [--workspace ID] [--limit N] [--json]` | Read the metadata-only run journal |
 | `scopra service install \| uninstall \| status` | Manage Mio as a systemd user service |
+| `scopra install [--dir PATH] [--sandbox-image IMAGE] [--yes]` | Interactive installer; `--yes` installs without the interface |
 | `scopra version` / `scoprad --version` | Print build version |
 
 Run flags include `--write`, `--workdir`, `--timeout`, `--memory`, `--cpus`, `--pids`, `--output-limit`, and `--reason`. See [`cmd/scopra/README.md`](cmd/scopra/README.md) and [`cmd/scoprad/README.md`](cmd/scoprad/README.md) for the full contract, exit statuses, and JSON shapes.
@@ -181,9 +212,10 @@ Read the [threat model](docs/security/threat-model.md), [risk register](docs/sec
 | [`PRD.md`](PRD.md) | Product requirements, users, principles, alpha scope |
 | [`docs/plans/00-full-implementation-plan.md`](docs/plans/00-full-implementation-plan.md) | Milestones and acceptance criteria |
 | [`docs/architecture/system-overview.md`](docs/architecture/system-overview.md) | How the pieces fit together |
-| [`docs/decisions/`](docs/decisions/) | Architecture Decision Records (ADR-001 … ADR-015) |
+| [`docs/decisions/`](docs/decisions/) | Architecture Decision Records (ADR-001 … ADR-016) |
 | [`docs/security/`](docs/security/) | Threat model, risk register, security architecture |
 | [`docs/product/`](docs/product/) | Naming and product notes |
+| [`docs/operations/installation.md`](docs/operations/installation.md) | The one-command install, requirements, flags, and troubleshooting |
 | [`docs/operations/deployment.md`](docs/operations/deployment.md) | How the documentation site is built, deployed, verified, and rolled back |
 | [`progress.md`](progress.md) | Running engineering log with verification evidence |
 | [`CHANGELOG.md`](CHANGELOG.md) | User-visible changes by release |
@@ -200,6 +232,8 @@ internal/localipc/    Strict IPC: envelope, workspace, execution, logs
 internal/workspace/   Canonical paths, ownership, fingerprints, registry
 internal/execution/   Workspace lookup, revalidation, executor wiring
 internal/hollow/      Rootless Podman argument builder, preflight, runner
+internal/installer/   Installer state machine, preflight, install, screens
+internal/tui/         Raw-mode terminal, key decoding, cell-grid renderer
 packages/protocol/    Messenger v1 envelopes and lifecycle messages
 apps/docs-site/       Generated static documentation site
 docs/                 Plan, architecture, security, ADRs

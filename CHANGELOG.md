@@ -12,6 +12,21 @@ version, and the wire protocol is versioned separately (see ADR-002 and ADR-009)
 
 ### Added
 
+- **One-command interactive installer (ADR-016).**
+  `curl -fsSL https://scopra-six.vercel.app/install.sh | sh` downloads the
+  release archive for the machine, verifies its SHA-256 against the release's
+  `checksums.txt`, and opens `scopra install`: a terminal interface that checks
+  the host (Linux, systemd user session, a resolvable state directory, rootless
+  Podman 4.0+ with cgroups v2), asks where to put the binaries, accepts an
+  optional digest-pinned sandbox image, offers a systemd user service, copies
+  both binaries atomically, and confirms the service with systemd instead of
+  trusting the previous step. `--yes` runs the same install without the
+  interface, and a run without a terminal and without `--yes` stops rather than
+  installing silently. New `internal/tui` (standard library only) provides
+  raw-mode input, ANSI key decoding, and a cell-grid renderer;
+  `internal/installer` holds the state machine, preflight, and install.
+  `scripts/release.sh` builds `linux/amd64` and `linux/arm64` archives with the
+  version stamped into both binaries, plus `checksums.txt`.
 - **Documentation site (ADR-015).** <https://scopra-six.vercel.app> publishes the
   README, the PRD, the ADRs, the security documents, and the community files as a
   static site. It is generated from the repository's Markdown by `tools/docsite`

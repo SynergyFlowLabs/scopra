@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADR-016: One-Command Interactive Installer — Scopra</title>
+<meta name="description" content="ADR-016: One-Command Interactive Installer — Scopra documentation.">
+<link rel="canonical" href="https://scopra-six.vercel.app/docs/decisions/016-one-command-installer.html">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0b0e14">
+<meta property="og:type" content="website">
+<meta property="og:title" content="ADR-016: One-Command Interactive Installer — Scopra">
+<meta property="og:description" content="ADR-016: One-Command Interactive Installer — Scopra documentation.">
+<meta property="og:url" content="https://scopra-six.vercel.app/docs/decisions/016-one-command-installer.html">
+<meta property="og:site_name" content="Scopra">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>Scopra</a>
+  <nav aria-label="Main">
+    <a href="/docs/">Docs</a>
+    <a href="/docs/overview.html">Overview</a>
+    <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">GitHub</a>
+  </nav>
+</header>
+<div class="layout"><nav class="sidebar" aria-label="Documentation"><p class="group">Overview</p><ul><li><a href="/docs/overview.html">Overview</a></li><li><a href="/docs/changelog.html">Changelog</a></li></ul><p class="group">Product</p><ul><li><a href="/docs/prd.html">Product Requirements</a></li><li><a href="/docs/product/alpha-scope.html">Alpha Scope</a></li><li><a href="/docs/product/naming.html">Naming</a></li></ul><p class="group">Architecture</p><ul><li><a href="/docs/architecture/system-overview.html">System Overview</a></li><li><a href="/docs/architecture/domain-model.html">Domain Model</a></li><li><a href="/docs/architecture/protocol.html">Protocol</a></li></ul><p class="group">Security</p><ul><li><a href="/docs/security/threat-model.html">Threat Model</a></li><li><a href="/docs/security/risk-register.html">Risk Register</a></li><li><a href="/docs/security/security-architecture.html">Security Architecture</a></li></ul><p class="group">Decisions</p><ul><li><a href="/docs/decisions.html">Architecture Decision Records</a></li><li><a href="/docs/decisions/001-go-module-layout.html">ADR-001: Initial Go Module Layout</a></li><li><a href="/docs/decisions/002-messenger-envelope-v1.html">ADR-002: Scopra Messenger Envelope v1 Structural Contract</a></li><li><a href="/docs/decisions/003-local-status-ipc.html">ADR-003: Mio Foreground Status Daemon and Local IPC v1</a></li><li><a href="/docs/decisions/004-workspace-validation.html">ADR-004: Workspace Path Validation and Fingerprint v1</a></li><li><a href="/docs/decisions/005-workspace-registry-storage.html">ADR-005: Workspace Registry Storage v1</a></li><li><a href="/docs/decisions/006-local-workspace-commands.html">ADR-006: Local Workspace Commands over IPC v1</a></li><li><a href="/docs/decisions/007-execution-request-v1.html">ADR-007: Execution Request v1 Structural Contract</a></li><li><a href="/docs/decisions/008-canonical-execution-request.html">ADR-008: Canonical Execution Request and Action Hash</a></li><li><a href="/docs/decisions/009-execution-lifecycle-messages.html">ADR-009: Execution States, Results, Output, Errors, and Cancellation</a></li><li><a href="/docs/decisions/010-hollow-rootless-podman.html">ADR-010: Hollow Containment Backend: Rootless Podman</a></li><li><a href="/docs/decisions/011-local-execution.html">ADR-011: Local Execution over the Mio Socket</a></li><li><a href="/docs/decisions/012-systemd-user-service.html">ADR-012: Mio as a systemd User Service</a></li><li><a href="/docs/decisions/013-run-journal.html">ADR-013: Bounded Local Run Journal and scopra logs</a></li><li><a href="/docs/decisions/014-open-source-no-pricing.html">ADR-014: MIT License and No Pricing Model</a></li><li><a href="/docs/decisions/015-documentation-site.html">ADR-015: A Generated Static Documentation Site on Vercel</a></li><li><a href="/docs/decisions/016-one-command-installer.html" class="current" aria-current="page">ADR-016: One-Command Interactive Installer</a></li></ul><p class="group">Planning</p><ul><li><a href="/docs/plan/implementation-plan.html">Implementation Plan</a></li></ul><p class="group">API</p><ul><li><a href="/docs/api/mcp-tools.html">MCP Tools</a></li></ul><p class="group">Operations</p><ul><li><a href="/docs/operations/installation.html">Installing Scopra</a></li><li><a href="/docs/operations/runbooks.html">Runbooks</a></li><li><a href="/docs/operations/deployment.html">Deploying the Site</a></li></ul><p class="group">Community</p><ul><li><a href="/docs/community/security-policy.html">Security Policy</a></li><li><a href="/docs/community/contributing.html">Contributing</a></li><li><a href="/docs/community/code-of-conduct.html">Code of Conduct</a></li></ul></nav><main id="main" class="content"><nav class="breadcrumb" aria-label="Breadcrumb"><a href="/docs/">Docs</a> <span aria-hidden="true">/</span> Decisions</nav><article class="prose"><h1 id="adr-016-one-command-interactive-installer">ADR-016: One-Command Interactive Installer</h1>
+<p><strong>Status:</strong> Accepted <strong>Date:</strong> 2026-10-17</p>
+<h2 id="context">Context</h2>
+<p>Installing Scopra by hand means four things a reader has to get right: pick the release archive for the architecture, verify it, put <code>scopra</code> and <code>scoprad</code> on <code>PATH</code>, and decide whether to write a systemd user unit. Each is easy to get wrong, and the consequences are quiet — a <code>scoprad</code> beside the wrong <code>scopra</code>, an unverified download, a unit pointing at a binary that does not exist.</p>
+<p>The project also has real prerequisites that a caller must understand before anything runs: rootless Podman 4.0 or later, cgroup v2 delegation, a systemd user session, and a resolvable state directory. Today the only guidance is prose in the README and <code>docs/operations/installation.md</code>, and the only script, <code>scripts/bootstrap.sh</code>, is a developer bootstrap that requires Go and downloads modules. Neither is an install experience for someone who just wants the tool.</p>
+<p>Two constraints shape the answer:</p>
+<ul>
+<li>the project ships <strong>one dependency-free Go toolchain</strong> and two binaries; adding a Node or Python installer would add a second language to own;</li>
+<li>the install writes files and enables a service, so it must be <strong>explicit, reviewable, and fail-closed</strong>. Silent installs, <code>sudo</code>, and <code>curl | sudo sh</code> are out.</li>
+</ul>
+<p>A plain <code>read</code>-driven shell prompt could ask the questions, but it cannot show live progress, a checklist that updates while Podman is queried, a cursor in a text field, or a resize-safe layout — and it is awkward to test. A TUI compiled from the same module can be tested without a terminal at all.</p>
+<h2 id="decision">Decision</h2>
+<p><strong>Two layers: a POSIX <code>install.sh</code> that only downloads and verifies, and a Go TUI (<code>scopra install</code>) that does the installing.</strong></p>
+<h3 id="install-sh-bootstrap-only"><code>install.sh</code> — bootstrap only</h3>
+<p>Published at <code>https://scopra-six.vercel.app/install.sh</code>, so the command a user copies is:</p>
+<pre><code class="language-console">$ curl -fsSL https://scopra-six.vercel.app/install.sh | sh
+</code></pre>
+<p>It is POSIX <code>sh</code> (dash, ash, busybox), <code>set -eu</code>, and does exactly this:</p>
+<ol>
+<li>refuses any platform other than Linux, with the reason, before downloading;</li>
+<li>maps <code>uname -m</code> to <code>amd64</code> or <code>arm64</code>;</li>
+<li>downloads <code>checksums.txt</code> and <code>scopra_linux_&lt;arch&gt;.tar.gz</code> from <code>https://github.com/SynergyFlowLabs/scopra/releases/latest/download</code> (or a tag from <code>SCOPRA_VERSION</code>) with <code>curl -f</code> or <code>wget</code>;</li>
+<li>requires <strong>exactly one</strong> checksum line naming the archive, of the right shape, and compares it with <code>sha256sum</code> or <code>shasum -a 256</code>;</li>
+<li>unpacks into a <code>mktemp -d</code> directory that a trap removes on exit;</li>
+<li>executes <code>scopra install &#34;$@&#34;</code> and returns its status.</li>
+</ol>
+<p>It never uses <code>sudo</code>, never evaluates downloaded text, never installs anything itself, and never writes outside the temporary directory. Because it passes its arguments through, <code>sh -s -- --yes --dir /opt/bin</code> works for scripted installs.</p>
+<p>The site build publishes the script rather than GitHub, so the copy-paste URL is the same host as the documentation, and a fix to the script ships with the next site deployment. The release assets remain on GitHub, where the checksums live beside them.</p>
+<h3 id="scopra-install-the-interactive-installer"><code>scopra install</code> — the interactive installer</h3>
+<p>A new <code>internal/tui</code> package (standard library only) provides raw-mode input on Linux, ANSI key decoding, a cell-grid frame renderer, and styled text. A new <code>internal/installer</code> package holds the state machine, the screens, the preflight, and the install itself. <code>cmd/scopra/install.go</code> wires them together.</p>
+<ul>
+<li><strong>The terminal is opened separately from stdin.</strong> <code>curl … | sh</code> gives the script&#39;s standard input to the shell, so the installer falls back to <code>/dev/tty</code>. Without that, the one-command install could not be interactive at all.</li>
+<li><strong>Keys are decoded, not assumed.</strong> CSI and SS3 sequences, Alt-modified runes, Shift-Tab, and a lone Escape are decoded; an idle incomplete sequence is discarded rather than guessed at, so a stray bracket cannot drive the interface. Control bytes from a paste are dropped before they reach a field.</li>
+<li><strong>Every check is the same rule Mio applies.</strong> The preflight runs <code>podman info --format json</code> and hands it to <code>hollow.ParsePodmanInfo</code> and <code>PodmanInfo.Check</code>, so version, rootless mode, cgroup version, and delegated controllers are judged once, in one place. A failing required check stops the install; there is no &#34;install anyway&#34;.</li>
+<li><strong>Nothing is silent.</strong> With no terminal and no <code>--yes</code>, the installer exits with an explanation instead of installing. The summary states what changed.</li>
+<li><strong>The install is small and repeatable.</strong> Create the directory, prove it is writable, copy each binary through a temporary file and a rename, then call the existing <code>scopra service install</code> (never a second implementation of the unit) and confirm with <code>scopra service status --json</code>. Any failure stops the sequence and is shown with the step that failed.</li>
+<li><strong>No terminal state leaks.</strong> Alternate screen, hidden cursor, and disabled line wrapping are restored on exit, interrupt, and quit; <code>Ctrl-C</code> exits 130.</li>
+</ul>
+<p>Non-interactive installs are the same core with a line-oriented reporter, so there is one implementation of the install and two front-ends.</p>
+<h3 id="releases-and-the-version-stamp">Releases and the version stamp</h3>
+<p><code>scripts/release.sh vX.Y.Z</code> cross-compiles <code>linux/amd64</code> and <code>linux/arm64</code> with <code>CGO_ENABLED=0</code> and <code>-trimpath</code>, stamps the tag into both binaries with <code>-X …/internal/buildinfo.VersionOverride</code>, and writes one archive per platform plus <code>checksums.txt</code>. The archives keep stable names, so <code>releases/latest/download</code> resolves without knowing the tag. <code>scopra version</code> reports the stamp; an invalid stamp is ignored, so a typo cannot produce a lying version.</p>
+<h2 id="consequences">Consequences</h2>
+<ul>
+<li>A user copies one line and gets a checklist, a choice of directory, an image field, a service question, live progress, and a summary — with nothing changed until they confirm.</li>
+<li>The installer is testable without a terminal: the model is a pure state machine, the frame renderer is asserted cell by cell, and <code>install.sh</code> is exercised end to end against a fake release, including a corrupted archive.</li>
+<li>Two artifacts must stay in sync: <code>install.sh</code> and the release naming scheme, and the installer and <code>scopra service install</code>. Tests pin the naming scheme and the installer calls the command rather than duplicating it.</li>
+<li><strong>The checksum is integrity, not authorship.</strong> <code>checksums.txt</code> travels beside the archive over the same TLS connection. A signature is not implemented; the documentation says so plainly rather than implying more.</li>
+<li>macOS and Windows are refused before anything is downloaded, because Mio&#39;s containment is Linux-only. Shipping archives that could not run would be worse than a clear refusal.</li>
+<li>The TUI is owned code: roughly a thousand lines including tests, which is the price of the no-dependency rule.</li>
+</ul>
+<h2 id="alternatives-considered">Alternatives considered</h2>
+<ul>
+<li><strong>A shell-only interactive installer.</strong> Rejected: arrow keys, a text cursor, resize handling, and a live checklist are not portable across <code>dash</code>, <code>ash</code>, and busybox, and the result could only be tested by driving a pty.</li>
+<li><strong>A third-party TUI library (Bubble Tea, tcell, termbox).</strong> Rejected: the project has no external Go dependencies, and the subset needed here — keys, frames, styles, raw mode — is small enough to own and test.</li>
+<li><strong>Installing with <code>sudo</code> into <code>/usr/local/bin</code>.</strong> Rejected: Mio is a per-user daemon with a per-user state directory, socket, and unit. A root install would create a second, mismatched set of paths and permissions.</li>
+<li><strong>Auto-detecting everything and installing without questions.</strong> Rejected: the sandbox image is a security decision, and installing a service that starts at login without asking changes the machine&#39;s behaviour. The preflight may pass silently; the decisions may not.</li>
+<li><strong>Skipping preflight when Podman is absent and installing anyway.</strong> Rejected: it would produce an install that cannot run, and the project&#39;s rule is to fail closed with a reason.</li>
+<li><strong>Publishing the installer as a second binary beside <code>scopra</code>.</strong> Rejected: one more artifact to build, sign, and explain; <code>scopra install --yes</code> already covers scripted installs.</li>
+<li><strong>A signed installer script or a Sigstore-signed release.</strong> Not rejected on principle — deferred. It needs key management and a signing step that this repository does not have yet; the documentation states the current boundary.</li>
+</ul>
+</article><p class="edit-link"><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/docs/decisions/016-one-command-installer.md" rel="noopener noreferrer">Edit this page on GitHub</a></p></main><aside class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#context">Context</a></li><li><a href="#decision">Decision</a></li><li class="toc-sub"><a href="#install-sh-bootstrap-only">install.sh — bootstrap only</a></li><li class="toc-sub"><a href="#scopra-install-the-interactive-installer">scopra install — the interactive installer</a></li><li class="toc-sub"><a href="#releases-and-the-version-stamp">Releases and the version stamp</a></li><li><a href="#consequences">Consequences</a></li><li><a href="#alternatives-considered">Alternatives considered</a></li></ul></aside></div><footer class="site-footer">
+  <div class="footer-inner">
+    <p><strong>Scopra</strong> — controlled execution for AI agents. Free and open source under the <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE">MIT License</a>.</p>
+    <p class="muted">No pricing model, no telemetry, no account. Generated from the Markdown in <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">the repository</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

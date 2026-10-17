@@ -1,0 +1,185 @@
+package installer
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/SynergyFlowLabs/scopra/internal/tui"
+)
+
+func plainSheet() tui.StyleSheet {
+	return tui.StyleSheet{Profile: tui.ProfileNone}
+}
+
+// screens returns one model per screen, so a single loop can check them all.
+func screens(t *testing.T) map[string]*Model {
+	t.Helper()
+	location := modelAtLocation(t)
+	image := modelAtImage(t)
+	service := modelAtService(t)
+	running := modelAtService(t)
+	press(running, tui.KeyEnter)
+	_ = running.Intent()
+	done := modelAtService(t)
+	press(done, tui.KeyEnter)
+	done.Update(Message{Result: &Result{Dir: "/tmp/bin", Version: "v1.2.3", Service: true, ServiceActive: true}})
+	failed := modelAtService(t)
+	failed.Update(Message{Err: errTest})
+	aborted := newTestModel()
+	aborted.Screen = ScreenAborted
+	checks := newTestModel()
+	checks.Screen = ScreenChecks
+	checks.checks = failChecks()
+	checks.checksRunning = false
+	return map[string]*Model{
+		"welcome":  newTestModel(),
+		"checks":   checks,
+		"location": location,
+		"image":    image,
+		"service":  service,
+		"running":  running,
+		"done":     done,
+		"failed":   failed,
+		"aborted":  aborted,
+	}
+}
+
+var errTest = &testError{"disk full"}
+
+type testError struct{ message string }
+
+func (e *testError) Error() string { return e.message }
+
+func TestViewFitsEveryScreen(t *testing.T) {
+	sizes := [][2]int{{56, 18}, {80, 24}, {120, 40}}
+	for name, model := range screens(t) {
+		for _, size := range sizes {
+			rendered := model.View(size[0], size[1], plainSheet())
+			lines := strings.Split(rendered, "\n")
+			if len(lines) > size[1] {
+				t.Fatalf("%s at %dx%d: %d lines", name, size[0], size[1], len(lines))
+			}
+			for index, line := range lines {
+				if width := tui.StringWidth(line); width > size[0] {
+					t.Fatalf("%s at %dx%d: line %d is %d cells wide: %q", name, size[0], size[1], index, width, line)
+				}
+				if strings.ContainsRune(line, 0x1b) {
+					t.Fatalf("%s at %dx%d: plain output contains an escape: %q", name, size[0], size[1], line)
+				}
+			}
+		}
+	}
+}
+
+func TestViewAsksForABiggerTerminal(t *testing.T) {
+	model := newTestModel()
+	rendered := model.View(40, 10, plainSheet())
+	if !strings.Contains(rendered, "too small") {
+		t.Fatalf("rendered = %q", rendered)
+	}
+}
+
+func TestViewShowsTheVersionAndTheStepRail(t *testing.T) {
+	rendered := newTestModel().View(80, 24, plainSheet())
+	if !strings.Contains(rendered, "v1.2.3") {
+		t.Fatalf("version missing: %q", rendered)
+	}
+	for _, label := range []string{"Preflight", "Location", "Sandbox", "Install"} {
+		if !strings.Contains(rendered, label) {
+			t.Fatalf("rail label %q missing", label)
+		}
+	}
+}
+
+func TestViewNamesTheFailedCheckAndItsFix(t *testing.T) {
+	model := newTestModel()
+	model.Screen = ScreenChecks
+	model.checks = failChecks()
+	rendered := model.View(80, 24, plainSheet())
+	for _, want := range []string{"Rootless Podman", "podman is not available", "Install Podman."} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("checks screen does not mention %q: %q", want, rendered)
+		}
+	}
+}
+
+func TestViewExplainsWhyTheServiceIsUnavailable(t *testing.T) {
+	model := NewModel("v1.2.3", "/tmp/bin", "", false)
+	model.Screen = ScreenService
+	rendered := model.View(80, 24, plainSheet())
+	if !strings.Contains(rendered, "scoprad was not found") {
+		t.Fatalf("rendered = %q", rendered)
+	}
+}
+
+func TestViewHidesTheCommandLineWhenTheServiceIsAvailable(t *testing.T) {
+	model := NewModel("v1.2.3", "/tmp/bin", "", true)
+	model.Screen = ScreenService
+	rendered := model.View(80, 24, plainSheet())
+	if strings.Contains(rendered, "scoprad was not found") {
+		t.Fatalf("rendered = %q", rendered)
+	}
+	if !strings.Contains(rendered, "systemd user service") {
+		t.Fatalf("rendered = %q", rendered)
+	}
+}
+
+func TestDoneScreenShowsWarningsAndThePathHint(t *testing.T) {
+	model := newTestModel()
+	model.Screen = ScreenDone
+	model.result = &Result{
+		Dir:      "/tmp/bin",
+		Version:  "v1.2.3",
+		Service:  true,
+		Warnings: []string{"No sandbox image was configured."},
+	}
+	model.PathNotice = `export PATH="/tmp/bin:$PATH"`
+	rendered := model.View(90, 30, plainSheet())
+	for _, want := range []string{"/tmp/bin", "No sandbox image", "export PATH", "workspace add"} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("done screen does not mention %q: %q", want, rendered)
+		}
+	}
+}
+
+func TestViewDrawsTheInputCursor(t *testing.T) {
+	model := modelAtLocation(t)
+	frame := tui.NewFrame(80, 24)
+	model.drawField(frame, 2, 4, 60, model.Dir, true)
+	found := false
+	for y := 0; y < 24; y++ {
+		for x := 0; x < 80; x++ {
+			if frame.Cell(x, y).Style == styleCursor {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatal("the cursor cell was not drawn")
+	}
+}
+
+func TestViewSpinsWhileTheChecksRun(t *testing.T) {
+	model := newTestModel()
+	model.Screen = ScreenChecks
+	model.checksRunning = true
+	first := model.View(80, 24, plainSheet())
+	if !strings.Contains(first, "Checking your system") {
+		t.Fatalf("rendered = %q", first)
+	}
+	model.Update(Message{Tick: true})
+	second := model.View(80, 24, plainSheet())
+	if first == second {
+		t.Fatal("the spinner must visibly change")
+	}
+}
+
+func TestViewUsesColorWhenTheProfileAllowsIt(t *testing.T) {
+	rendered := newTestModel().View(80, 24, tui.StyleSheet{Profile: tui.Profile256})
+	if !strings.ContainsRune(rendered, 0x1b) {
+		t.Fatal("the color profile must emit escape sequences")
+	}
+	if !strings.Contains(rendered, "scopra") {
+		t.Fatalf("rendered = %q", rendered)
+	}
+}

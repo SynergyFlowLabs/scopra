@@ -50,6 +50,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return runLogs(ctx, args[1:], stdout, stderr)
 	case "service":
 		return runService(ctx, args[1:], stdout, stderr)
+	case "install":
+		return runInstall(ctx, args[1:], stdout, stderr)
 	case "version", "--version":
 		if len(args) != 1 {
 			return failUsage(stderr, "version takes no arguments")
@@ -140,6 +142,8 @@ commands:
                                                    install Scopra Mio as a systemd user service
   service uninstall                                stop and remove the systemd user service
   service status [--json]                          report the unit and its systemd state
+  install [--dir PATH] [--sandbox-image IMAGE] [--scoprad PATH]
+      [--no-service] [--yes]                       install Scopra interactively, or plainly with --yes
   version                                          print the scopra version
 
 Flags go before PATH or ID.

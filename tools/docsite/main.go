@@ -75,6 +75,7 @@ var rootDocuments = []struct {
 	{"docs/security/security-architecture.md", "security/security-architecture", "security", "Security Architecture"},
 	{"docs/plans/00-full-implementation-plan.md", "plan/implementation-plan", "plan", "Implementation Plan"},
 	{"docs/api/mcp-tools.md", "api/mcp-tools", "api", "MCP Tools"},
+	{"docs/operations/installation.md", "operations/installation", "operations", "Installing Scopra"},
 	{"docs/operations/runbooks.md", "operations/runbooks", "operations", "Runbooks"},
 	{"docs/operations/deployment.md", "operations/deployment", "operations", "Deploying the Site"},
 	{"SECURITY.md", "community/security-policy", "community", "Security Policy"},
