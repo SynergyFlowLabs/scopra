@@ -2,8 +2,8 @@
 
 **Started:** 2026-10-16 (Asia/Karachi)
 **Current phase:** Milestone 1 — local secure execution foundation
-**Current increment:** Messenger v1 reference payloads in `packages/test-fixtures` (Step 21)
-**Status:** Implemented on `arena/c7a368c1-scopra`; local checks passed; CI is out of scope for now at the maintainer's request
+**Current increment:** Hollow `podman run` argument builder (Step 22, increment 1 of ADR-010)
+**Status:** Proposed. The ADR-010 draft and the checklist below await the maintainer's confirmation, and no code has been written. CI is out of scope for now at the maintainer's request
 
 This file is the running engineering log. Each increment records scope, verification, commit, and push status. Security-sensitive work remains incremental, testable, and fail-closed.
 
@@ -1596,3 +1596,52 @@ Non-goals:
   - build, vet, and test-compile for darwin/arm64, darwin/amd64, windows/amd64, and linux/arm64.
   - The tree is regenerated for the 43 new files.
 - Pushes to `arena/c7a368c1-scopra`: test checkpoint `e028e5e` (red by design), then the commit that adds the fixtures and this record. CI was not checked, at the maintainer's request.
+
+### 2026-10-17 — Step 22 (proposed): Hollow `podman run` argument builder (ADR-010, increment 1 of 4)
+
+- Selection: after Step 21 the default was (a), proposing the rootless Podman sandbox as ADR-010 before any code. The maintainer replied "continue". Implementation starts only after confirmation; a "continue" accepts the proposal.
+- Research:
+  - the plan's Workspace and containment, Execution and policy, adversarial-test, and exit-gate tasks;
+  - the threat model;
+  - the risk register (R-01 and R-09);
+  - ADR-004, ADR-007, and ADR-009.
+- Podman facts were checked against its documentation, its source code at v6.1.4 (released 2026-10-12, read through the GitHub API), and its release notes. No Podman exists in this sandbox.
+  - The default `journald` log driver would store output, so ADR-010 uses `passthrough`.
+  - Swap defaults to twice `--memory`, so ADR-010 sets `--memory-swap` equal to `--memory`.
+  - Once `--entrypoint` is set, the image's `CMD` is ignored (`makeCommand`), which keeps the argument vector exact.
+  - `--mount` is parsed as CSV with `encoding/csv` (`FindMountType`), and options split at their first `=`.
+  - `relabel` and `U` rewrite host files.
+  - `passthrough` and `--unsetenv-all` both arrived in Podman 4.0.0.
+  - The documentation says `--memory-swap` "must be larger" than `--memory`, while the runtime accepts an equal value meaning no swap. Increment 3 must verify this on a real host.
+- Decisions proposed in ADR-010 that most need a maintainer's view:
+  - the image is a required setting pinned by digest, with no default, so nothing runs until it is chosen;
+  - SELinux labels are disabled for the container rather than the workspace relabelled;
+  - `/tmp` allows execution;
+  - the minimum is Podman 4.0, which excludes Ubuntu 22.04;
+  - increments 3 and 4 need a host with rootless Podman.
+
+#### Acceptance checklist (proposed, not yet agreed)
+
+- [ ] ADR-010 is accepted, with any changes the maintainer asks for, and indexed as accepted.
+- [ ] `internal/hollow` builds the exact `podman run` argument vector of ADR-010 from a validated request, a canonical workspace path, and a pinned image. Tests pin the complete vector for the ADR-007 example and for ADR-008's vector 2.
+- [ ] It rejects, with typed errors, the following:
+  - an invalid request;
+  - a workspace path that is relative, not UTF-8, or contains control characters;
+  - an image reference without a digest.
+
+  It quotes the mount source as CSV, which is tested with paths containing `,`, `"`, `:`, `=`, and spaces, and checked against an `encoding/csv` round trip.
+- [ ] Property tests:
+  - exactly one bind mount, the workspace, read-only unless access is read-write;
+  - no forbidden argument ever appears;
+  - everything after the image is the request's executable and arguments, verbatim, including arguments that look like Podman options;
+  - limits map exactly: millicores to an exact decimal CPU count, bytes with no swap, PIDs, and the timeout plus 10 seconds.
+
+  A fuzz test over request text and paths keeps that shape.
+- [ ] No process is started, there is no new dependency, and full verification passes.
+
+Non-goals:
+- Preflight checks (increment 2).
+- Running Podman, streaming output, cancellation, and cleanup (increment 3).
+- Adversarial tests (increment 4).
+- Choosing the image.
+- A Mio setting for the image, which comes with the runner.
