@@ -2878,3 +2878,10 @@ Commit `26590a6` (`feat(journal): record run metadata and add scopra logs`) hold
 - Updated control-plane/dashboard/root deployment docs. `npm ci --workspace=@scopra/control-plane --include-workspace-root=false --no-audit --no-fund && npm run build --workspace=@scopra/control-plane` was run successfully, matching the Render build command.
 - Verification: `npm test` passes (10 dashboard, 18 control-plane tests); `npm run lint`, `npm run build`, production `npm audit` (0 advisories), `git diff --check`, shell syntax, and the keypair test pass.
 - Not deployed: the changes are pushed to the existing PR #3 on `arena/fe74ddf7-scopra`, but Render and Vercel secrets/hostnames are not configured and no Render resource was created. Docker and Go are unavailable, so the container path and Go CLI compile/tests remain unverified. The Render API guide recommends a paid always-on service and persistent Postgres for continuing presence.
+
+### 2026-10-18 — Step 45: fix the Render production-build dependency install
+
+- The first Render build failed with TypeScript TS2688 because Render supplied `NODE_ENV=production` while `npm ci` omitted the control-plane workspace's development-only `@types/node` needed by `tsc`.
+- Added the root `control-plane:render-build` script: explicitly install dev dependencies for compilation, build Caloris, then prune dev dependencies from the runtime install. Updated the Render runbook to use this command and explain why the previous command failed.
+- Verification: `NODE_ENV=production npm run control-plane:render-build` passes, including the post-build production prune; `npm test` (10 dashboard, 18 control-plane), `npm run lint`, `npm run build`, `npm audit --omit=dev` (0 advisories), and `git diff --check` pass.
+- Not redeployed: the existing Render service's dashboard Build Command must be changed to `npm run control-plane:render-build`; no Render service settings were changed here.

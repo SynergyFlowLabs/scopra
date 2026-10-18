@@ -60,15 +60,19 @@ the form in the screenshot, use these values:
 | Region | `Oregon (US West)` — same as PostgreSQL |
 | Language/runtime | **Node** (not Yarn; the project uses npm workspaces) |
 | Root Directory | Leave blank (repository root; needed for root `package-lock.json`) |
-| Build Command | `npm ci --workspace=@scopra/control-plane --include-workspace-root=false --no-audit --no-fund && npm run build --workspace=@scopra/control-plane` |
+| Build Command | `npm run control-plane:render-build` |
 | Start Command | `npm run start --workspace=@scopra/control-plane` |
 | Health Check Path | `/healthz` (under Advanced settings, if not on the first form) |
 | Compute | Paid always-on plan for normal use; Free only for a short-lived demo |
 
 Do **not** use the prefilled `yarn install; yarn build` or `yarn start` values.
-The root-level `.node-version` pins Node 22.22.3. Render automatically sets
-`PORT`; the server binds to that port and `0.0.0.0`. Do not set
-`SCOPRA_API_PORT`, because that would override Render's assigned port.
+Render receives `NODE_ENV=production` during the build, so plain `npm ci` omits
+the workspace's development-only TypeScript and `@types/node` packages. The
+`control-plane:render-build` script explicitly includes dev dependencies for
+compilation, then prunes them from the runtime install. The root-level
+`.node-version` pins Node 22.22.3. Render automatically sets `PORT`; the server
+binds to that port and `0.0.0.0`. Do not set `SCOPRA_API_PORT`, because that
+would override Render's assigned port.
 
 ## 3. Add Render environment variables
 

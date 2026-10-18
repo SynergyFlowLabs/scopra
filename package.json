@@ -11,6 +11,7 @@
     "dashboard:start": "npm run start --workspace=@scopra/dashboard",
     "control-plane:dev": "npm run dev --workspace=@scopra/control-plane",
     "control-plane:start": "npm run start --workspace=@scopra/control-plane",
+    "control-plane:render-build": "npm ci --include=dev --workspace=@scopra/control-plane --include-workspace-root=false --no-audit --no-fund && npm run build --workspace=@scopra/control-plane && npm prune --omit=dev --workspace=@scopra/control-plane --include-workspace-root=false --no-audit --no-fund",
     "build": "npm run build --workspace=@scopra/dashboard && npm run build --workspace=@scopra/control-plane",
     "lint": "npm run lint --workspace=@scopra/dashboard && npm run lint --workspace=@scopra/control-plane",
     "test": "npm run test --workspace=@scopra/dashboard && npm run test --workspace=@scopra/control-plane"
