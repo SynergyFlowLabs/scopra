@@ -105,8 +105,9 @@ export default async function Home() {
     controlPlaneError = error instanceof ControlPlaneError ? error.message : "Control plane is unavailable.";
   }
   const controlPlaneAvailable = controlPlaneError === null;
+  const signingKeyConfigured = Boolean(process.env.SCOPRA_API_JWT_PRIVATE_KEY);
   const workspaceCount = initialMachines.reduce((count, machine) => count + machine.workspaces.length, 0);
-  const pairingEnabled = controlPlaneAvailable && Boolean(process.env.SCOPRA_API_JWT_PRIVATE_KEY);
+  const pairingEnabled = controlPlaneAvailable && signingKeyConfigured;
 
   return (
     <main className="dashboard-layout">
@@ -137,7 +138,7 @@ export default async function Home() {
           <article className="summary-card summary-card-accent"><div className="summary-label">SECURITY POSTURE</div><div className="summary-value summary-value-small">Default deny</div><div className="summary-note"><span className="good-dot" /> No remote execution enabled</div><span className="summary-icon">◈</span></article>
         </div>
         <div className="section-heading" id="machines"><div><h2>Your machines</h2><p>Machines connected to this account</p></div><span className={`live-pill ${controlPlaneAvailable ? "live-pill-online" : "live-pill-offline"}`}><span className="state-dot" /> {controlPlaneAvailable ? "LIVE PRESENCE" : "PRESENCE UNAVAILABLE"}</span></div>
-        <MachineInventory initialMachines={initialMachines} initialError={controlPlaneError} pairingEnabled={pairingEnabled} />
+        <MachineInventory initialMachines={initialMachines} initialError={controlPlaneError} pairingEnabled={pairingEnabled} signingKeyConfigured={signingKeyConfigured} />
         <footer className="dashboard-footer"><span>SCOPRA · SECURE EXECUTION, ON YOUR TERMS</span><span><a href="https://scopra-six.vercel.app/" rel="noreferrer">Documentation</a><i /> <a href="https://github.com/SynergyFlowLabs/scopra" rel="noreferrer">GitHub</a></span></footer>
       </section>
     </main>
