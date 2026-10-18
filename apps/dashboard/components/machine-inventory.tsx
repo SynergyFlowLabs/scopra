@@ -13,10 +13,12 @@ export function MachineInventory({
   initialMachines,
   initialError,
   pairingEnabled,
+  signingKeyConfigured,
 }: {
   initialMachines: MachineView[];
   initialError: string | null;
   pairingEnabled: boolean;
+  signingKeyConfigured: boolean;
 }) {
   const [inventory, setInventory] = useState<InventoryState>({
     machines: initialMachines,
@@ -167,7 +169,11 @@ export function MachineInventory({
       {pairingOpen && inventory.connected && (
         <section className="pairing-panel" aria-labelledby="pairing-title">
           <div className="pairing-heading"><div><span className="empty-kicker">ONE-TIME APPROVAL</span><h3 id="pairing-title">Pair a machine</h3><p>The code is single-use and expires after five minutes. It is never put in a URL.</p></div><span className="pairing-shield">◈</span></div>
-          {!pairingEnabled && <div className="pairing-warning" role="status">The control-plane signing key is not configured for this dashboard deployment.</div>}
+          {!signingKeyConfigured ? (
+            <div className="pairing-warning" role="status">The control-plane signing key is not configured for this dashboard deployment.</div>
+          ) : !pairingEnabled ? (
+            <div className="pairing-warning" role="status">The control plane is unavailable. Pairing will be enabled when the service is back online.</div>
+          ) : null}
           <form className="pairing-form" onSubmit={inspect}>
             <label htmlFor="pairing-code">Pairing code</label>
             <div className="pairing-input-row"><input id="pairing-code" name="pairingCode" value={pairingCode} onChange={(event) => { setPairingCode(event.target.value); setInspection(null); setPairingMessage(""); }} autoComplete="off" autoCapitalize="off" spellCheck={false} inputMode="text" maxLength={22} placeholder="Paste the 22-character code" disabled={!pairingEnabled || busy} /><button className="button button-primary" type="submit" disabled={!pairingEnabled || busy}>{busy ? "Checking…" : "Inspect code"}</button></div>
