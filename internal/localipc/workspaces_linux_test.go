@@ -72,7 +72,7 @@ func TestWorkspaceCommandsRoundTrip(t *testing.T) {
 	}
 }
 
-func TestWorkspaceErrorsReachTheClient(t *testing.T) {
+func TestReplyErrorsReachTheClient(t *testing.T) {
 	stateDir := startWorkspaceDaemon(t)
 	base := t.TempDir()
 	registered := makeWorkspaceDir(t, base, "registered")
@@ -115,9 +115,9 @@ func TestWorkspaceErrorsReachTheClient(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			err := test.call()
-			var replyErr *WorkspaceError
+			var replyErr *ReplyError
 			if !errors.As(err, &replyErr) || replyErr.Code != test.want || replyErr.Message == "" {
-				t.Fatalf("error = %v, want a *WorkspaceError with code %q and a message", err, test.want)
+				t.Fatalf("error = %v, want a *ReplyError with code %q and a message", err, test.want)
 			}
 			if text := err.Error(); !strings.Contains(text, test.want) || !strings.Contains(text, replyErr.Message) {
 				t.Fatalf("Error() = %q, want the code and the message", text)
@@ -126,7 +126,7 @@ func TestWorkspaceErrorsReachTheClient(t *testing.T) {
 	}
 }
 
-func TestWorkspaceErrorsReportForeignOwnership(t *testing.T) {
+func TestReplyErrorsReportForeignOwnership(t *testing.T) {
 	info, err := os.Stat("/usr")
 	if err != nil || os.Geteuid() == 0 || info.Sys().(*syscall.Stat_t).Uid != 0 {
 		t.Skip("needs a root-owned /usr and a non-root test user")
@@ -134,13 +134,13 @@ func TestWorkspaceErrorsReportForeignOwnership(t *testing.T) {
 	stateDir := startWorkspaceDaemon(t)
 
 	_, err = AddWorkspace(requestContext(t), stateDir, "/usr")
-	var replyErr *WorkspaceError
+	var replyErr *ReplyError
 	if !errors.As(err, &replyErr) || replyErr.Code != CodeNotOwned {
 		t.Fatalf("AddWorkspace(/usr) error = %v, want code %q", err, CodeNotOwned)
 	}
 }
 
-func TestWorkspaceErrorsFromRegistryFailures(t *testing.T) {
+func TestReplyErrorsFromRegistryFailures(t *testing.T) {
 	tests := []struct {
 		err  error
 		want string
@@ -157,7 +157,7 @@ func TestWorkspaceErrorsFromRegistryFailures(t *testing.T) {
 			serveInBackground(t, daemon)
 
 			_, err := AddWorkspace(requestContext(t), stateDir, "/srv/project")
-			var replyErr *WorkspaceError
+			var replyErr *ReplyError
 			if !errors.As(err, &replyErr) || replyErr.Code != test.want || !strings.Contains(replyErr.Message, test.err.Error()) {
 				t.Fatalf("AddWorkspace() error = %v, want code %q carrying %q", err, test.want, test.err)
 			}
@@ -274,7 +274,7 @@ func TestSecurity_WorkspaceCommandsNeedAnEnabledRegistry(t *testing.T) {
 	ctx := requestContext(t)
 
 	_, err := AddWorkspace(ctx, stateDir, workspaceDir)
-	var replyErr *WorkspaceError
+	var replyErr *ReplyError
 	if err == nil || errors.As(err, &replyErr) {
 		t.Fatalf("AddWorkspace() without a registry error = %v, want the connection closed without a reply", err)
 	}

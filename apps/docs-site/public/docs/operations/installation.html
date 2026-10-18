@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Installing Scopra — Scopra</title>
+<meta name="description" content="Installing Scopra — Scopra documentation.">
+<link rel="canonical" href="https://scopra-six.vercel.app/docs/operations/installation.html">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0b0e14">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Installing Scopra — Scopra">
+<meta property="og:description" content="Installing Scopra — Scopra documentation.">
+<meta property="og:url" content="https://scopra-six.vercel.app/docs/operations/installation.html">
+<meta property="og:site_name" content="Scopra">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>Scopra</a>
+  <nav aria-label="Main">
+    <a href="/docs/">Docs</a>
+    <a href="/docs/overview.html">Overview</a>
+    <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">GitHub</a>
+  </nav>
+</header>
+<div class="layout"><nav class="sidebar" aria-label="Documentation"><p class="group">Overview</p><ul><li><a href="/docs/overview.html">Overview</a></li><li><a href="/docs/changelog.html">Changelog</a></li></ul><p class="group">Product</p><ul><li><a href="/docs/prd.html">Product Requirements</a></li><li><a href="/docs/product/alpha-scope.html">Alpha Scope</a></li><li><a href="/docs/product/naming.html">Naming</a></li></ul><p class="group">Architecture</p><ul><li><a href="/docs/architecture/system-overview.html">System Overview</a></li><li><a href="/docs/architecture/domain-model.html">Domain Model</a></li><li><a href="/docs/architecture/protocol.html">Protocol</a></li></ul><p class="group">Security</p><ul><li><a href="/docs/security/threat-model.html">Threat Model</a></li><li><a href="/docs/security/risk-register.html">Risk Register</a></li><li><a href="/docs/security/security-architecture.html">Security Architecture</a></li></ul><p class="group">Decisions</p><ul><li><a href="/docs/decisions.html">Architecture Decision Records</a></li><li><a href="/docs/decisions/001-go-module-layout.html">ADR-001: Initial Go Module Layout</a></li><li><a href="/docs/decisions/002-messenger-envelope-v1.html">ADR-002: Scopra Messenger Envelope v1 Structural Contract</a></li><li><a href="/docs/decisions/003-local-status-ipc.html">ADR-003: Mio Foreground Status Daemon and Local IPC v1</a></li><li><a href="/docs/decisions/004-workspace-validation.html">ADR-004: Workspace Path Validation and Fingerprint v1</a></li><li><a href="/docs/decisions/005-workspace-registry-storage.html">ADR-005: Workspace Registry Storage v1</a></li><li><a href="/docs/decisions/006-local-workspace-commands.html">ADR-006: Local Workspace Commands over IPC v1</a></li><li><a href="/docs/decisions/007-execution-request-v1.html">ADR-007: Execution Request v1 Structural Contract</a></li><li><a href="/docs/decisions/008-canonical-execution-request.html">ADR-008: Canonical Execution Request and Action Hash</a></li><li><a href="/docs/decisions/009-execution-lifecycle-messages.html">ADR-009: Execution States, Results, Output, Errors, and Cancellation</a></li><li><a href="/docs/decisions/010-hollow-rootless-podman.html">ADR-010: Hollow Containment Backend: Rootless Podman</a></li><li><a href="/docs/decisions/011-local-execution.html">ADR-011: Local Execution over the Mio Socket</a></li><li><a href="/docs/decisions/012-systemd-user-service.html">ADR-012: Mio as a systemd User Service</a></li><li><a href="/docs/decisions/013-run-journal.html">ADR-013: Bounded Local Run Journal and scopra logs</a></li><li><a href="/docs/decisions/014-open-source-no-pricing.html">ADR-014: MIT License and No Pricing Model</a></li><li><a href="/docs/decisions/015-documentation-site.html">ADR-015: A Generated Static Documentation Site on Vercel</a></li><li><a href="/docs/decisions/016-one-command-installer.html">ADR-016: One-Command Interactive Installer</a></li><li><a href="/docs/decisions/017-opt-in-prerequisite-provisioning.html">ADR-017: Opt-In Prerequisite Provisioning</a></li></ul><p class="group">Planning</p><ul><li><a href="/docs/plan/implementation-plan.html">Implementation Plan</a></li></ul><p class="group">API</p><ul><li><a href="/docs/api/mcp-tools.html">MCP Tools</a></li></ul><p class="group">Operations</p><ul><li><a href="/docs/operations/installation.html" class="current" aria-current="page">Installing Scopra</a></li><li><a href="/docs/operations/runbooks.html">Runbooks</a></li><li><a href="/docs/operations/deployment.html">Deploying the Site</a></li></ul><p class="group">Community</p><ul><li><a href="/docs/community/security-policy.html">Security Policy</a></li><li><a href="/docs/community/contributing.html">Contributing</a></li><li><a href="/docs/community/code-of-conduct.html">Code of Conduct</a></li></ul></nav><main id="main" class="content"><nav class="breadcrumb" aria-label="Breadcrumb"><a href="/docs/">Docs</a> <span aria-hidden="true">/</span> Operations</nav><article class="prose"><h1 id="installing-scopra">Installing Scopra</h1>
+<p>One command installs Scopra on a Linux machine:</p>
+<pre><code class="language-console">$ curl -fsSL https://scopra-six.vercel.app/install.sh | sh
+</code></pre>
+<p>It downloads the release for your architecture, verifies its SHA-256 against the release&#39;s <code>checksums.txt</code>, and hands your terminal to an interactive installer. Nothing is changed until you confirm. The script itself never runs a privileged command and never edits your shell profile: the install writes only into your install directory and, if you ask for one, your systemd user unit.</p>
+<h2 id="what-the-installer-asks">What the installer asks</h2>
+<ol>
+<li><strong>Preflight.</strong> Linux, a systemd user session, a resolvable state directory, and rootless Podman 4.0 or later with cgroups v2 delegation. The Podman probe runs in a transient systemd user service requesting the same controllers as <code>scoprad.service</code>, not in the terminal&#39;s often less-delegated cgroup. A failed check stops the install; Scopra never falls back to running commands without containment. When Podman or its delegation is the missing piece and the installer can fix it safely, the screen offers an opt-in plan (next section).</li>
+<li><strong>Location.</strong> Where to put <code>scopra</code> and <code>scoprad</code>. The default is <code>$XDG_BIN_HOME</code> when it is absolute, otherwise <code>~/.local/bin</code>.</li>
+<li><strong>Sandbox image</strong> (optional). A container image pinned by digest, such as <code>debian@sha256:…</code>. Mio never pulls an image, so the digest must already be in local storage. Leaving this empty installs the binaries only; without an image Mio refuses every run.</li>
+<li><strong>Background service.</strong> A systemd <strong>user</strong> unit (<code>scoprad.service</code>) that starts Mio with <code>Delegate=cpu cpuset io memory pids</code>, or the command line only. If you explicitly skip the unit, the installer separately checks Podman in the current process context where you will start <code>scoprad</code> manually.</li>
+<li><strong>Install.</strong> It copies the two binaries into place atomically, writes the unit if you asked for one, then asks systemd for the service state rather than trusting the previous step.</li>
+</ol>
+<h2 id="if-a-prerequisite-is-missing">If a prerequisite is missing</h2>
+<p>The preflight does not stop at &#34;install it yourself&#34;. When it knows how to fix what failed, the checks screen adds one line:</p>
+<pre><code class="language-text">Press f and the installer can fix this for you.
+</code></pre>
+<p><code>f</code> opens a screen that prints every command it would run — exactly, argument for argument — and nothing runs until you press <code>y</code>:</p>
+<pre><code class="language-console">sudo apt-get update
+sudo apt-get install -y podman uidmap slirp4netns fuse-overlayfs
+</code></pre>
+<p>Enter, <code>n</code>, or Escape cancels and leaves the manual instructions in place. <code>--yes</code> never provisions: an unattended run has no one to ask. It does print the same commands, with an absolute path to the staged drop-in where one is needed, so a scripted run tells you exactly what to type next.</p>
+<p>The plan comes from <code>/etc/os-release</code> and a fixed table, never from guessing:</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Distribution (<code>ID</code> or <code>ID_LIKE</code>)</th><th>Commands</th></tr></thead>
+<tbody>
+<tr><td>Fedora, RHEL, CentOS, Rocky, AlmaLinux, Oracle Linux</td><td><code>dnf install -y podman</code></td></tr>
+<tr><td>Debian, Ubuntu, and derivatives such as Mint</td><td><code>apt-get update</code>, then <code>apt-get install -y podman uidmap slirp4netns fuse-overlayfs</code></td></tr>
+<tr><td>Arch</td><td><code>pacman -Sy --needed --noconfirm podman</code></td></tr>
+<tr><td>openSUSE, SLES</td><td><code>zypper --non-interactive install podman</code></td></tr>
+<tr><td>Alpine</td><td><code>apk add --no-cache podman</code></td></tr>
+</tbody></table></div>
+<p><code>sudo</code> is prefixed only when the installer is not already root, and only if <code>sudo</code> exists. An unknown distribution, a missing package manager, or a non-root process without <code>sudo</code> produces no plan at all: the installer shows the manual command instead of guessing. The packages come from your distribution&#39;s own repositories; the installer never adds a repository, never downloads a binary, and never runs a shell.</p>
+<p>While the commands run, the interface steps aside: the terminal is restored, so <code>sudo</code> asks for your password the way it always does. Scopra never sees it. The installer then takes the terminal back, re-runs the preflight, and continues with the location step. If a command fails, its output stays on the screen and the checks screen shows the error next to the manual instructions.</p>
+<p>A distribution whose repositories ship Podman older than 4.0 — Ubuntu 22.04 has 3.4 — is installed but still refused, with the version named. What the installer will not do is install a newer Podman from somewhere else.</p>
+<h3 id="when-the-delegated-service-context-lacks-cgroup-controllers">When the delegated service context lacks cgroup controllers</h3>
+<p>Podman&#39;s <code>cgroupControllers</code> describes the cgroup of the Podman process. A terminal launched under a desktop <code>app.slice</code> can report only <code>memory</code> and <code>pids</code> even when the user manager has <code>cpu</code>; that terminal result is not proof of what <code>scoprad.service</code> can use. The installer therefore runs the read-only <code>podman info --format json</code> probe with <code>systemd-run --user</code> in a transient user service requesting <code>Delegate=cpu cpuset io memory pids</code>. The generated <code>scoprad.service</code> requests the same controllers. The regular Hollow preflight is unchanged and still refuses every run when its actual daemon context lacks <code>cpu</code>, <code>memory</code>, or <code>pids</code>.</p>
+<p>If the delegated probe reports missing controllers—or cannot start, while a direct Podman query confirms controller absence—and the user-manager drop-in is not already installed, <code>f</code> offers this opt-in fix:</p>
+<pre><code class="language-console">sudo mkdir -p /etc/systemd/system/user@.service.d
+sudo cp /home/you/.local/state/scopra/installer/99-scopra-delegate.conf /etc/systemd/system/user@.service.d/99-scopra-delegate.conf
+sudo chmod 0644 /etc/systemd/system/user@.service.d/99-scopra-delegate.conf
+sudo systemctl daemon-reload
+</code></pre>
+<p>The staged file is <code>[Service]</code> plus <code>Delegate=cpu cpuset io memory pids</code>. It is written in your state directory first, so every privileged command is an argument vector rather than a shell redirection, and the file it installs is the one printed above. Provisioning remains opt-in: nothing runs until you review the commands and press <code>y</code>; <code>sudo</code> prompts on the restored terminal, and Scopra never reads or stores the password.</p>
+<p>After the commands finish, the installer reruns the delegated probe in the same session. That probe—not the existence of the drop-in and not a guess about a future login—is the result. If it still fails and the drop-in is already present, Scopra does not offer the same privileged commands again or claim the context is ready; it displays the failing check and stops. This incremental change does not restart <code>user@.service</code> or terminate your active sessions.</p>
+<p>The <code>--no-service</code> path is checked separately. If <code>scoprad</code> is present, the installer also runs Podman&#39;s probe directly in the current process context because that is where a manually launched daemon would run. If that context lacks controllers, the no-service install stops before writing binaries and tells you to rerun without <code>--no-service</code> and choose the delegated systemd service, or start <code>scoprad</code> from a context that passes the check. The scripted <code>--yes --no-service</code> path follows the same rule.</p>
+<p>The fix is offered only when Podman is rootless, version 4.0 or later, the host uses cgroups v2, and the required systemd tools are available. On cgroups v1 the fix is a kernel boot parameter and a reboot, so the installer explains instead of touching anything.</p>
+<p>The summary screen shows the install directory, the version, the service state, and — when the directory is not on <code>PATH</code> — the exact <code>export PATH=…</code> line to add.</p>
+<h2 id="requirements">Requirements</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Requirement</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>Linux, x86-64 or arm64</td><td>Hollow confines commands with Linux namespaces and cgroups; other platforms are refused before anything is downloaded.</td></tr>
+<tr><td>systemd user session</td><td><code>scopra service install</code> manages a user unit, and the installer checks the session before it changes anything. Without one the install stops rather than leaving a service that cannot start.</td></tr>
+<tr><td>Rootless Podman 4.0+</td><td>Hollow runs each command in one rootless container (ADR-010).</td></tr>
+<tr><td>cgroup v2 with <code>cpu</code>, <code>memory</code>, and <code>pids</code> delegated to the daemon&#39;s actual context</td><td>The generated service requests them with <code>Delegate=cpu cpuset io memory pids</code>; the installer probes that service context. <code>--no-service</code> must pass the same check in the current process context where <code>scoprad</code> will be launched.</td></tr>
+<tr><td><code>curl</code> or <code>wget</code>, <code>tar</code>, <code>sha256sum</code> or <code>shasum</code></td><td>The bootstrap script downloads, unpacks, and verifies.</td></tr>
+</tbody></table></div>
+<p>The preflight names the exact failing requirement and how to fix it. Ubuntu 22.04, for example, ships Podman 3.4 and is refused until Podman is upgraded; on that distribution the automatic install is offered and stops at the same version check.</p>
+<h2 id="non-interactive-install">Non-interactive install</h2>
+<p><code>scopra install</code> is the same installer without the interface, which is what a configuration-management system wants:</p>
+<pre><code class="language-console">$ curl -fsSL https://scopra-six.vercel.app/install.sh | sh -s -- --yes
+</code></pre>
+<p>Flags reach <code>scopra install</code> unchanged:</p>
+<pre><code class="language-text">--dir PATH            install directory (default: $XDG_BIN_HOME or ~/.local/bin)
+--sandbox-image IMAGE digest-pinned image for the service
+--scoprad PATH        path of the scoprad executable
+--no-service          install the command line, then verify the manual daemon context
+--yes                 no interface; print one line per step
+</code></pre>
+<p>Without a terminal and without <code>--yes</code>, the installer stops and says so: it will not install silently because there was nobody to confirm.</p>
+<h2 id="pin-a-version">Pin a version</h2>
+<p><code>install.sh</code> follows the latest release. To install a specific tag:</p>
+<pre><code class="language-console">$ curl -fsSL https://scopra-six.vercel.app/install.sh | SCOPRA_VERSION=v0.1.0-alpha.8 sh
+</code></pre>
+<h2 id="verify-the-download-yourself">Verify the download yourself</h2>
+<pre><code class="language-console">$ version=$(curl -fsSL https://scopra-six.vercel.app/releases/latest.txt)
+$ base=&#34;https://scopra-six.vercel.app/releases/$version&#34;
+$ curl -fsSLO &#34;$base/scopra_linux_amd64.tar.gz&#34; -O &#34;$base/checksums.txt&#34;
+$ grep &#34; scopra_linux_amd64.tar.gz$&#34; checksums.txt | sha256sum -c -
+$ tar xzf scopra_linux_amd64.tar.gz
+$ ./scopra install
+</code></pre>
+<p>Change <code>amd64</code> to <code>arm64</code> on an ARM machine.</p>
+<p><strong>What the checksum proves:</strong> the archive is exactly the one the release publishes, so a corrupted download or a tampered mirror is caught. It does not prove who published the release: <code>checksums.txt</code> travels beside the archive and is fetched over the same TLS connection. A signature (Sigstore or minisign) is planned, not implemented; until then, install from a network you trust.</p>
+<h2 id="what-an-install-changes">What an install changes</h2>
+<ul>
+<li>creates the install directory if it is missing;</li>
+<li>writes <code>scopra</code> and <code>scoprad</code> there, mode <code>0755</code>, through a temporary file and a rename, so a reader never sees a half-written binary;</li>
+<li>writes <code>~/.config/systemd/user/scoprad.service</code> when you choose the service, then enables and starts it;</li>
+<li>if you explicitly approve the cgroup-delegation plan, writes <code>/etc/systemd/system/user@.service.d/99-scopra-delegate.conf</code> and reloads systemd; no other global changes, shell profile edits, or <code>PATH</code> changes are made.</li>
+</ul>
+<p>The install is repeatable. Running it again replaces the binaries and rewrites the unit it owns; a unit Scopra did not write is refused unless <code>scopra service install --force</code> is used.</p>
+<h2 id="uninstall">Uninstall</h2>
+<pre><code class="language-console">$ scopra service uninstall
+$ rm -f ~/.local/bin/scopra ~/.local/bin/scoprad
+</code></pre>
+<p><code>scopra service uninstall</code> stops and removes the unit; your registry and journal stay in <code>$XDG_STATE_HOME/scopra</code> until you delete that directory.</p>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Symptom</th><th>Fix</th></tr></thead>
+<tbody>
+<tr><td><code>systemctl --user is not answering</code></td><td>Log in to a systemd user session and run the installer from a login shell. A machine without systemd cannot host <code>scoprad</code>; the installer refuses rather than writing a unit nothing will start.</td></tr>
+<tr><td><code>the delegated systemd service probe could not run</code></td><td>Check that <code>systemd-run --user</code> can start a transient service and that <code>podman</code> is available to the user manager. Scopra does not accept a terminal-scope result as proof for the service.</td></tr>
+<tr><td><code>podman is not available</code></td><td>On the checks screen press <code>f</code> to have it installed with your distribution&#39;s package manager, or install Podman 4.0 or later yourself and run <code>podman info</code> once to create its configuration.</td></tr>
+<tr><td><code>cgroup controllers not delegated: cpu</code> or a delegated-probe failure</td><td>Press <code>f</code> only when the installer offers the opt-in delegation plan. It re-tests the transient delegated service in the same session and does not guess that logging out will help. If you chose <code>--no-service</code>, use the delegated systemd service or start <code>scoprad</code> from a context whose direct Podman check passes. On cgroups v1, boot with <code>systemd.unified_cgroup_hierarchy=1</code> instead.</td></tr>
+<tr><td><code>Podman runs as root, not rootless</code></td><td>Install Podman as your user, not through a root service, and re-run <code>podman info</code>.</td></tr>
+<tr><td><code>cgroups are not v2</code></td><td>The host must boot with cgroup v2 (<code>systemd.unified_cgroup_hierarchy=1</code>). That is a boot parameter and a reboot, so the installer explains rather than changing it. See ADR-010.</td></tr>
+<tr><td><code>Your shell does not find scopra yet</code></td><td>Add the <code>export PATH=…</code> line from the summary to <code>~/.profile</code> or <code>~/.zshrc</code>, then open a new terminal.</td></tr>
+<tr><td><code>the interactive installer needs a terminal</code></td><td>Re-run with <code>--yes</code> in scripts and CI, or run the installer from an interactive terminal.</td></tr>
+<tr><td>A checksum mismatch</td><td>The download was corrupted or has been tampered with. Nothing was executed; check the network and try again.</td></tr>
+<tr><td>The script exits on macOS</td><td>Scopra is Linux-only: Mio&#39;s containment needs Linux namespaces and cgroups.</td></tr>
+</tbody></table></div>
+<h2 id="how-releases-are-built">How releases are built</h2>
+<p><code>scripts/release.sh vX.Y.Z [--publish]</code> cross-compiles <code>scopra</code> and <code>scoprad</code> with <code>-trimpath</code> and <code>CGO_ENABLED=0</code>, stamps the version into both binaries (<code>-X …/internal/buildinfo.VersionOverride</code>), packs <code>scopra_linux_amd64.tar.gz</code> and <code>scopra_linux_arm64.tar.gz</code> with the licence and readme, and writes <code>checksums.txt</code> into <code>dist/</code>.</p>
+<p>With <code>--publish</code> it also copies the two archives and <code>checksums.txt</code> into <code>apps/docs-site/public/releases/&lt;tag&gt;/</code> and writes <code>apps/docs-site/public/releases/latest.txt</code> with the tag on a single line. The site build preserves that directory, so the next deployment serves <code>/releases/&lt;tag&gt;/…</code> and <code>/releases/latest.txt</code>. <code>install.sh</code> reads <code>latest.txt</code> — or a tag from <code>SCOPRA_VERSION</code> — and downloads from the same origin it came from. Commit both the archives and <code>latest.txt</code>: the site is built from the repository, and <code>go test ./tools/docsite</code> fails if the committed output and the sources disagree.</p>
+<p>The source of truth for the script is <code>apps/docs-site/static/install.sh</code>, published at <code>/install.sh</code> by the same site build that publishes this page.</p>
+</article><p class="edit-link"><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/docs/operations/installation.md" rel="noopener noreferrer">Edit this page on GitHub</a></p></main><aside class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#what-the-installer-asks">What the installer asks</a></li><li><a href="#if-a-prerequisite-is-missing">If a prerequisite is missing</a></li><li class="toc-sub"><a href="#when-the-delegated-service-context-lacks-cgroup-controllers">When the delegated service context lacks cgroup controllers</a></li><li><a href="#requirements">Requirements</a></li><li><a href="#non-interactive-install">Non-interactive install</a></li><li><a href="#pin-a-version">Pin a version</a></li><li><a href="#verify-the-download-yourself">Verify the download yourself</a></li><li><a href="#what-an-install-changes">What an install changes</a></li><li><a href="#uninstall">Uninstall</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#how-releases-are-built">How releases are built</a></li></ul></aside></div><footer class="site-footer">
+  <div class="footer-inner">
+    <p><strong>Scopra</strong> — controlled execution for AI agents. Free and open source under the <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE">MIT License</a>.</p>
+    <p class="muted">No pricing model, no telemetry, no account. Generated from the Markdown in <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">the repository</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

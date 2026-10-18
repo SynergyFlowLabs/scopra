@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADR-015: A Generated Static Documentation Site on Vercel — Scopra</title>
+<meta name="description" content="ADR-015: A Generated Static Documentation Site on Vercel — Scopra documentation.">
+<link rel="canonical" href="https://scopra-six.vercel.app/docs/decisions/015-documentation-site.html">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0b0e14">
+<meta property="og:type" content="website">
+<meta property="og:title" content="ADR-015: A Generated Static Documentation Site on Vercel — Scopra">
+<meta property="og:description" content="ADR-015: A Generated Static Documentation Site on Vercel — Scopra documentation.">
+<meta property="og:url" content="https://scopra-six.vercel.app/docs/decisions/015-documentation-site.html">
+<meta property="og:site_name" content="Scopra">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>Scopra</a>
+  <nav aria-label="Main">
+    <a href="/docs/">Docs</a>
+    <a href="/docs/overview.html">Overview</a>
+    <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">GitHub</a>
+  </nav>
+</header>
+<div class="layout"><nav class="sidebar" aria-label="Documentation"><p class="group">Overview</p><ul><li><a href="/docs/overview.html">Overview</a></li><li><a href="/docs/changelog.html">Changelog</a></li></ul><p class="group">Product</p><ul><li><a href="/docs/prd.html">Product Requirements</a></li><li><a href="/docs/product/alpha-scope.html">Alpha Scope</a></li><li><a href="/docs/product/naming.html">Naming</a></li></ul><p class="group">Architecture</p><ul><li><a href="/docs/architecture/system-overview.html">System Overview</a></li><li><a href="/docs/architecture/domain-model.html">Domain Model</a></li><li><a href="/docs/architecture/protocol.html">Protocol</a></li></ul><p class="group">Security</p><ul><li><a href="/docs/security/threat-model.html">Threat Model</a></li><li><a href="/docs/security/risk-register.html">Risk Register</a></li><li><a href="/docs/security/security-architecture.html">Security Architecture</a></li></ul><p class="group">Decisions</p><ul><li><a href="/docs/decisions.html">Architecture Decision Records</a></li><li><a href="/docs/decisions/001-go-module-layout.html">ADR-001: Initial Go Module Layout</a></li><li><a href="/docs/decisions/002-messenger-envelope-v1.html">ADR-002: Scopra Messenger Envelope v1 Structural Contract</a></li><li><a href="/docs/decisions/003-local-status-ipc.html">ADR-003: Mio Foreground Status Daemon and Local IPC v1</a></li><li><a href="/docs/decisions/004-workspace-validation.html">ADR-004: Workspace Path Validation and Fingerprint v1</a></li><li><a href="/docs/decisions/005-workspace-registry-storage.html">ADR-005: Workspace Registry Storage v1</a></li><li><a href="/docs/decisions/006-local-workspace-commands.html">ADR-006: Local Workspace Commands over IPC v1</a></li><li><a href="/docs/decisions/007-execution-request-v1.html">ADR-007: Execution Request v1 Structural Contract</a></li><li><a href="/docs/decisions/008-canonical-execution-request.html">ADR-008: Canonical Execution Request and Action Hash</a></li><li><a href="/docs/decisions/009-execution-lifecycle-messages.html">ADR-009: Execution States, Results, Output, Errors, and Cancellation</a></li><li><a href="/docs/decisions/010-hollow-rootless-podman.html">ADR-010: Hollow Containment Backend: Rootless Podman</a></li><li><a href="/docs/decisions/011-local-execution.html">ADR-011: Local Execution over the Mio Socket</a></li><li><a href="/docs/decisions/012-systemd-user-service.html">ADR-012: Mio as a systemd User Service</a></li><li><a href="/docs/decisions/013-run-journal.html">ADR-013: Bounded Local Run Journal and scopra logs</a></li><li><a href="/docs/decisions/014-open-source-no-pricing.html">ADR-014: MIT License and No Pricing Model</a></li><li><a href="/docs/decisions/015-documentation-site.html" class="current" aria-current="page">ADR-015: A Generated Static Documentation Site on Vercel</a></li><li><a href="/docs/decisions/016-one-command-installer.html">ADR-016: One-Command Interactive Installer</a></li><li><a href="/docs/decisions/017-opt-in-prerequisite-provisioning.html">ADR-017: Opt-In Prerequisite Provisioning</a></li></ul><p class="group">Planning</p><ul><li><a href="/docs/plan/implementation-plan.html">Implementation Plan</a></li></ul><p class="group">API</p><ul><li><a href="/docs/api/mcp-tools.html">MCP Tools</a></li></ul><p class="group">Operations</p><ul><li><a href="/docs/operations/installation.html">Installing Scopra</a></li><li><a href="/docs/operations/runbooks.html">Runbooks</a></li><li><a href="/docs/operations/deployment.html">Deploying the Site</a></li></ul><p class="group">Community</p><ul><li><a href="/docs/community/security-policy.html">Security Policy</a></li><li><a href="/docs/community/contributing.html">Contributing</a></li><li><a href="/docs/community/code-of-conduct.html">Code of Conduct</a></li></ul></nav><main id="main" class="content"><nav class="breadcrumb" aria-label="Breadcrumb"><a href="/docs/">Docs</a> <span aria-hidden="true">/</span> Decisions</nav><article class="prose"><h1 id="adr-015-a-generated-static-documentation-site-on-vercel">ADR-015: A Generated Static Documentation Site on Vercel</h1>
+<p><strong>Status:</strong> Accepted (proposed, then accepted as written by the maintainer) <strong>Date:</strong> 2026-10-17</p>
+<h2 id="context">Context</h2>
+<p>The repository became public and contains a large, well-structured body of Markdown — the README, the PRD, 14 ADRs, the threat model and risk register, the implementation plan, and the community files. GitHub renders all of it, but a project&#39;s front door should answer &#34;what is this, does it work, how do I start&#34; without asking a reader to navigate a repository.</p>
+<p>There is still no web application. <code>apps/docs-site</code> was a placeholder, like the other <code>apps/*</code> directories, and the only real artifacts are the two Go binaries. A documentation site is therefore the correct first deployment: it publishes work that already exists, it exercises the release path, and it commits the project to nothing it has not built.</p>
+<p>Three constraints shaped the decision:</p>
+<ul>
+<li><strong>No new dependencies.</strong> The project has one Go module with no external dependencies. Adding a JavaScript documentation framework (Docusaurus, VitePress, MkDocs) would introduce a second toolchain, a lockfile, a supply chain, and a second language for contributors to learn.</li>
+<li><strong>No drift.</strong> A hand-written marketing site diverges from the documentation it claims to summarize. The site must be generated from the same Markdown that reviewers approve in a pull request.</li>
+<li><strong>Vercel&#39;s build image has no Go toolchain.</strong> Confirmed by a real deployment: <code>make site</code> failed with <code>make: go: No such file or directory</code>. Downloading a compiler during a deploy, or caching one in <code>.vercel/cache</code>, trades a minute of build time and an external dependency for a slightly smaller commit.</li>
+</ul>
+<h2 id="decision">Decision</h2>
+<p><strong>The documentation site is generated by a standard-library Go program in this repository, committed as static HTML, and served by Vercel with no build step.</strong></p>
+<h3 id="the-generator">The generator</h3>
+<p><code>tools/docsite</code> renders the repository&#39;s Markdown with no external dependencies. It supports the subset the docs actually use — ATX headings, fenced code, GFM tables, nested lists with task boxes, blockquotes, thematic breaks, and inline code, emphasis, strikethrough, links, images, and autolinks — and escapes everything else, so a document can never inject markup. Raw HTML is never passed through.</p>
+<p>Links are rewritten at build time: a link to a published page becomes its site URL, a fragment becomes an in-page anchor, and anything else (ADRs are published; <code>LICENSE</code>, <code>progress.md</code>, and fixtures are not) becomes a <code>blob/main</code> link on GitHub. A link that cannot be resolved fails the build rather than shipping a dead end.</p>
+<p>Published pages: the top-level <code>README.md</code>, <code>PRD.md</code>, <code>CHANGELOG.md</code>, <code>CONTRIBUTING.md</code>, <code>SECURITY.md</code>, <code>CODE_OF_CONDUCT.md</code>, every file under <code>docs/</code> except <code>progress.md</code>, and every <code>docs/decisions/*.md</code> except the template. The ADR index becomes <code>/docs/decisions.html</code>; ADRs are discovered from the directory, so a new one needs no registration.</p>
+<h3 id="the-artifact">The artifact</h3>
+<p>The generated site is committed to <code>apps/docs-site/public</code> and served as-is. It contains no JavaScript, no web fonts, and no third-party stylesheets; the only external request is <code>img.shields.io</code> for the README badges, allowed explicitly by the CSP.</p>
+<p>The output is a pure function of the Markdown — no timestamps, no build host, no commit hash — so the committed copy can be verified. <code>TestCommittedSiteIsUpToDate</code> rebuilds the site into a temporary directory and fails <code>go test ./...</code> when <code>public/</code> no longer matches the docs. A stale site cannot be merged without a red test, and a page that is no longer generated is removed from the output directory rather than lingering.</p>
+<h3 id="the-deployment">The deployment</h3>
+<p>Vercel project <code>scopra</code> serves <code>apps/docs-site/public</code> with framework detection disabled, a no-op build command, and a no-op install command. <code>vercel.json</code> adds the headers the rest of the project expects: a CSP with <code>script-src &#39;none&#39;</code>, <code>frame-ancestors &#39;none&#39;</code>, and <code>base-uri &#39;none&#39;</code>; HSTS; <code>nosniff</code>; frame denial; a restrictive referrer policy; COOP; and a <code>Permissions-Policy</code> that disables every feature the site does not use.</p>
+<p>Canonical URLs, <code>sitemap.xml</code>, and <code>robots.txt</code> derive from one base URL. A push creates a preview deployment; the production alias <a href="https://scopra-six.vercel.app" rel="noopener noreferrer">https://scopra-six.vercel.app</a> follows the project&#39;s production branch (<code>main</code>), and is promoted explicitly until this work lands there. The full procedure, including rollback, is in <code>docs/operations/deployment.md</code>.</p>
+<h2 id="consequences">Consequences</h2>
+<ul>
+<li>The site is always exactly the documentation in the repository, and reviewing a docs change includes reviewing the generated HTML that will be served.</li>
+<li>Documentation changes touch generated files. <code>make site</code> is part of any commit that edits published Markdown, and the tests enforce it.</li>
+<li>The deploy is a file copy: fast, deterministic, and impossible to break with a toolchain change or an upstream package.</li>
+<li>The generator is a real program with tests rather than an ad-hoc script, so it is held to the same standard as the rest of the repository (gofmt, <code>go vet</code>, table-driven tests, fail-closed link resolution).</li>
+<li>A future move to a hosted docs platform, a custom domain, or server-side search changes the hosting, not the source of truth. Markdown remains the only authored artifact.</li>
+</ul>
+<h2 id="alternatives-considered">Alternatives considered</h2>
+<ul>
+<li><strong>Commit a Node static-site generator and build on Vercel.</strong> Rejected: a second toolchain, a dependency tree, and a build that can break for reasons unrelated to the documentation.</li>
+<li><strong>Download or cache a Go toolchain in the Vercel build.</strong> Rejected: an external download on every cold build, an unverifiable runtime, and a slower deploy for no artifact-level benefit.</li>
+<li><strong>Hand-write the marketing pages.</strong> Rejected: they would drift from the README, and the README is the document reviewers actually maintain.</li>
+<li><strong>Publish <code>progress.md</code>.</strong> Rejected: it is a 300 KB engineering log with per-increment verification notes. It stays in the repository, linked from the overview page.</li>
+</ul>
+</article><p class="edit-link"><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/docs/decisions/015-documentation-site.md" rel="noopener noreferrer">Edit this page on GitHub</a></p></main><aside class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#context">Context</a></li><li><a href="#decision">Decision</a></li><li class="toc-sub"><a href="#the-generator">The generator</a></li><li class="toc-sub"><a href="#the-artifact">The artifact</a></li><li class="toc-sub"><a href="#the-deployment">The deployment</a></li><li><a href="#consequences">Consequences</a></li><li><a href="#alternatives-considered">Alternatives considered</a></li></ul></aside></div><footer class="site-footer">
+  <div class="footer-inner">
+    <p><strong>Scopra</strong> — controlled execution for AI agents. Free and open source under the <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE">MIT License</a>.</p>
+    <p class="muted">No pricing model, no telemetry, no account. Generated from the Markdown in <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">the repository</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

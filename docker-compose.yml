@@ -7,8 +7,30 @@ services:
       POSTGRES_DB: scopra
     ports: ["127.0.0.1:5432:5432"]
     volumes: ["scopra-postgres:/var/lib/postgresql/data"]
-  redis:
-    image: redis:7-alpine
-    ports: ["127.0.0.1:6379:6379"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scopra -d scopra"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+  control-plane:
+    build:
+      context: .
+      dockerfile: apps/control-plane/Dockerfile
+    environment:
+      NODE_ENV: development
+      SCOPRA_API_HOST: 0.0.0.0
+      SCOPRA_API_PORT: 8080
+      SCOPRA_DATABASE_URL: postgres://scopra:scopra@postgres:5432/scopra?sslmode=disable
+      SCOPRA_DASHBOARD_JWT_PUBLIC_KEY: ${SCOPRA_DASHBOARD_JWT_PUBLIC_KEY:?Set SCOPRA_DASHBOARD_JWT_PUBLIC_KEY in the root .env file}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports: ["127.0.0.1:8080:8080"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
 volumes:
   scopra-postgres:

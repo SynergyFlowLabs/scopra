@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADR-008: Canonical Execution Request and Action Hash — Scopra</title>
+<meta name="description" content="ADR-008: Canonical Execution Request and Action Hash — Scopra documentation.">
+<link rel="canonical" href="https://scopra-six.vercel.app/docs/decisions/008-canonical-execution-request.html">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0b0e14">
+<meta property="og:type" content="website">
+<meta property="og:title" content="ADR-008: Canonical Execution Request and Action Hash — Scopra">
+<meta property="og:description" content="ADR-008: Canonical Execution Request and Action Hash — Scopra documentation.">
+<meta property="og:url" content="https://scopra-six.vercel.app/docs/decisions/008-canonical-execution-request.html">
+<meta property="og:site_name" content="Scopra">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>Scopra</a>
+  <nav aria-label="Main">
+    <a href="/docs/">Docs</a>
+    <a href="/docs/overview.html">Overview</a>
+    <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">GitHub</a>
+  </nav>
+</header>
+<div class="layout"><nav class="sidebar" aria-label="Documentation"><p class="group">Overview</p><ul><li><a href="/docs/overview.html">Overview</a></li><li><a href="/docs/changelog.html">Changelog</a></li></ul><p class="group">Product</p><ul><li><a href="/docs/prd.html">Product Requirements</a></li><li><a href="/docs/product/alpha-scope.html">Alpha Scope</a></li><li><a href="/docs/product/naming.html">Naming</a></li></ul><p class="group">Architecture</p><ul><li><a href="/docs/architecture/system-overview.html">System Overview</a></li><li><a href="/docs/architecture/domain-model.html">Domain Model</a></li><li><a href="/docs/architecture/protocol.html">Protocol</a></li></ul><p class="group">Security</p><ul><li><a href="/docs/security/threat-model.html">Threat Model</a></li><li><a href="/docs/security/risk-register.html">Risk Register</a></li><li><a href="/docs/security/security-architecture.html">Security Architecture</a></li></ul><p class="group">Decisions</p><ul><li><a href="/docs/decisions.html">Architecture Decision Records</a></li><li><a href="/docs/decisions/001-go-module-layout.html">ADR-001: Initial Go Module Layout</a></li><li><a href="/docs/decisions/002-messenger-envelope-v1.html">ADR-002: Scopra Messenger Envelope v1 Structural Contract</a></li><li><a href="/docs/decisions/003-local-status-ipc.html">ADR-003: Mio Foreground Status Daemon and Local IPC v1</a></li><li><a href="/docs/decisions/004-workspace-validation.html">ADR-004: Workspace Path Validation and Fingerprint v1</a></li><li><a href="/docs/decisions/005-workspace-registry-storage.html">ADR-005: Workspace Registry Storage v1</a></li><li><a href="/docs/decisions/006-local-workspace-commands.html">ADR-006: Local Workspace Commands over IPC v1</a></li><li><a href="/docs/decisions/007-execution-request-v1.html">ADR-007: Execution Request v1 Structural Contract</a></li><li><a href="/docs/decisions/008-canonical-execution-request.html" class="current" aria-current="page">ADR-008: Canonical Execution Request and Action Hash</a></li><li><a href="/docs/decisions/009-execution-lifecycle-messages.html">ADR-009: Execution States, Results, Output, Errors, and Cancellation</a></li><li><a href="/docs/decisions/010-hollow-rootless-podman.html">ADR-010: Hollow Containment Backend: Rootless Podman</a></li><li><a href="/docs/decisions/011-local-execution.html">ADR-011: Local Execution over the Mio Socket</a></li><li><a href="/docs/decisions/012-systemd-user-service.html">ADR-012: Mio as a systemd User Service</a></li><li><a href="/docs/decisions/013-run-journal.html">ADR-013: Bounded Local Run Journal and scopra logs</a></li><li><a href="/docs/decisions/014-open-source-no-pricing.html">ADR-014: MIT License and No Pricing Model</a></li><li><a href="/docs/decisions/015-documentation-site.html">ADR-015: A Generated Static Documentation Site on Vercel</a></li><li><a href="/docs/decisions/016-one-command-installer.html">ADR-016: One-Command Interactive Installer</a></li><li><a href="/docs/decisions/017-opt-in-prerequisite-provisioning.html">ADR-017: Opt-In Prerequisite Provisioning</a></li></ul><p class="group">Planning</p><ul><li><a href="/docs/plan/implementation-plan.html">Implementation Plan</a></li></ul><p class="group">API</p><ul><li><a href="/docs/api/mcp-tools.html">MCP Tools</a></li></ul><p class="group">Operations</p><ul><li><a href="/docs/operations/installation.html">Installing Scopra</a></li><li><a href="/docs/operations/runbooks.html">Runbooks</a></li><li><a href="/docs/operations/deployment.html">Deploying the Site</a></li></ul><p class="group">Community</p><ul><li><a href="/docs/community/security-policy.html">Security Policy</a></li><li><a href="/docs/community/contributing.html">Contributing</a></li><li><a href="/docs/community/code-of-conduct.html">Code of Conduct</a></li></ul></nav><main id="main" class="content"><nav class="breadcrumb" aria-label="Breadcrumb"><a href="/docs/">Docs</a> <span aria-hidden="true">/</span> Decisions</nav><article class="prose"><h1 id="adr-008-canonical-execution-request-and-action-hash">ADR-008: Canonical Execution Request and Action Hash</h1>
+<p><strong>Status:</strong> Accepted (proposed, then accepted as written by the maintainer) <strong>Date:</strong> 2026-10-16</p>
+<h2 id="context">Context</h2>
+<p>Approvals must bind to the exact effect. The PRD and the plan ask the system to:</p>
+<ul>
+<li>freeze the canonical request;</li>
+<li>bind an approval to an action hash, principals, resources, policy versions, expiry, and use count;</li>
+<li>invalidate an approval after any material change;</li>
+<li>have Mio recompute the hash locally before an approval is consumed.</li>
+</ul>
+<p>ADR-002&#39;s payload hash covers the transmitted bytes, which change with whitespace, escaping, or key order. It therefore cannot identify one action consistently across Caloris, an approval display, and Mio.</p>
+<p>ADR-007 made decoding lossless: every field is required, nothing has a default, <code>null</code> is refused, and decoded text equals transmitted text. A request&#39;s meaning is therefore exactly its typed value, which can be serialized deterministically. The cloud side and the TypeScript SDK must produce the same bytes as the Go code.</p>
+<h2 id="decision">Decision</h2>
+<h3 id="what-is-hashed">What is hashed</h3>
+<p>The hash covers the whole version 1 <code>ExecutionRequest</code>. That includes the principals, the grant and session, the reason, the timestamps, the execution ID, and the nonce. Changing any field gives a different hash, which needs a new approval.</p>
+<p>Execution IDs and nonces are unique, so an approval can never cover a second request. &#34;Allow once&#34; therefore follows from the hash itself.</p>
+<h3 id="canonical-form">Canonical form</h3>
+<p>The canonical form of a valid request is its ADR-007 wire object, serialized with the JSON Canonicalization Scheme (JCS, RFC 8785). For this schema that means:</p>
+<ul>
+<li><strong>Object members</strong> are sorted by key. All keys are ASCII, so byte order equals JCS&#39;s UTF-16 order.</li>
+<li><strong>Whitespace:</strong> none.</li>
+<li><p><strong>Strings</strong> use minimal escaping:</p>
+<ul>
+<li><code>\&#34;</code> and <code>\\</code>;</li>
+<li><code>\b</code>, <code>\t</code>, <code>\n</code>, <code>\f</code>, and <code>\r</code>;</li>
+<li><code>\u00xx</code> with lowercase hexadecimal digits for every other character below U+0020.</li>
+</ul>
+<p>Every other character appears as literal UTF-8. That includes U+007F, U+2028, U+2029, and all non-ASCII characters.</p>
+</li>
+<li><strong>Integers</strong> are written in plain decimal. Every limit is below 2^53, where JCS&#39;s number form is the plain integer.</li>
+<li><strong>Booleans</strong> are <code>true</code> and <code>false</code>.</li>
+<li><strong>Arrays</strong> keep their order, and an empty argument list is <code>[]</code>.</li>
+<li><strong>Timestamps</strong> use ADR-007&#39;s form.</li>
+</ul>
+<p>The canonical form is computed from the decoded and validated typed value, never from transmitted bytes. What is hashed is therefore exactly what Mio would run. The canonical bytes are themselves a valid ADR-007 payload that decodes to the same request, and canonicalizing that request again gives the same bytes.</p>
+<h3 id="action-hash">Action hash</h3>
+<pre><code class="language-text">actionHash = lowercase-hex( SHA-256( &#34;scopra/execution.request/v1\n&#34; || canonical bytes ) )
+</code></pre>
+<p>The result is 64 characters long. The ASCII label separates this hash from ADR-002&#39;s payload hash and from any other Scopra object hashed the same way. A change to the canonical form or the algorithm changes the label&#39;s version. Canonical JSON never contains a raw newline, so the label and the canonical bytes cannot run together.</p>
+<h3 id="use">Use</h3>
+<ul>
+<li><strong>Caloris</strong> freezes a request by computing its canonical form and action hash.</li>
+<li><strong>Approval displays</strong> render the canonical request, escaping as ADR-007 requires, and show the agent&#39;s reason separately.</li>
+<li><strong>The approval record</strong>, defined in a later ADR, binds the action hash to the approver, the decision, the policy versions, the approval&#39;s expiry, and the use count.</li>
+<li><strong>Mio</strong> recomputes the action hash from the request it decoded and verified, and requires it to equal the approval&#39;s hash. It never trusts an action hash that was transmitted to it.</li>
+</ul>
+<h3 id="test-vectors-normative">Test vectors (normative)</h3>
+<p>Implementations must reproduce both vectors exactly. They were computed by an independent implementation, Python&#39;s <code>json</code> module with sorted keys, compact separators, and <code>ensure_ascii=False</code>, which matches JCS for this value domain. The first vector&#39;s hash was checked again with <code>sha256sum</code>.</p>
+<p><strong>Vector 1.</strong> This is ADR-007&#39;s example request. Its canonical form is 619 bytes:</p>
+<pre><code class="language-text">{&#34;command&#34;:{&#34;arguments&#34;:[&#34;test&#34;,&#34;./...&#34;],&#34;executable&#34;:&#34;go&#34;,&#34;shell&#34;:false,&#34;workingDirectory&#34;:&#34;.&#34;},&#34;createdAt&#34;:&#34;2026-10-16T12:00:00Z&#34;,&#34;executionId&#34;:&#34;exe_01HZX3&#34;,&#34;expiresAt&#34;:&#34;2026-10-16T12:15:00Z&#34;,&#34;grantId&#34;:&#34;grt_1&#34;,&#34;limits&#34;:{&#34;cpuMillicores&#34;:2000,&#34;memoryBytes&#34;:2147483648,&#34;outputBytes&#34;:1048576,&#34;pids&#34;:512,&#34;timeoutSeconds&#34;:600},&#34;network&#34;:&#34;none&#34;,&#34;nonce&#34;:&#34;kJ3b9sR0cT1uV2wX3yZ4aA&#34;,&#34;principals&#34;:{&#34;agentId&#34;:&#34;agt_1&#34;,&#34;clientId&#34;:&#34;cli_1&#34;,&#34;userId&#34;:&#34;usr_1&#34;},&#34;reason&#34;:&#34;Run the unit tests after the fix&#34;,&#34;resources&#34;:{&#34;machineId&#34;:&#34;mch_1&#34;,&#34;workspaceId&#34;:&#34;3f2a9c0b7d1e4f6a8b5c2d0e1f3a4b6c&#34;},&#34;sessionId&#34;:&#34;ses_1&#34;,&#34;workspaceAccess&#34;:&#34;read-only&#34;}
+</code></pre>
+<p>Action hash: <code>b4f47c942fc6499aea49d76df1f89c630f8683bd69c98f292b9e03eed4dd44e2</code></p>
+<p><strong>Vector 2.</strong> This is the same request with these changes:</p>
+<pre><code class="language-json">&#34;command&#34;: {
+  &#34;executable&#34;: &#34;./scripts/test.sh&#34;,
+  &#34;arguments&#34;: [&#34;tab\there&#34;, &#34;new\nline&#34;, &#34;\u0001&#34;, &#34;\u007f&#34;, &#34;\u2028&#34;, &#34;quote\&#34; back\\slash&#34;, &#34;\u00e9&#34;, &#34;\ud83d\ude00&#34;, &#34;&#34;],
+  &#34;shell&#34;: false,
+  &#34;workingDirectory&#34;: &#34;src/app&#34;
+},
+&#34;workspaceAccess&#34;: &#34;read-write&#34;,
+&#34;limits&#34;: {&#34;timeoutSeconds&#34;: 600, &#34;cpuMillicores&#34;: 2000, &#34;memoryBytes&#34;: 1099511627776, &#34;pids&#34;: 512, &#34;outputBytes&#34;: 1048576}
+</code></pre>
+<p>Its canonical form is 709 bytes. Its <code>arguments</code> member is encoded as these bytes:</p>
+<pre><code class="language-text">22 61 72 67 75 6d 65 6e 74 73 22 3a 5b 22 74 61 62 5c 74 68 65 72 65 22 2c 22 6e 65 77 5c 6e 6c 69 6e 65 22
+2c 22 5c 75 30 30 30 31 22 2c 22 7f 22 2c 22 e2 80 a8 22 2c 22 71 75 6f 74 65 5c 22 20 62 61 63 6b 5c 5c 73
+6c 61 73 68 22 2c 22 c3 a9 22 2c 22 f0 9f 98 80 22 2c 22 22 5d
+</code></pre>
+<p>Action hash: <code>9df45c503097070244bdcf27d06fb6c66e9328ee908d234ae03f3831a5731533</code></p>
+<h2 id="consequences">Consequences</h2>
+<ul>
+<li>One identifier names an action across Caloris, approval displays, approval records, Catena audit events, and Mio.</li>
+<li>Any change, including to the reason or the timestamps, invalidates an approval. An agent that rewords its explanation, or retries after expiry, needs a new approval. This is intended: approvals are &#34;Allow once&#34;, and material changes invalidate them.</li>
+<li>Transmissions of the same request that differ only in whitespace, escaping, or key order share one action hash, although their ADR-002 payload hashes differ.</li>
+<li>A future request version needs its own canonical form and label, such as <code>/v2</code>.</li>
+</ul>
+<h2 id="security-considerations">Security Considerations</h2>
+<ul>
+<li><strong>The action hash identifies; it does not authenticate.</strong> Integrity comes from the signed approval record and from Mio&#39;s checks, both defined in later ADRs.</li>
+<li><strong>Local recomputation</strong> from the decoded value stops a sender from pairing an approved hash with a different request. With ADR-007&#39;s lossless decoding, what is displayed, what is approved, and what runs cannot diverge.</li>
+<li><strong>SHA-256 collision resistance</strong> is assumed, and the label prevents confusion between object types.</li>
+<li><strong>Bounded cost:</strong> canonicalization runs only on validated requests and is linear in their size.</li>
+</ul>
+<h2 id="alternatives">Alternatives</h2>
+<ul>
+<li><strong>Hashing the transmitted payload with ADR-002&#39;s payload hash:</strong> rejected. Formatting changes would break approvals, and every party would need identical bytes.</li>
+<li><strong>Hashing only the effect (command, access, network, limits, and resources):</strong> rejected. An approval must bind its principals and context, and the PRD forbids reusable approvals.</li>
+<li><strong>A custom or binary canonical form, such as deterministic CBOR or protobuf:</strong> rejected. JCS is a published standard with TypeScript implementations, the wire format stays JSON, and for this fixed schema Go needs only a small encoder with no new dependency.</li>
+<li><strong>A base64url hash or a <code>sha256:</code> prefix:</strong> rejected. Hexadecimal matches ADR-002&#39;s payload hash, and the label&#39;s version already allows the algorithm to change.</li>
+</ul>
+</article><p class="edit-link"><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/docs/decisions/008-canonical-execution-request.md" rel="noopener noreferrer">Edit this page on GitHub</a></p></main><aside class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#context">Context</a></li><li><a href="#decision">Decision</a></li><li class="toc-sub"><a href="#what-is-hashed">What is hashed</a></li><li class="toc-sub"><a href="#canonical-form">Canonical form</a></li><li class="toc-sub"><a href="#action-hash">Action hash</a></li><li class="toc-sub"><a href="#use">Use</a></li><li class="toc-sub"><a href="#test-vectors-normative">Test vectors (normative)</a></li><li><a href="#consequences">Consequences</a></li><li><a href="#security-considerations">Security Considerations</a></li><li><a href="#alternatives">Alternatives</a></li></ul></aside></div><footer class="site-footer">
+  <div class="footer-inner">
+    <p><strong>Scopra</strong> — controlled execution for AI agents. Free and open source under the <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE">MIT License</a>.</p>
+    <p class="muted">No pricing model, no telemetry, no account. Generated from the Markdown in <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">the repository</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

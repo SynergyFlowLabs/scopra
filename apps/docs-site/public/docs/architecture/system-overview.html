@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>System Overview — Scopra</title>
+<meta name="description" content="System Overview — Scopra documentation.">
+<link rel="canonical" href="https://scopra-six.vercel.app/docs/architecture/system-overview.html">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0b0e14">
+<meta property="og:type" content="website">
+<meta property="og:title" content="System Overview — Scopra">
+<meta property="og:description" content="System Overview — Scopra documentation.">
+<meta property="og:url" content="https://scopra-six.vercel.app/docs/architecture/system-overview.html">
+<meta property="og:site_name" content="Scopra">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>Scopra</a>
+  <nav aria-label="Main">
+    <a href="/docs/">Docs</a>
+    <a href="/docs/overview.html">Overview</a>
+    <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">GitHub</a>
+  </nav>
+</header>
+<div class="layout"><nav class="sidebar" aria-label="Documentation"><p class="group">Overview</p><ul><li><a href="/docs/overview.html">Overview</a></li><li><a href="/docs/changelog.html">Changelog</a></li></ul><p class="group">Product</p><ul><li><a href="/docs/prd.html">Product Requirements</a></li><li><a href="/docs/product/alpha-scope.html">Alpha Scope</a></li><li><a href="/docs/product/naming.html">Naming</a></li></ul><p class="group">Architecture</p><ul><li><a href="/docs/architecture/system-overview.html" class="current" aria-current="page">System Overview</a></li><li><a href="/docs/architecture/domain-model.html">Domain Model</a></li><li><a href="/docs/architecture/protocol.html">Protocol</a></li></ul><p class="group">Security</p><ul><li><a href="/docs/security/threat-model.html">Threat Model</a></li><li><a href="/docs/security/risk-register.html">Risk Register</a></li><li><a href="/docs/security/security-architecture.html">Security Architecture</a></li></ul><p class="group">Decisions</p><ul><li><a href="/docs/decisions.html">Architecture Decision Records</a></li><li><a href="/docs/decisions/001-go-module-layout.html">ADR-001: Initial Go Module Layout</a></li><li><a href="/docs/decisions/002-messenger-envelope-v1.html">ADR-002: Scopra Messenger Envelope v1 Structural Contract</a></li><li><a href="/docs/decisions/003-local-status-ipc.html">ADR-003: Mio Foreground Status Daemon and Local IPC v1</a></li><li><a href="/docs/decisions/004-workspace-validation.html">ADR-004: Workspace Path Validation and Fingerprint v1</a></li><li><a href="/docs/decisions/005-workspace-registry-storage.html">ADR-005: Workspace Registry Storage v1</a></li><li><a href="/docs/decisions/006-local-workspace-commands.html">ADR-006: Local Workspace Commands over IPC v1</a></li><li><a href="/docs/decisions/007-execution-request-v1.html">ADR-007: Execution Request v1 Structural Contract</a></li><li><a href="/docs/decisions/008-canonical-execution-request.html">ADR-008: Canonical Execution Request and Action Hash</a></li><li><a href="/docs/decisions/009-execution-lifecycle-messages.html">ADR-009: Execution States, Results, Output, Errors, and Cancellation</a></li><li><a href="/docs/decisions/010-hollow-rootless-podman.html">ADR-010: Hollow Containment Backend: Rootless Podman</a></li><li><a href="/docs/decisions/011-local-execution.html">ADR-011: Local Execution over the Mio Socket</a></li><li><a href="/docs/decisions/012-systemd-user-service.html">ADR-012: Mio as a systemd User Service</a></li><li><a href="/docs/decisions/013-run-journal.html">ADR-013: Bounded Local Run Journal and scopra logs</a></li><li><a href="/docs/decisions/014-open-source-no-pricing.html">ADR-014: MIT License and No Pricing Model</a></li><li><a href="/docs/decisions/015-documentation-site.html">ADR-015: A Generated Static Documentation Site on Vercel</a></li><li><a href="/docs/decisions/016-one-command-installer.html">ADR-016: One-Command Interactive Installer</a></li><li><a href="/docs/decisions/017-opt-in-prerequisite-provisioning.html">ADR-017: Opt-In Prerequisite Provisioning</a></li></ul><p class="group">Planning</p><ul><li><a href="/docs/plan/implementation-plan.html">Implementation Plan</a></li></ul><p class="group">API</p><ul><li><a href="/docs/api/mcp-tools.html">MCP Tools</a></li></ul><p class="group">Operations</p><ul><li><a href="/docs/operations/installation.html">Installing Scopra</a></li><li><a href="/docs/operations/runbooks.html">Runbooks</a></li><li><a href="/docs/operations/deployment.html">Deploying the Site</a></li></ul><p class="group">Community</p><ul><li><a href="/docs/community/security-policy.html">Security Policy</a></li><li><a href="/docs/community/contributing.html">Contributing</a></li><li><a href="/docs/community/code-of-conduct.html">Code of Conduct</a></li></ul></nav><main id="main" class="content"><nav class="breadcrumb" aria-label="Breadcrumb"><a href="/docs/">Docs</a> <span aria-hidden="true">/</span> Architecture</nav><article class="prose"><h1 id="system-overview">System Overview</h1>
+<pre><code class="language-text">AI agent / MCP host
+  -&gt; MCP or HTTPS entry point
+  -&gt; Scopra Caloris (identity, grants, cloud policy, sessions, approvals)
+  -&gt; Scopra Goldstone (secure agent-to-machine relay)
+       carries Scopra Messenger Protocol envelopes
+  -&gt; Scopra Mio (local daemon)
+       -&gt; Scopra Resolution (policy evaluation)
+       -&gt; Scopra Rupes (final local authorization and enforcement boundary)
+       -&gt; Scopra Hollow (rootless isolated execution environment; ADR-010)
+       -&gt; Scopra Catena (append-only audit and execution-event chain)
+</code></pre>
+<p>Scopra Resolution evaluates applicable cloud and local policy. Scopra Rupes applies the local maximum and is the final authorization and policy-enforcement authority; Scopra Hollow supplies execution containment. Cloud services may narrow but cannot broaden local authority. Approved operations run inside Scopra Hollow. Scopra Facula represents the security-signal and anomaly-detection layer; Scopra Mariner provides local CLI/TUI onboarding and machine enrollment.</p>
+<p>The first local-control increment runs <code>scoprad</code> (Mio) in the foreground and lets <code>scopra status</code> (Mariner) query a read-only status endpoint over a bounded Unix socket. Mio keeps its socket and lock in a persistent per-user state directory (<code>$XDG_STATE_HOME/scopra</code> by default), and an exclusive lock ensures that at most one Mio serves a state directory. <code>scopra doctor</code> reuses that endpoint for read-only platform, state-directory, workspace-registry, and daemon checks, revalidates registered workspaces read-only (ADR-004), and can check the host&#39;s ADR-010 containment setup and the configured image with two read-only Podman queries; it never starts Mio or changes local state. At startup Mio opens its workspace registry (ADR-005) in the locked state directory and refuses to serve if the registry is unusable. It then serves workspace registration (<code>add</code>, <code>list</code>, <code>remove</code>) on the same socket (ADR-006), which <code>scopra workspace</code> uses; workspaces are validated under ADR-004. The same socket also serves local execution (<code>execution.run</code>, ADR-011): Mio revalidates the registered workspace, runs the command in Scopra Hollow (ADR-010) when containment is configured, and streams the start notice, output, and result back. Without <code>--sandbox-image</code> or Podman, every run is refused with <code>containment_unavailable</code>. <code>scopra run</code> is the Mariner side of that path: it resolves <code>--workspace</code> or <code>--path</code>, sends the run, writes output to stdout and stderr (or as JSON lines with <code>--json</code>), and returns the command&#39;s exit status. For durability, <code>scopra service install</code> writes a systemd <em>user</em> unit whose <code>ExecStart</code> carries the daemon path, the state directory, and the pinned image, then enables and starts it (ADR-012); uninstall reverses that, and status reads only systemd&#39;s answers. Mio also keeps a bounded, metadata-only journal of answered runs, <code>&lt;state-dir&gt;/runs.jsonl</code> (ADR-013): one line per run with its execution and workspace IDs, state, times, exit code, and stdout/stderr byte counts, and never the command line, arguments, path, or output. <code>execution.logs</code> serves it read-only on the same socket, and <code>scopra logs</code> prints it as text or schema-v1 JSON. It is a local debug record, not Catena: it is not tamper-evident, the user can delete it, and a journal that cannot be opened stops Mio while a failed append stops later runs. Policy decisions, approvals, and audit are not exposed by this endpoint. See ADR-003.</p>
+</article><p class="edit-link"><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/docs/architecture/system-overview.md" rel="noopener noreferrer">Edit this page on GitHub</a></p></main></div><footer class="site-footer">
+  <div class="footer-inner">
+    <p><strong>Scopra</strong> — controlled execution for AI agents. Free and open source under the <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE">MIT License</a>.</p>
+    <p class="muted">No pricing model, no telemetry, no account. Generated from the Markdown in <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">the repository</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

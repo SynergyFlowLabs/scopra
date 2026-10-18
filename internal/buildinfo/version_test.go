@@ -5,6 +5,24 @@ import (
 	"testing"
 )
 
+func TestVersionPrefersTheReleaseStamp(t *testing.T) {
+	previous := VersionOverride
+	t.Cleanup(func() { VersionOverride = previous })
+
+	VersionOverride = "v0.0.0-alpha.1"
+	if got := Version(); got != "v0.0.0-alpha.1" {
+		t.Fatalf("Version() = %q, want the stamped release version", got)
+	}
+	VersionOverride = "not a version"
+	if got := Version(); got == "not a version" {
+		t.Fatal("Version() accepted an invalid stamp")
+	}
+	VersionOverride = ""
+	if got := Version(); got == "not a version" || got == "" {
+		t.Fatalf("Version() = %q after clearing the stamp", got)
+	}
+}
+
 func TestVersionFromBuildInfo(t *testing.T) {
 	tests := []struct {
 		name string

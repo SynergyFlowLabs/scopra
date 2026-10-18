@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Naming — Scopra</title>
+<meta name="description" content="Naming — Scopra documentation.">
+<link rel="canonical" href="https://scopra-six.vercel.app/docs/product/naming.html">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0b0e14">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Naming — Scopra">
+<meta property="og:description" content="Naming — Scopra documentation.">
+<meta property="og:url" content="https://scopra-six.vercel.app/docs/product/naming.html">
+<meta property="og:site_name" content="Scopra">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>Scopra</a>
+  <nav aria-label="Main">
+    <a href="/docs/">Docs</a>
+    <a href="/docs/overview.html">Overview</a>
+    <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">GitHub</a>
+  </nav>
+</header>
+<div class="layout"><nav class="sidebar" aria-label="Documentation"><p class="group">Overview</p><ul><li><a href="/docs/overview.html">Overview</a></li><li><a href="/docs/changelog.html">Changelog</a></li></ul><p class="group">Product</p><ul><li><a href="/docs/prd.html">Product Requirements</a></li><li><a href="/docs/product/alpha-scope.html">Alpha Scope</a></li><li><a href="/docs/product/naming.html" class="current" aria-current="page">Naming</a></li></ul><p class="group">Architecture</p><ul><li><a href="/docs/architecture/system-overview.html">System Overview</a></li><li><a href="/docs/architecture/domain-model.html">Domain Model</a></li><li><a href="/docs/architecture/protocol.html">Protocol</a></li></ul><p class="group">Security</p><ul><li><a href="/docs/security/threat-model.html">Threat Model</a></li><li><a href="/docs/security/risk-register.html">Risk Register</a></li><li><a href="/docs/security/security-architecture.html">Security Architecture</a></li></ul><p class="group">Decisions</p><ul><li><a href="/docs/decisions.html">Architecture Decision Records</a></li><li><a href="/docs/decisions/001-go-module-layout.html">ADR-001: Initial Go Module Layout</a></li><li><a href="/docs/decisions/002-messenger-envelope-v1.html">ADR-002: Scopra Messenger Envelope v1 Structural Contract</a></li><li><a href="/docs/decisions/003-local-status-ipc.html">ADR-003: Mio Foreground Status Daemon and Local IPC v1</a></li><li><a href="/docs/decisions/004-workspace-validation.html">ADR-004: Workspace Path Validation and Fingerprint v1</a></li><li><a href="/docs/decisions/005-workspace-registry-storage.html">ADR-005: Workspace Registry Storage v1</a></li><li><a href="/docs/decisions/006-local-workspace-commands.html">ADR-006: Local Workspace Commands over IPC v1</a></li><li><a href="/docs/decisions/007-execution-request-v1.html">ADR-007: Execution Request v1 Structural Contract</a></li><li><a href="/docs/decisions/008-canonical-execution-request.html">ADR-008: Canonical Execution Request and Action Hash</a></li><li><a href="/docs/decisions/009-execution-lifecycle-messages.html">ADR-009: Execution States, Results, Output, Errors, and Cancellation</a></li><li><a href="/docs/decisions/010-hollow-rootless-podman.html">ADR-010: Hollow Containment Backend: Rootless Podman</a></li><li><a href="/docs/decisions/011-local-execution.html">ADR-011: Local Execution over the Mio Socket</a></li><li><a href="/docs/decisions/012-systemd-user-service.html">ADR-012: Mio as a systemd User Service</a></li><li><a href="/docs/decisions/013-run-journal.html">ADR-013: Bounded Local Run Journal and scopra logs</a></li><li><a href="/docs/decisions/014-open-source-no-pricing.html">ADR-014: MIT License and No Pricing Model</a></li><li><a href="/docs/decisions/015-documentation-site.html">ADR-015: A Generated Static Documentation Site on Vercel</a></li><li><a href="/docs/decisions/016-one-command-installer.html">ADR-016: One-Command Interactive Installer</a></li><li><a href="/docs/decisions/017-opt-in-prerequisite-provisioning.html">ADR-017: Opt-In Prerequisite Provisioning</a></li></ul><p class="group">Planning</p><ul><li><a href="/docs/plan/implementation-plan.html">Implementation Plan</a></li></ul><p class="group">API</p><ul><li><a href="/docs/api/mcp-tools.html">MCP Tools</a></li></ul><p class="group">Operations</p><ul><li><a href="/docs/operations/installation.html">Installing Scopra</a></li><li><a href="/docs/operations/runbooks.html">Runbooks</a></li><li><a href="/docs/operations/deployment.html">Deploying the Site</a></li></ul><p class="group">Community</p><ul><li><a href="/docs/community/security-policy.html">Security Policy</a></li><li><a href="/docs/community/contributing.html">Contributing</a></li><li><a href="/docs/community/code-of-conduct.html">Code of Conduct</a></li></ul></nav><main id="main" class="content"><nav class="breadcrumb" aria-label="Breadcrumb"><a href="/docs/">Docs</a> <span aria-hidden="true">/</span> Product</nav><article class="prose"><h1 id="scopra-product-and-component-names">Scopra Product and Component Names</h1>
+<p><strong>Status:</strong> Proposed naming map<br><strong>Scope:</strong> Architecture and product-facing component names</p>
+<p>Scopra remains the umbrella product. Its components use a shared, Mercury-exploration-inspired naming system. These names identify parts of Scopra; they are not separate products.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Name</th><th>Component</th><th>Responsibility</th></tr></thead>
+<tbody>
+<tr><td><strong>Scopra</strong></td><td>Product</td><td>Controlled execution infrastructure for AI agents.</td></tr>
+<tr><td><strong>Scopra Mariner</strong></td><td>CLI, onboarding, and enrollment</td><td>Guided CLI/TUI onboarding and machine enrollment.</td></tr>
+<tr><td><strong>Scopra Mio</strong></td><td>Local daemon</td><td>Registers workspaces, maintains the authenticated machine connection, and coordinates local execution.</td></tr>
+<tr><td><strong>Scopra Caloris</strong></td><td>Cloud control plane</td><td>Identity, grants, cloud policy, sessions, approvals, and control-plane APIs.</td></tr>
+<tr><td><strong>Scopra Goldstone</strong></td><td>Relay</td><td>Secure agent-to-machine message relay.</td></tr>
+<tr><td><strong>Scopra Messenger Protocol</strong></td><td>Internal protocol</td><td>Versioned, authenticated request and dispatch envelopes between cloud services and the local daemon. This is distinct from the Model Context Protocol (MCP).</td></tr>
+<tr><td><strong>Scopra Resolution</strong></td><td>Policy engine</td><td>Evaluates cloud and local policy decisions.</td></tr>
+<tr><td><strong>Scopra Rupes</strong></td><td>Local enforcement boundary</td><td>Applies local maximum policy and enforces the final authorization decision on the machine.</td></tr>
+<tr><td><strong>Scopra Hollow</strong></td><td>Execution sandbox</td><td>Ephemeral, rootless, isolated environment for approved work.</td></tr>
+<tr><td><strong>Scopra Catena</strong></td><td>Audit chain</td><td>Append-only chain of attributable execution and security events.</td></tr>
+<tr><td><strong>Scopra Facula</strong></td><td>Security signals</td><td>Security signals and anomaly detection.</td></tr>
+</tbody></table></div>
+<h2 id="naming-and-implementation-notes">Naming and implementation notes</h2>
+<ul>
+<li>Use the full name at first mention in product-facing documentation; the short component name (for example, <strong>Mio</strong> or <strong>Catena</strong>) is fine afterward.</li>
+<li><strong>Resolution</strong> evaluates policy; <strong>Rupes</strong> is the local enforcement boundary. Cloud authorization may narrow local authority but must never broaden it.</li>
+<li><strong>Goldstone</strong> is the relay service; <strong>Messenger</strong> is the protocol carried through the system. <strong>Messenger</strong> does not refer to MCP.</li>
+<li>The current executable names remain <code>scopra</code> for the CLI and <code>scoprad</code> for the daemon. <strong>Mariner</strong> and <strong>Mio</strong> are the component names; changing executable names, package paths, service identifiers, or wire-level identifiers requires a separate compatibility decision.</li>
+<li>Confirm trademark, domain, package-registry, and repository-name availability before public launch.</li>
+</ul>
+</article><p class="edit-link"><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/docs/product/naming.md" rel="noopener noreferrer">Edit this page on GitHub</a></p></main><aside class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#naming-and-implementation-notes">Naming and implementation notes</a></li></ul></aside></div><footer class="site-footer">
+  <div class="footer-inner">
+    <p><strong>Scopra</strong> — controlled execution for AI agents. Free and open source under the <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE">MIT License</a>.</p>
+    <p class="muted">No pricing model, no telemetry, no account. Generated from the Markdown in <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">the repository</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

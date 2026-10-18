@@ -31,6 +31,7 @@ const (
 	checkNameWorkspaceRegistry = "workspace-registry"
 	checkNameWorkspaces        = "workspaces"
 	checkNameDaemon            = "daemon"
+	checkNameContainment       = "containment"
 )
 
 type checkStatus string
@@ -47,9 +48,11 @@ const (
 var errDoctorChecksFailed = errors.New("scopra doctor found failing checks")
 
 // notCheckedAreas names readiness areas that doctor deliberately does not
-// assess because Scopra does not implement them yet.
+// assess because Scopra does not implement them yet. Containment is no longer
+// listed: the containment check assesses the host and the configured image,
+// read-only, although nothing runs a container.
 var notCheckedAreas = []string{
-	"enrollment", "relay", "policy", "containment", "execution",
+	"enrollment", "relay", "policy", "execution",
 }
 
 // maxStaleWorkspacesShown bounds how many stale registrations the workspaces
@@ -85,6 +88,7 @@ func runDoctor(ctx context.Context, args []string, stdout, stderr io.Writer) err
 	flags.SetOutput(stderr)
 	flags.Usage = func() { printUsage(stderr) }
 	stateDir := flags.String("state-dir", "", "Mio state directory")
+	sandboxImage := flags.String("sandbox-image", "", "Hollow container image to check, pinned by digest (ADR-010)")
 	jsonOutput := flags.Bool("json", false, "write the report as JSON")
 	if err := flags.Parse(args); err != nil {
 		return &usageError{err: err}
@@ -93,7 +97,7 @@ func runDoctor(ctx context.Context, args []string, stdout, stderr io.Writer) err
 		return failUsage(stderr, "doctor takes no positional arguments")
 	}
 
-	report := diagnose(ctx, *stateDir, platformInfo{
+	report := diagnose(ctx, *stateDir, *sandboxImage, platformInfo{
 		goos:         runtime.GOOS,
 		goarch:       runtime.GOARCH,
 		ipcSupported: localipc.PlatformSupported(),
@@ -119,7 +123,7 @@ func runDoctor(ctx context.Context, args []string, stdout, stderr io.Writer) err
 
 // diagnose runs the read-only checks in order; a failed check skips the checks
 // that depend on it. Nothing is created, repaired, removed, or started.
-func diagnose(ctx context.Context, stateDir string, platform platformInfo) doctorReport {
+func diagnose(ctx context.Context, stateDir, sandboxImage string, platform platformInfo) doctorReport {
 	report := doctorReport{
 		SchemaVersion: doctorSchemaVersion,
 		ScopraVersion: buildinfo.Version(),
@@ -131,7 +135,9 @@ func diagnose(ctx context.Context, stateDir string, platform platformInfo) docto
 	registryCheck := skippedCheck(checkNameWorkspaceRegistry, checkNamePlatform)
 	workspacesCheck := skippedCheck(checkNameWorkspaces, checkNamePlatform)
 	daemonCheck := skippedCheck(checkNameDaemon, checkNamePlatform)
+	containmentCheck := skippedCheck(checkNameContainment, checkNamePlatform)
 	if platformCheck.Status != checkFail {
+		containmentCheck = diagnoseContainment(ctx, sandboxImage)
 		report.StateDir, stateDirCheck = diagnoseStateDir(stateDir)
 		registryCheck = skippedCheck(checkNameWorkspaceRegistry, checkNameStateDirectory)
 		workspacesCheck = skippedCheck(checkNameWorkspaces, checkNameStateDirectory)
@@ -150,7 +156,7 @@ func diagnose(ctx context.Context, stateDir string, platform platformInfo) docto
 		}
 	}
 
-	report.Checks = []doctorCheck{platformCheck, stateDirCheck, registryCheck, workspacesCheck, daemonCheck}
+	report.Checks = []doctorCheck{platformCheck, stateDirCheck, registryCheck, workspacesCheck, daemonCheck, containmentCheck}
 	report.Result = overallResult(report.Checks)
 	return report
 }
@@ -442,7 +448,7 @@ func writeDoctorText(writer io.Writer, report doctorReport) error {
 	fmt.Fprintf(&text, "Result: %s\n", report.Result)
 	fmt.Fprintf(&text, "Not checked (not implemented yet): %s.\n",
 		strings.Join(report.NotChecked, ", "))
-	text.WriteString("A passing result does not mean Scopra can authorize or execute commands.\n")
+	text.WriteString("A passing result does not mean Scopra has authorized anything or run a command.\n")
 	_, err := io.WriteString(writer, text.String())
 	return err
 }

@@ -127,7 +127,7 @@ These belong to later increments:
 
 Increments 1 and 2 can be built and tested in this sandbox. Increments 3 and 4 need a machine with rootless Podman.
 
-**Implementation status (2026-10-17):** increments 1 and 2 are implemented in `internal/hollow`: `hollow.PodmanRunArgs` (Step 22), and `hollow.ParsePodmanInfo` with `PodmanInfo.Check` (Step 23). The preflight reads `podman info --format json`, which includes the version, and is tested on Podman's own documentation sample. Nothing runs Podman yet.
+**Implementation status (2026-10-17):** increments 1 and 2 are implemented in `internal/hollow`: `hollow.PodmanRunArgs` (Step 22), and `hollow.ParsePodmanInfo` with `PodmanInfo.Check` (Step 23). The preflight reads `podman info --format json`, which includes the version, and is tested on Podman's own documentation sample. Nothing ran Podman at that point; the runner status below records what came next.
 
 ## Consequences
 
@@ -172,7 +172,7 @@ Proposed, then accepted as written by the maintainer.
 - A malformed value is a usage error (exit status 2) that is reported before Mio takes its lock or touches the state directory.
 - Without the flag, Mio starts as it does today and will reject every execution with `containment_unavailable`. No execution path exists yet, so nothing visible changes until then.
 - Mio never pulls the image. Whether it exists locally is checked before each run (see below).
-- **Command line only, for now.** A persisted setting needs a durable place and format, which arrive with the Linux service installation and get their own decision then. `scopra status` and `scopra doctor` do not report the setting yet, because that would change the status reply (ADR-003).
+- **Command line only, until ADR-012.** A persisted setting needed a durable place and format; ADR-012 settled that by putting it in the systemd user unit that `scopra service install` writes. `scopra status` does not report the setting, because that would change the status reply (ADR-003). `scopra doctor` checks it only when given its own `--sandbox-image`, read-only, so the status reply is unchanged.
 
 ### Splitting increment 3
 
@@ -237,7 +237,7 @@ With `passthrough` logging, Podman's own error text for a start failure may appe
 - Every helper call has a 30-second deadline.
 - `Runner.RemoveLeftovers` removes labelled `scopra-<32 hex>` containers.
 
-Increment 3a is therefore complete. Mio does not use the runner yet, and it has not met a real Podman. Increment 3b and the adversarial tests need a host with rootless Podman.
+Increment 3a is therefore complete. Mio now uses the runner (ADR-011 increment 2), and it has not met a real Podman. Increment 3b and the adversarial tests need a host with rootless Podman.
 
 **Cleanup**
 

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/SynergyFlowLabs/scopra/security/advisories/new
+    about: Please report vulnerabilities privately, never in a public issue. See SECURITY.md.
+  - name: Read the contributing guide
+    url: https://github.com/SynergyFlowLabs/scopra/blob/main/CONTRIBUTING.md
+    about: Development setup, conventions, and the review process before you open a large change.

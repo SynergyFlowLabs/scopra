@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADR-002: Scopra Messenger Envelope v1 Structural Contract — Scopra</title>
+<meta name="description" content="ADR-002: Scopra Messenger Envelope v1 Structural Contract — Scopra documentation.">
+<link rel="canonical" href="https://scopra-six.vercel.app/docs/decisions/002-messenger-envelope-v1.html">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0b0e14">
+<meta property="og:type" content="website">
+<meta property="og:title" content="ADR-002: Scopra Messenger Envelope v1 Structural Contract — Scopra">
+<meta property="og:description" content="ADR-002: Scopra Messenger Envelope v1 Structural Contract — Scopra documentation.">
+<meta property="og:url" content="https://scopra-six.vercel.app/docs/decisions/002-messenger-envelope-v1.html">
+<meta property="og:site_name" content="Scopra">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>Scopra</a>
+  <nav aria-label="Main">
+    <a href="/docs/">Docs</a>
+    <a href="/docs/overview.html">Overview</a>
+    <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">GitHub</a>
+  </nav>
+</header>
+<div class="layout"><nav class="sidebar" aria-label="Documentation"><p class="group">Overview</p><ul><li><a href="/docs/overview.html">Overview</a></li><li><a href="/docs/changelog.html">Changelog</a></li></ul><p class="group">Product</p><ul><li><a href="/docs/prd.html">Product Requirements</a></li><li><a href="/docs/product/alpha-scope.html">Alpha Scope</a></li><li><a href="/docs/product/naming.html">Naming</a></li></ul><p class="group">Architecture</p><ul><li><a href="/docs/architecture/system-overview.html">System Overview</a></li><li><a href="/docs/architecture/domain-model.html">Domain Model</a></li><li><a href="/docs/architecture/protocol.html">Protocol</a></li></ul><p class="group">Security</p><ul><li><a href="/docs/security/threat-model.html">Threat Model</a></li><li><a href="/docs/security/risk-register.html">Risk Register</a></li><li><a href="/docs/security/security-architecture.html">Security Architecture</a></li></ul><p class="group">Decisions</p><ul><li><a href="/docs/decisions.html">Architecture Decision Records</a></li><li><a href="/docs/decisions/001-go-module-layout.html">ADR-001: Initial Go Module Layout</a></li><li><a href="/docs/decisions/002-messenger-envelope-v1.html" class="current" aria-current="page">ADR-002: Scopra Messenger Envelope v1 Structural Contract</a></li><li><a href="/docs/decisions/003-local-status-ipc.html">ADR-003: Mio Foreground Status Daemon and Local IPC v1</a></li><li><a href="/docs/decisions/004-workspace-validation.html">ADR-004: Workspace Path Validation and Fingerprint v1</a></li><li><a href="/docs/decisions/005-workspace-registry-storage.html">ADR-005: Workspace Registry Storage v1</a></li><li><a href="/docs/decisions/006-local-workspace-commands.html">ADR-006: Local Workspace Commands over IPC v1</a></li><li><a href="/docs/decisions/007-execution-request-v1.html">ADR-007: Execution Request v1 Structural Contract</a></li><li><a href="/docs/decisions/008-canonical-execution-request.html">ADR-008: Canonical Execution Request and Action Hash</a></li><li><a href="/docs/decisions/009-execution-lifecycle-messages.html">ADR-009: Execution States, Results, Output, Errors, and Cancellation</a></li><li><a href="/docs/decisions/010-hollow-rootless-podman.html">ADR-010: Hollow Containment Backend: Rootless Podman</a></li><li><a href="/docs/decisions/011-local-execution.html">ADR-011: Local Execution over the Mio Socket</a></li><li><a href="/docs/decisions/012-systemd-user-service.html">ADR-012: Mio as a systemd User Service</a></li><li><a href="/docs/decisions/013-run-journal.html">ADR-013: Bounded Local Run Journal and scopra logs</a></li><li><a href="/docs/decisions/014-open-source-no-pricing.html">ADR-014: MIT License and No Pricing Model</a></li><li><a href="/docs/decisions/015-documentation-site.html">ADR-015: A Generated Static Documentation Site on Vercel</a></li><li><a href="/docs/decisions/016-one-command-installer.html">ADR-016: One-Command Interactive Installer</a></li><li><a href="/docs/decisions/017-opt-in-prerequisite-provisioning.html">ADR-017: Opt-In Prerequisite Provisioning</a></li></ul><p class="group">Planning</p><ul><li><a href="/docs/plan/implementation-plan.html">Implementation Plan</a></li></ul><p class="group">API</p><ul><li><a href="/docs/api/mcp-tools.html">MCP Tools</a></li></ul><p class="group">Operations</p><ul><li><a href="/docs/operations/installation.html">Installing Scopra</a></li><li><a href="/docs/operations/runbooks.html">Runbooks</a></li><li><a href="/docs/operations/deployment.html">Deploying the Site</a></li></ul><p class="group">Community</p><ul><li><a href="/docs/community/security-policy.html">Security Policy</a></li><li><a href="/docs/community/contributing.html">Contributing</a></li><li><a href="/docs/community/code-of-conduct.html">Code of Conduct</a></li></ul></nav><main id="main" class="content"><nav class="breadcrumb" aria-label="Breadcrumb"><a href="/docs/">Docs</a> <span aria-hidden="true">/</span> Decisions</nav><article class="prose"><h1 id="adr-002-scopra-messenger-envelope-v1-structural-contract">ADR-002: Scopra Messenger Envelope v1 Structural Contract</h1>
+<p><strong>Status:</strong> Accepted<br><strong>Date:</strong> 2026-10-16</p>
+<h2 id="context">Context</h2>
+<p>Cloud-to-daemon messages carry an authenticated envelope and an arbitrary typed payload. The receiver must reject malformed, ambiguous, oversized, stale, or unknown messages before dispatch. Structural validation is not authentication, authorization, replay protection, or execution permission.</p>
+<h2 id="decision">Decision</h2>
+<ul>
+<li>Use a strict JSON envelope with protocol version <code>v1</code> and a closed set of message types.</li>
+<li>Reject unknown envelope fields, duplicate JSON object keys at every nesting level, trailing JSON values, and documents over 1 MiB.</li>
+<li>Limit an individual payload to 512 KiB and bind its exact transmitted JSON bytes with a lowercase SHA-256 digest.</li>
+<li>Require a nonzero sequence, opaque message/issuer/audience identifiers, a 128-bit-or-longer URL-safe nonce, and a nonempty bounded authentication-proof field.</li>
+<li>Limit envelope lifetime to five minutes and allow up to 30 seconds of issuer clock skew for a future creation time. Expiry itself is strict.</li>
+<li><code>DecodeEnvelope</code> validates bounded, non-time-dependent structure. Receivers must call <code>Envelope.ValidateAt(now)</code> to enforce the timestamp policy before dispatch.</li>
+<li>Keep signature verification, issuer/device key binding, sequence/replay storage, authorization, and payload-specific decoding as separate mandatory checks before dispatch. The protocol package must not present structural validation as proof of trust.</li>
+</ul>
+<h2 id="consequences">Consequences</h2>
+<ul>
+<li>Every receiver gets consistent size, ambiguity, version, and freshness checks.</li>
+<li>A payload digest changes if the transmitted JSON bytes change, including whitespace. A separate canonical action representation is still required for approval binding.</li>
+<li>Adding message types or changing wire semantics requires compatibility tests and an explicit protocol-version decision.</li>
+</ul>
+<h2 id="security-considerations">Security Considerations</h2>
+<p>The envelope is untrusted until cryptographic verification and local authorization succeed. <code>DecodeEnvelope</code> only parses and validates structure. Callers must fail closed, verify the proof against the expected issuer and device audience, enforce sequence/nonce replay state, validate the typed payload, and apply local maximum policy before any action.</p>
+<h2 id="amendment-2026-10-17-daemon-to-cloud-execution-messages">Amendment — 2026-10-17: daemon-to-cloud execution messages</h2>
+<p>ADR-009 adds <code>execution.started</code> and <code>execution.output</code> to the closed set of version 1 message types. The set now holds seven types:</p>
+<ul>
+<li><code>execution.request</code>, <code>execution.result</code>, <code>execution.started</code>, <code>execution.output</code>, and <code>execution.cancel</code>;</li>
+<li><code>machine.revocation</code>;</li>
+<li><code>message.ack</code>.</li>
+</ul>
+<p>Nothing depended on version 1 yet, so no version bump was needed. Each payload type has a decoder that the envelope offers only for its own message type, such as <code>Envelope.ExecutionOutput()</code>, so a payload is never decoded under another type&#39;s rules.</p>
+</article><p class="edit-link"><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/docs/decisions/002-messenger-envelope-v1.md" rel="noopener noreferrer">Edit this page on GitHub</a></p></main><aside class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#context">Context</a></li><li><a href="#decision">Decision</a></li><li><a href="#consequences">Consequences</a></li><li><a href="#security-considerations">Security Considerations</a></li><li><a href="#amendment-2026-10-17-daemon-to-cloud-execution-messages">Amendment — 2026-10-17: daemon-to-cloud execution messages</a></li></ul></aside></div><footer class="site-footer">
+  <div class="footer-inner">
+    <p><strong>Scopra</strong> — controlled execution for AI agents. Free and open source under the <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE">MIT License</a>.</p>
+    <p class="muted">No pricing model, no telemetry, no account. Generated from the Markdown in <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">the repository</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

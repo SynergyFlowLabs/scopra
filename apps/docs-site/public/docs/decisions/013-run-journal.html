@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADR-013: Bounded Local Run Journal and scopra logs — Scopra</title>
+<meta name="description" content="ADR-013: Bounded Local Run Journal and scopra logs — Scopra documentation.">
+<link rel="canonical" href="https://scopra-six.vercel.app/docs/decisions/013-run-journal.html">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0b0e14">
+<meta property="og:type" content="website">
+<meta property="og:title" content="ADR-013: Bounded Local Run Journal and scopra logs — Scopra">
+<meta property="og:description" content="ADR-013: Bounded Local Run Journal and scopra logs — Scopra documentation.">
+<meta property="og:url" content="https://scopra-six.vercel.app/docs/decisions/013-run-journal.html">
+<meta property="og:site_name" content="Scopra">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>Scopra</a>
+  <nav aria-label="Main">
+    <a href="/docs/">Docs</a>
+    <a href="/docs/overview.html">Overview</a>
+    <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">GitHub</a>
+  </nav>
+</header>
+<div class="layout"><nav class="sidebar" aria-label="Documentation"><p class="group">Overview</p><ul><li><a href="/docs/overview.html">Overview</a></li><li><a href="/docs/changelog.html">Changelog</a></li></ul><p class="group">Product</p><ul><li><a href="/docs/prd.html">Product Requirements</a></li><li><a href="/docs/product/alpha-scope.html">Alpha Scope</a></li><li><a href="/docs/product/naming.html">Naming</a></li></ul><p class="group">Architecture</p><ul><li><a href="/docs/architecture/system-overview.html">System Overview</a></li><li><a href="/docs/architecture/domain-model.html">Domain Model</a></li><li><a href="/docs/architecture/protocol.html">Protocol</a></li></ul><p class="group">Security</p><ul><li><a href="/docs/security/threat-model.html">Threat Model</a></li><li><a href="/docs/security/risk-register.html">Risk Register</a></li><li><a href="/docs/security/security-architecture.html">Security Architecture</a></li></ul><p class="group">Decisions</p><ul><li><a href="/docs/decisions.html">Architecture Decision Records</a></li><li><a href="/docs/decisions/001-go-module-layout.html">ADR-001: Initial Go Module Layout</a></li><li><a href="/docs/decisions/002-messenger-envelope-v1.html">ADR-002: Scopra Messenger Envelope v1 Structural Contract</a></li><li><a href="/docs/decisions/003-local-status-ipc.html">ADR-003: Mio Foreground Status Daemon and Local IPC v1</a></li><li><a href="/docs/decisions/004-workspace-validation.html">ADR-004: Workspace Path Validation and Fingerprint v1</a></li><li><a href="/docs/decisions/005-workspace-registry-storage.html">ADR-005: Workspace Registry Storage v1</a></li><li><a href="/docs/decisions/006-local-workspace-commands.html">ADR-006: Local Workspace Commands over IPC v1</a></li><li><a href="/docs/decisions/007-execution-request-v1.html">ADR-007: Execution Request v1 Structural Contract</a></li><li><a href="/docs/decisions/008-canonical-execution-request.html">ADR-008: Canonical Execution Request and Action Hash</a></li><li><a href="/docs/decisions/009-execution-lifecycle-messages.html">ADR-009: Execution States, Results, Output, Errors, and Cancellation</a></li><li><a href="/docs/decisions/010-hollow-rootless-podman.html">ADR-010: Hollow Containment Backend: Rootless Podman</a></li><li><a href="/docs/decisions/011-local-execution.html">ADR-011: Local Execution over the Mio Socket</a></li><li><a href="/docs/decisions/012-systemd-user-service.html">ADR-012: Mio as a systemd User Service</a></li><li><a href="/docs/decisions/013-run-journal.html" class="current" aria-current="page">ADR-013: Bounded Local Run Journal and scopra logs</a></li><li><a href="/docs/decisions/014-open-source-no-pricing.html">ADR-014: MIT License and No Pricing Model</a></li><li><a href="/docs/decisions/015-documentation-site.html">ADR-015: A Generated Static Documentation Site on Vercel</a></li><li><a href="/docs/decisions/016-one-command-installer.html">ADR-016: One-Command Interactive Installer</a></li><li><a href="/docs/decisions/017-opt-in-prerequisite-provisioning.html">ADR-017: Opt-In Prerequisite Provisioning</a></li></ul><p class="group">Planning</p><ul><li><a href="/docs/plan/implementation-plan.html">Implementation Plan</a></li></ul><p class="group">API</p><ul><li><a href="/docs/api/mcp-tools.html">MCP Tools</a></li></ul><p class="group">Operations</p><ul><li><a href="/docs/operations/installation.html">Installing Scopra</a></li><li><a href="/docs/operations/runbooks.html">Runbooks</a></li><li><a href="/docs/operations/deployment.html">Deploying the Site</a></li></ul><p class="group">Community</p><ul><li><a href="/docs/community/security-policy.html">Security Policy</a></li><li><a href="/docs/community/contributing.html">Contributing</a></li><li><a href="/docs/community/code-of-conduct.html">Code of Conduct</a></li></ul></nav><main id="main" class="content"><nav class="breadcrumb" aria-label="Breadcrumb"><a href="/docs/">Docs</a> <span aria-hidden="true">/</span> Decisions</nav><article class="prose"><h1 id="adr-013-bounded-local-run-journal-and-scopra-logs">ADR-013: Bounded Local Run Journal and <code>scopra logs</code></h1>
+<p><strong>Status:</strong> Accepted (proposed, then accepted as written by the maintainer) <strong>Date:</strong> 2026-10-17</p>
+<h2 id="context">Context</h2>
+<p>Mio (<code>scoprad</code>) runs commands locally (ADR-011) and reports each result to the client that asked for it. Nothing durable records that a run happened. The plan&#39;s Milestone 1 lists &#34;local execution, status, logs, cancellation&#34;, and ADR-009 deliberately keeps results metadata-only: the <code>execution.result</code> payload has no output and no command line. A local log therefore has two possible shapes:</p>
+<ul>
+<li><strong>metadata only</strong> — when a run happened, for which workspace, in which state, with which exit code, and how many output bytes;</li>
+<li><strong>output capture</strong> — the actual stdout/stderr of the run.</li>
+</ul>
+<p>Output is exactly the data that ADR-010 refuses to persist (&#34;output passed straight to Mio and never logged&#34;), and it is the data most likely to contain secrets, tokens, and repository contents. Output retention also needs its own redaction, access, and deletion rules. The two shapes should not be decided together.</p>
+<p>ADR-011 also leaves audit unimplemented. A durable local record is useful before Catena exists, but it must not pretend to be an audit trail: it is one file the user can edit, delete, or truncate at will.</p>
+<h2 id="decision">Decision</h2>
+<p><strong>Mio keeps a bounded, metadata-only journal of answered runs, and <code>scopra logs</code> reads it through a new read-only IPC command.</strong></p>
+<h3 id="what-is-recorded">What is recorded</h3>
+<p>One JSON object per line in <code>&lt;state-dir&gt;/runs.jsonl</code> — by default <code>~/.local/state/scopra/runs.jsonl</code> — written after Mio has answered a run with a result. Each entry has exactly fourteen keys:</p>
+<pre><code class="language-json">{&#34;schemaVersion&#34;:1,&#34;executionId&#34;:&#34;local-…&#34;,&#34;workspaceId&#34;:&#34;…&#34;,&#34;state&#34;:&#34;succeeded&#34;,&#34;recordedAt&#34;:&#34;2026-10-17T06:42:04.184Z&#34;,&#34;startedAt&#34;:&#34;2026-10-17T06:42:04.000Z&#34;,&#34;endedAt&#34;:&#34;2026-10-17T06:42:04.000Z&#34;,&#34;durationMs&#34;:0,&#34;exitCode&#34;:0,&#34;stdoutBytes&#34;:23,&#34;stderrBytes&#34;:18,&#34;truncated&#34;:false,&#34;chunks&#34;:2,&#34;errorCode&#34;:&#34;&#34;}
+</code></pre>
+<ul>
+<li><code>schemaVersion</code> is 1. An incompatible change needs a new version.</li>
+<li><code>executionId</code> and <code>workspaceId</code> are the IDs the client already sees (ADR-009, ADR-006).</li>
+<li><code>state</code> is one of ADR-009&#39;s seven states.</li>
+<li><code>recordedAt</code> is when Mio answered; <code>startedAt</code> and <code>endedAt</code> are the result&#39;s times. All timestamps are UTC with exactly millisecond precision, and are empty strings when the state carries no times.</li>
+<li><code>durationMs</code> is <code>endedAt - startedAt</code> in whole milliseconds.</li>
+<li><code>exitCode</code> is the result&#39;s exit code.</li>
+<li><code>stdoutBytes</code>, <code>stderrBytes</code>, <code>truncated</code>, and <code>chunks</code> copy ADR-009&#39;s output summary: how much output there was, never the output itself.</li>
+<li><code>errorCode</code> is the result&#39;s code for <code>errored</code> and <code>rejected</code>, and empty otherwise.</li>
+</ul>
+<p><strong>No command, argument, working directory, reason, workspace path, output, or user identity is stored.</strong> The journal cannot reconstruct what ran, only that something ran in a workspace and how it ended. <code>workspaceId</code> identifies a directory registration the user already owns; it is not a secret, but it is the only link to the workspace.</p>
+<p>The per-state rules mirror ADR-009&#39;s result rules: <code>succeeded</code> has times and exit code 0; <code>failed</code> has times and an exit code from 1 to 255; <code>timed_out</code>, <code>cancelled</code>, and <code>out_of_memory</code> have times and no exit code; <code>errored</code> and <code>rejected</code> have only an error code, and a rejected run has no output counts. Byte counts must fit the chunk count (<code>chunks ≤ stdoutBytes + stderrBytes ≤ chunks × 64 KiB</code>, as in ADR-009).</p>
+<h3 id="bounds-and-durability">Bounds and durability</h3>
+<ul>
+<li>At most <strong>1000 entries</strong> and <strong>1 MiB</strong> on disk. When either bound would be exceeded, Mio keeps the newest entries and drops the oldest ones by writing a temporary file in the same directory (mode 0600), <code>fsync</code>ing it, renaming it over the journal, and <code>fsync</code>ing the directory. A crash leaves either the old file or the new one, never a half-rewritten journal.</li>
+<li>One encoded line is at most 8 KiB. This is far above any valid entry and lets a reader bound its work before parsing.</li>
+<li>Each append is written in one call and <code>fsync</code>ed before the result is considered recorded.</li>
+<li>The file must be a <strong>regular file, owned by the effective user, with mode 0600, and not a symlink</strong>. Anything else refuses startup and is left unchanged. A freshly created file is explicitly <code>chmod 0600</code>, because the umask would otherwise mask the creation mode.</li>
+<li>At startup Mio reads and validates every committed line. Only newline-terminated lines are committed: an unterminated final line is a torn write from a crash, so Mio discards it. Any other empty or malformed line is corruption, and Mio refuses to start rather than silently dropping history.</li>
+<li>Reads check the 1 MiB bound before allocating or parsing, so a replaced or grown file cannot make a reader allocate unbounded memory.</li>
+</ul>
+<h3 id="fail-closed">Fail closed</h3>
+<ul>
+<li>Mio opens the journal after taking the state-directory lock and opening the workspace registry, and <strong>before it serves</strong>. If the journal cannot be opened or validated, <code>scoprad</code> exits 1 and runs nothing.</li>
+<li>Every answered result is appended at the IPC boundary, including rejections (unknown workspace, containment unavailable) and busy refusals, so refusals are visible too. A run that never gets a result — a malformed request, a disconnect mid-run, a Mio crash — is not recorded.</li>
+<li>If an append fails, the result has already been computed and is still sent, because refusing it cannot undo the run. Mio then marks the journal unusable, and every later run is answered with an <code>errored</code> result (<code>internal</code>, fixed message) <strong>without executing</strong>. One unrecorded run is the documented window; not running anything afterwards is the fail-closed part.</li>
+<li><code>scopra logs</code> never writes. It opens the journal read-only, parses it under the same rules, and returns entries.</li>
+</ul>
+<h3 id="the-ipc-command">The IPC command</h3>
+<p><code>execution.logs</code> is a read-only extension of IPC v1, like the workspace commands:</p>
+<ul>
+<li>request: <code>{protocolVersion, requestId, command, workspaceId, limit}</code> — <code>workspaceId</code> is optional (<code>&#34;&#34;</code> means all workspaces) and <code>limit</code> is required, 1 to 100;</li>
+<li>reply: <code>{protocolVersion, requestId, entries}</code> — newest first, entries encoded exactly as stored, at most <code>limit</code> of them;</li>
+<li>keys are checked exactly, values are validated, an invalid request gets no reply and no side effect, and an unreadable journal gets a typed error reply (ADR-006&#39;s error shape).</li>
+</ul>
+<p>The daemon serves this command only when executions are enabled, because it is the journal of those executions. <code>EnableExecutions</code> therefore requires both the executor and the journal.</p>
+<h3 id="scopra-logs"><code>scopra logs</code></h3>
+<pre><code class="language-text">scopra logs [--state-dir PATH] [--workspace ID] [--limit N] [--json]
+</code></pre>
+<ul>
+<li><code>--limit</code> defaults to 20 and accepts 1 to 100; <code>--workspace</code> accepts a 32-character lowercase hexadecimal ID; unknown flags, stray arguments, and invalid values are usage errors (exit 2) found before Mio is contacted.</li>
+<li><p>Without <code>--json</code>, one line per entry, newest first:</p>
+<pre><code class="language-text">2026-10-17T06:42:04.217Z  failed  exit 3  duration 1.5s  stdout 23 B  stderr 18 B  workspace …  execution local-…
+</code></pre>
+<p><code>rejected</code> and <code>errored</code> entries show <code>error &lt;code&gt;</code> instead of an exit code, and entries without times show <code>duration -</code>. All text is terminal-escaped.</p>
+</li>
+<li>With <code>--json</code>, exactly one object: <code>{&#34;schemaVersion&#34;:1,&#34;entries&#34;:[…]}</code>. Entries are the stored objects, newest first. An empty result is <code>&#34;entries&#34;:[]</code>, never <code>null</code>.</li>
+<li>Empty results print <code>No runs have been recorded.</code> or, with a filter, <code>No runs have been recorded for workspace &lt;id&gt;.</code></li>
+</ul>
+<p>Exit status follows the other read-only commands: 0 on success, 1 when Mio is unavailable or refuses, 2 for usage errors, 130 when interrupted.</p>
+<h2 id="consequences">Consequences</h2>
+<ul>
+<li>A user can see that runs happened, when, in which workspace, and how they ended, without a relay, a cloud service, or Catena.</li>
+<li>The journal is metadata, not audit: the user (or any process running as the user) can delete or rewrite it. It is not tamper-evident and must not be presented as evidence. Catena remains the planned integrity layer.</li>
+<li>Output is still never persisted. Capturing output is deferred to its own ADR with retention, redaction, access, and deletion rules.</li>
+<li>The journal grows by one bounded line per answered run and never more than 1 MiB. Old runs disappear silently; there is no archive and no export.</li>
+<li>A journal that cannot be written disables execution until Mio restarts and the file is fixed. That is deliberate: Mio does not run what it cannot record.</li>
+<li><code>scopra logs</code> is local-only and requires the same user. There is no remote log access, which keeps the IPC surface unchanged.</li>
+</ul>
+<h2 id="security-considerations">Security Considerations</h2>
+<ul>
+<li><strong>Data minimization.</strong> The journal stores no command, argument, reason, path, output, or identity beyond the two IDs that the client already received. The most sensitive data a log could hold — what ran and what it printed — is absent by construction.</li>
+<li><strong>Access.</strong> The file is owner-only (0600), inside the already owner-only state directory, must be a regular file owned by the effective user, and symlinks are refused at every step, so another user cannot read it or redirect the write. Same-UID processes could read it with <code>scopra logs</code> or by reading the file, exactly as they could already read the user&#39;s files.</li>
+<li><strong>Bounds.</strong> Entry count, file size, line size, request limit, reply frame, and read size are all bounded, so a corrupted or replaced journal cannot cause unbounded allocation or an unbounded reply.</li>
+<li><strong>Strict parsing.</strong> The reader accepts exactly the fourteen keys, rejects duplicates, unknown or incorrectly-cased keys, trailing data, invalid UTF-8, non-canonical timestamps, out-of-range counts, and states that do not match their fields. Corruption fails closed instead of being skipped.</li>
+<li><strong>Fail closed.</strong> An unopenable journal stops Mio at startup, and a failed append stops later runs. The one run whose result was already sent cannot be un-run; the ADR records that window instead of hiding it.</li>
+<li><strong>Injection.</strong> Workspace and execution IDs are constrained, and the human form escapes every field with the same terminal-safe rule as the other commands. JSON output is written by the encoder, so a hostile field cannot break the object.</li>
+<li><strong>No new authority.</strong> Reading logs requires no capability: the same user can read the file. <code>execution.logs</code> is read-only and cannot record, delete, or change anything.</li>
+</ul>
+<h2 id="alternatives">Alternatives</h2>
+<ul>
+<li><strong>Store the command line and output.</strong> Rejected for this increment: it is the highest-risk data, and it needs its own retention and redaction decision. A later ADR can add bounded output capture.</li>
+<li><strong>Write the journal through the workspace registry or a database.</strong> Rejected: a JSON-lines file is bounded, inspectable, atomically replaceable, and needs no new dependency or background process.</li>
+<li><strong>One journal per workspace.</strong> Rejected: it multiplies file-permission and rotation logic, and the workspace ID filter answers the same question.</li>
+<li><strong>Keep everything forever.</strong> Rejected: unbounded local state, unbounded read time, and a growing privacy exposure. Fixed bounds with silent rotation are enough for a debug aid.</li>
+<li><strong>Expose logs over the relay.</strong> Rejected: it expands the trust boundary before policy and authorization exist.</li>
+<li><strong>Record a line before the run instead of after.</strong> Rejected for now: it would journal intent that may never have a result, and the current fail-closed rule already stops future runs after a write failure. A started/terminal pair is worth considering together with output capture.</li>
+</ul>
+</article><p class="edit-link"><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/docs/decisions/013-run-journal.md" rel="noopener noreferrer">Edit this page on GitHub</a></p></main><aside class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#context">Context</a></li><li><a href="#decision">Decision</a></li><li class="toc-sub"><a href="#what-is-recorded">What is recorded</a></li><li class="toc-sub"><a href="#bounds-and-durability">Bounds and durability</a></li><li class="toc-sub"><a href="#fail-closed">Fail closed</a></li><li class="toc-sub"><a href="#the-ipc-command">The IPC command</a></li><li class="toc-sub"><a href="#scopra-logs">scopra logs</a></li><li><a href="#consequences">Consequences</a></li><li><a href="#security-considerations">Security Considerations</a></li><li><a href="#alternatives">Alternatives</a></li></ul></aside></div><footer class="site-footer">
+  <div class="footer-inner">
+    <p><strong>Scopra</strong> — controlled execution for AI agents. Free and open source under the <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE">MIT License</a>.</p>
+    <p class="muted">No pricing model, no telemetry, no account. Generated from the Markdown in <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">the repository</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overview — Scopra</title>
+<meta name="description" content="Overview — Scopra documentation.">
+<link rel="canonical" href="https://scopra-six.vercel.app/docs/overview.html">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0b0e14">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Overview — Scopra">
+<meta property="og:description" content="Overview — Scopra documentation.">
+<meta property="og:url" content="https://scopra-six.vercel.app/docs/overview.html">
+<meta property="og:site_name" content="Scopra">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>Scopra</a>
+  <nav aria-label="Main">
+    <a href="/docs/">Docs</a>
+    <a href="/docs/overview.html">Overview</a>
+    <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">GitHub</a>
+  </nav>
+</header>
+<div class="layout"><nav class="sidebar" aria-label="Documentation"><p class="group">Overview</p><ul><li><a href="/docs/overview.html" class="current" aria-current="page">Overview</a></li><li><a href="/docs/changelog.html">Changelog</a></li></ul><p class="group">Product</p><ul><li><a href="/docs/prd.html">Product Requirements</a></li><li><a href="/docs/product/alpha-scope.html">Alpha Scope</a></li><li><a href="/docs/product/naming.html">Naming</a></li></ul><p class="group">Architecture</p><ul><li><a href="/docs/architecture/system-overview.html">System Overview</a></li><li><a href="/docs/architecture/domain-model.html">Domain Model</a></li><li><a href="/docs/architecture/protocol.html">Protocol</a></li></ul><p class="group">Security</p><ul><li><a href="/docs/security/threat-model.html">Threat Model</a></li><li><a href="/docs/security/risk-register.html">Risk Register</a></li><li><a href="/docs/security/security-architecture.html">Security Architecture</a></li></ul><p class="group">Decisions</p><ul><li><a href="/docs/decisions.html">Architecture Decision Records</a></li><li><a href="/docs/decisions/001-go-module-layout.html">ADR-001: Initial Go Module Layout</a></li><li><a href="/docs/decisions/002-messenger-envelope-v1.html">ADR-002: Scopra Messenger Envelope v1 Structural Contract</a></li><li><a href="/docs/decisions/003-local-status-ipc.html">ADR-003: Mio Foreground Status Daemon and Local IPC v1</a></li><li><a href="/docs/decisions/004-workspace-validation.html">ADR-004: Workspace Path Validation and Fingerprint v1</a></li><li><a href="/docs/decisions/005-workspace-registry-storage.html">ADR-005: Workspace Registry Storage v1</a></li><li><a href="/docs/decisions/006-local-workspace-commands.html">ADR-006: Local Workspace Commands over IPC v1</a></li><li><a href="/docs/decisions/007-execution-request-v1.html">ADR-007: Execution Request v1 Structural Contract</a></li><li><a href="/docs/decisions/008-canonical-execution-request.html">ADR-008: Canonical Execution Request and Action Hash</a></li><li><a href="/docs/decisions/009-execution-lifecycle-messages.html">ADR-009: Execution States, Results, Output, Errors, and Cancellation</a></li><li><a href="/docs/decisions/010-hollow-rootless-podman.html">ADR-010: Hollow Containment Backend: Rootless Podman</a></li><li><a href="/docs/decisions/011-local-execution.html">ADR-011: Local Execution over the Mio Socket</a></li><li><a href="/docs/decisions/012-systemd-user-service.html">ADR-012: Mio as a systemd User Service</a></li><li><a href="/docs/decisions/013-run-journal.html">ADR-013: Bounded Local Run Journal and scopra logs</a></li><li><a href="/docs/decisions/014-open-source-no-pricing.html">ADR-014: MIT License and No Pricing Model</a></li><li><a href="/docs/decisions/015-documentation-site.html">ADR-015: A Generated Static Documentation Site on Vercel</a></li><li><a href="/docs/decisions/016-one-command-installer.html">ADR-016: One-Command Interactive Installer</a></li><li><a href="/docs/decisions/017-opt-in-prerequisite-provisioning.html">ADR-017: Opt-In Prerequisite Provisioning</a></li></ul><p class="group">Planning</p><ul><li><a href="/docs/plan/implementation-plan.html">Implementation Plan</a></li></ul><p class="group">API</p><ul><li><a href="/docs/api/mcp-tools.html">MCP Tools</a></li></ul><p class="group">Operations</p><ul><li><a href="/docs/operations/installation.html">Installing Scopra</a></li><li><a href="/docs/operations/runbooks.html">Runbooks</a></li><li><a href="/docs/operations/deployment.html">Deploying the Site</a></li></ul><p class="group">Community</p><ul><li><a href="/docs/community/security-policy.html">Security Policy</a></li><li><a href="/docs/community/contributing.html">Contributing</a></li><li><a href="/docs/community/code-of-conduct.html">Code of Conduct</a></li></ul></nav><main id="main" class="content"><nav class="breadcrumb" aria-label="Breadcrumb"><a href="/docs/">Docs</a> <span aria-hidden="true">/</span> Overview</nav><article class="prose"><h1 id="scopra">Scopra</h1>
+<p><strong>Controlled execution for AI agents.</strong></p>
+<p><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT" loading="lazy"></a> <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/go.mod"><img src="https://img.shields.io/badge/Go-1.26.9-00ADD8?logo=go&amp;logoColor=white" alt="Go 1.26.9" loading="lazy"></a> <a href="#requirements"><img src="https://img.shields.io/badge/Platform-Linux-FCC624?logo=linux&amp;logoColor=black" alt="Platform: Linux" loading="lazy"></a> <a href="#status"><img src="https://img.shields.io/badge/Status-pre--alpha-orange" alt="Status: pre-alpha" loading="lazy"></a> <a href="https://scopra-six.vercel.app" rel="noopener noreferrer"><img src="https://img.shields.io/badge/docs-scopra--six.vercel.app-5ee0c0" alt="Documentation" loading="lazy"></a></p>
+<blockquote>
+<p>Give agents enough access to complete the task — never unlimited access to the machine.</p>
+</blockquote>
+<p>Scopra lets AI agents run commands in approved developer environments without handing them the machine. It connects agents to workspaces through scoped grants, local policy, exact-action approvals, rootless isolation, structured results, and attributable audit records.</p>
+<p>It is <strong>free and open-source software</strong> under the <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE">MIT License</a>, with no pricing model: no paid tiers, subscriptions, usage-based billing, plan limits, or feature gates. No account is required.</p>
+<hr>
+<h2 id="install">Install</h2>
+<p>One command, on a Linux machine with a terminal:</p>
+<pre><code class="language-console">$ curl -fsSL https://scopra-six.vercel.app/install.sh | sh
+</code></pre>
+<p>The script downloads the release archive for your architecture, checks its SHA-256 against the release&#39;s <code>checksums.txt</code>, and opens an interactive installer. The installer checks the system first (Linux, systemd user session, rootless Podman 4.0+ with cgroups v2 in a transient delegated service), then asks where to put the binaries, whether to pin a sandbox image, and whether Mio should run as a systemd user service. The generated unit requests the same controllers. Nothing changes until you confirm. If rootless Podman is missing — or the service context lacks cgroup controllers — the checks screen may offer an opt-in fix: it prints every command first and runs nothing until you press <code>y</code>. An explicit no-service install also checks the current process context where you will start <code>scoprad</code>.</p>
+<p>Every variant — scripted installs, a pinned version, a custom directory, a pinned image, verifying the archive by hand — is in <a href="#detailed-install-commands">Detailed install commands</a> below. The full reference is <a href="/docs/operations/installation.html">Installing Scopra</a>: the flags, the requirements, the exact files an install writes, verification, and troubleshooting.</p>
+<hr>
+<h2 id="why-scopra">Why Scopra</h2>
+<p>Developers paste commands from AI tools into a terminal and paste the output back. That is slow, loses context, and pressures people into granting broad, unmonitored access.</p>
+<p>Scopra replaces that with a controlled path:</p>
+<ul>
+<li><strong>Least authority by default.</strong> Agents get a workspace, not a shell. Network is off, the mount is read-only unless asked otherwise, and the environment is empty.</li>
+<li><strong>Local enforcement is authoritative.</strong> The decision and the sandbox live on the machine that runs the command, not in a cloud service.</li>
+<li><strong>Structured execution.</strong> Commands are executable-plus-arguments, never shell strings or a PTY.</li>
+<li><strong>Bounded and attributable.</strong> Timeouts, memory, CPU, process, and output limits apply to every run, and results carry metadata that can be audited.</li>
+<li><strong>Free forever.</strong> MIT licensed, local-first, and complete without a paid tier or an account.</li>
+</ul>
+<hr>
+<h2 id="how-it-works">How it works</h2>
+<pre><code class="language-text">  you / an agent
+        │  scopra run …
+        ▼
+  ┌─────────────┐    authenticated Unix socket    ┌─────────────┐
+  │   scopra    │ ──────────────────────────────▶ │   scoprad   │
+  │  (Mariner)  │                                 │    (Mio)    │
+  └─────────────┘                                 └──────┬──────┘
+                                                         │ rootless Podman
+                                                         ▼
+                                                   ┌───────────┐
+                                                   │  Hollow   │
+                                                   │  sandbox  │
+                                                   └───────────┘
+</code></pre>
+<div class="table-wrap"><table>
+<thead><tr><th>Component</th><th>Command</th><th>Role</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td><strong>Scopra Mariner</strong></td><td><code>scopra</code></td><td>CLI/TUI onboarding, workspaces, runs, logs, service management</td><td>Implemented</td></tr>
+<tr><td><strong>Scopra Mio</strong></td><td><code>scoprad</code></td><td>Local daemon: IPC, workspace registry, execution, journal</td><td>Implemented</td></tr>
+<tr><td><strong>Scopra Hollow</strong></td><td>—</td><td>Rootless Podman sandbox for one command</td><td>Implemented, tested against a fake Podman</td></tr>
+<tr><td><strong>Scopra Messenger</strong></td><td>—</td><td>Versioned protocol for requests, output, and results (ADR-007/008/009)</td><td>Implemented</td></tr>
+<tr><td>Scopra Caloris / Goldstone / Rupes / Resolution / Catena / Facula</td><td>—</td><td>Cloud control plane, relay, policy, audit chain, signals</td><td>Planned</td></tr>
+</tbody></table></div>
+<p>The containment boundary is Hollow. Mio resolves <code>podman</code> once at startup, revalidates the registered workspace immediately before use, and runs one container per request with no network, no capabilities, <code>no-new-privileges</code>, a read-only root, an empty environment, and explicit limits.</p>
+<hr>
+<h2 id="status">Status</h2>
+<p>Scopra is <strong>pre-alpha</strong>. It is not ready for production or sensitive machines.</p>
+<p><strong>Works today</strong></p>
+<ul>
+<li><code>scoprad</code> foreground daemon with a private state directory, single-instance lock, and graceful shutdown.</li>
+<li>Strict same-UID Unix-socket IPC, with exact-key, bounded, fail-closed decoding.</li>
+<li>Workspace registration with canonical paths, ownership checks, overlap refusal, and filesystem-identity fingerprints (ADR-004/005/006).</li>
+<li>Local execution through Hollow when a digest-pinned image and rootless Podman are present (ADR-010/011).</li>
+<li><code>scopra run</code> with human and JSON output, cancellation, and the command&#39;s own exit status.</li>
+<li><code>scopra doctor</code> read-only diagnostics, including containment readiness.</li>
+<li><code>scopra service install/uninstall/status</code> for a systemd <strong>user</strong> service (ADR-012).</li>
+<li>A bounded, metadata-only journal of answered runs and <code>scopra logs</code> (ADR-013).</li>
+<li>Protocol packages for Messenger v1 envelopes, execution requests, and lifecycle messages.</li>
+<li>A one-command interactive installer (<code>install.sh</code> + <code>scopra install</code>) with a preflight, a digest-pinned image field, and an optional systemd user service (ADR-016).</li>
+</ul>
+<p><strong>Not implemented yet</strong></p>
+<ul>
+<li>Policy evaluation, grants, approvals, and the audit chain (Catena).</li>
+<li>Enrollment, relay (Goldstone), and the cloud control plane (Caloris).</li>
+<li>MCP server, dashboard, and SDKs.</li>
+<li>Output capture in the journal (deliberately deferred), and remote log access.</li>
+<li>macOS, Windows, and non-Linux sandboxing.</li>
+</ul>
+<p><strong>Not verified yet</strong></p>
+<ul>
+<li>A real rootless Podman host. Execution is tested against a fake Podman; no real container has been run in this repository&#39;s development environment.</li>
+<li>A real systemd user session. The unit is tested against a scripted fake <code>systemctl</code>.</li>
+</ul>
+<p>See <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/progress.md"><code>progress.md</code></a> for the full engineering log, per-increment verification, and known gaps.</p>
+<hr>
+<h2 id="requirements">Requirements</h2>
+<ul>
+<li><strong>Linux</strong> (x86_64 for the alpha). Other platforms fail closed.</li>
+<li><strong>Go 1.26.9</strong> to build from source.</li>
+<li><strong>Rootless Podman 4.0+</strong> with cgroups v2 and the <code>cpu</code>, <code>memory</code>, and <code>pids</code> controllers — only needed to execute commands.</li>
+<li><strong>A container image pinned by digest</strong>, already present in local storage. Mio never pulls images.</li>
+<li>Optional: a <strong>systemd user session</strong> for <code>scopra service</code>.</li>
+</ul>
+<p>Without Podman or a configured image, Mio still serves status, workspaces, and logs, and refuses every run with <code>containment_unavailable</code>.</p>
+<hr>
+<h2 id="quick-start">Quick start</h2>
+<pre><code class="language-sh">git clone https://github.com/SynergyFlowLabs/scopra.git
+cd scopra
+
+make bootstrap   # checks the toolchain and modules
+make lint        # gofmt + go vet
+make test        # go test -race ./...
+make security-test
+
+go build -o bin/scopra ./cmd/scopra
+go build -o bin/scoprad ./cmd/scoprad
+</code></pre>
+<p>Pull the image you intend to use, then start Mio in one terminal:</p>
+<pre><code class="language-sh">podman pull alpine@sha256:&lt;digest&gt;
+
+./bin/scoprad --sandbox-image alpine@sha256:&lt;digest&gt;
+</code></pre>
+<p>In another terminal:</p>
+<pre><code class="language-sh">./bin/scopra doctor                     # check platform, state dir, workspaces, Podman
+./bin/scopra workspace add ~/src/project
+./bin/scopra run --workspace &lt;id&gt; -- uname -a
+./bin/scopra run --workspace &lt;id&gt; --json -- ls -la
+./bin/scopra logs
+</code></pre>
+<p>Both binaries default to <code>$XDG_STATE_HOME/scopra</code> (<code>~/.local/state/scopra</code>). Pass the same <code>--state-dir</code> to each command when overriding it. The state directory is created owner-only (<code>0700</code>).</p>
+<hr>
+<h2 id="detailed-install-commands">Detailed install commands</h2>
+<p>The command at the top of this file is the short version. These are the same installer with the choices spelled out; every flag reaches <code>scopra install</code> unchanged.</p>
+<p><strong>Scripted, no interface</strong> — for configuration management and CI, one line per step:</p>
+<pre><code class="language-console">$ curl -fsSL https://scopra-six.vercel.app/install.sh | sh -s -- --yes
+</code></pre>
+<p><strong>Pin a version</strong> — <a href="https://scopra-six.vercel.app/releases/latest.txt" rel="noopener noreferrer"><code>/releases/latest.txt</code></a> names the current tag; setting <code>SCOPRA_VERSION</code> repeats an exact install:</p>
+<pre><code class="language-console">$ curl -fsSL https://scopra-six.vercel.app/install.sh | SCOPRA_VERSION=v0.1.0-alpha.8 sh
+</code></pre>
+<p><strong>Choose the directory and skip the service</strong> — <code>--dir</code> defaults to <code>$XDG_BIN_HOME</code> when it is absolute, otherwise <code>~/.local/bin</code>; <code>--no-service</code> installs without a systemd unit. Because you start <code>scoprad</code> yourself in this mode, the installer also verifies that Podman has the required controllers in your current process context; otherwise rerun without <code>--no-service</code> and choose the delegated systemd service:</p>
+<pre><code class="language-console">$ curl -fsSL https://scopra-six.vercel.app/install.sh | sh -s -- --dir ~/.local/bin --no-service
+</code></pre>
+<p><strong>Pin the sandbox image</strong> — Mio never pulls an image, so the digest must already be in local storage:</p>
+<pre><code class="language-console">$ curl -fsSL https://scopra-six.vercel.app/install.sh | sh -s -- --sandbox-image debian@sha256:&lt;digest&gt;
+</code></pre>
+<p><strong>Verify the download yourself</strong> — same bytes, same check, without the bootstrap script (use <code>arm64</code> on ARM):</p>
+<pre><code class="language-console">$ version=$(curl -fsSL https://scopra-six.vercel.app/releases/latest.txt)
+$ base=&#34;https://scopra-six.vercel.app/releases/$version&#34;
+$ curl -fsSLO &#34;$base/scopra_linux_amd64.tar.gz&#34; -O &#34;$base/checksums.txt&#34;
+$ grep &#34; scopra_linux_amd64.tar.gz$&#34; checksums.txt | sha256sum -c -
+$ tar xzf scopra_linux_amd64.tar.gz &amp;&amp; ./scopra install
+</code></pre>
+<p>The checksum proves the archive is the one the release publishes; it does not prove who published it. A signature is planned, not implemented.</p>
+<p>macOS and Windows are refused before anything is downloaded, because Mio&#39;s containment needs Linux namespaces and cgroups. To build from source instead, see <a href="#quick-start">Quick start</a>.</p>
+<hr>
+<h2 id="commands">Commands</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Command</th><th>What it does</th></tr></thead>
+<tbody>
+<tr><td><code>scopra status [--json]</code></td><td>Query Mio&#39;s local IPC endpoint</td></tr>
+<tr><td><code>scopra doctor [--sandbox-image IMAGE] [--json]</code></td><td>Read-only local diagnostics, including containment readiness</td></tr>
+<tr><td><code>scopra workspace add PATH</code></td><td>Register a workspace directory (validated and fingerprinted)</td></tr>
+<tr><td><code>scopra workspace list</code></td><td>List registrations</td></tr>
+<tr><td><code>scopra workspace remove ID | --path PATH</code></td><td>Remove a registration; never touches the directory</td></tr>
+<tr><td><code>scopra run (--workspace ID | --path PATH) -- CMD [ARGS…]</code></td><td>Run one command in Hollow</td></tr>
+<tr><td><code>scopra logs [--workspace ID] [--limit N] [--json]</code></td><td>Read the metadata-only run journal</td></tr>
+<tr><td><code>scopra service install | uninstall | status</code></td><td>Manage Mio as a systemd user service</td></tr>
+<tr><td><code>scopra install [--dir PATH] [--sandbox-image IMAGE] [--yes]</code></td><td>Interactive installer; <code>--yes</code> installs without the interface</td></tr>
+<tr><td><code>scopra version</code> / <code>scoprad --version</code></td><td>Print build version</td></tr>
+</tbody></table></div>
+<p>Run flags include <code>--write</code>, <code>--workdir</code>, <code>--timeout</code>, <code>--memory</code>, <code>--cpus</code>, <code>--pids</code>, <code>--output-limit</code>, and <code>--reason</code>. See <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/cmd/scopra/README.md"><code>cmd/scopra/README.md</code></a> and <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/cmd/scoprad/README.md"><code>cmd/scoprad/README.md</code></a> for the full contract, exit statuses, and JSON shapes.</p>
+<hr>
+<h2 id="security-model">Security model</h2>
+<ul>
+<li><strong>Same-user trust.</strong> Any process running as you can use the local socket, exactly as it can already run commands. Peer credentials do not isolate processes that share a UID.</li>
+<li><strong>No new authority.</strong> A local run is your own action. It grants nothing and approves nothing; it only takes capabilities away.</li>
+<li><strong>Containment.</strong> Rootless Podman, no network, no capabilities, <code>no-new-privileges</code>, read-only root filesystem, workspace-only mount, empty environment, no host credential sockets, no PTY, no native fallback.</li>
+<li><strong>Fail closed.</strong> An unusable registry, journal, socket, or containment setup refuses the operation instead of degrading.</li>
+<li><strong>Bounded.</strong> Every frame, request, entry, output chunk, and file is size-limited; every helper call has a deadline.</li>
+<li><strong>No telemetry, no account.</strong> Scopra does not phone home.</li>
+</ul>
+<p>Read the <a href="/docs/security/threat-model.html">threat model</a>, <a href="/docs/security/risk-register.html">risk register</a>, and <a href="/docs/security/security-architecture.html">security architecture</a> before relying on any of it. To report a vulnerability, see <a href="/docs/community/security-policy.html"><code>SECURITY.md</code></a> — please do not open a public issue.</p>
+<hr>
+<h2 id="documentation">Documentation</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Document</th><th>Contents</th></tr></thead>
+<tbody>
+<tr><td><a href="https://scopra-six.vercel.app" rel="noopener noreferrer">https://scopra-six.vercel.app</a></td><td>The same documentation as a website, generated from these files</td></tr>
+<tr><td><a href="/docs/prd.html"><code>PRD.md</code></a></td><td>Product requirements, users, principles, alpha scope</td></tr>
+<tr><td><a href="/docs/plan/implementation-plan.html"><code>docs/plans/00-full-implementation-plan.md</code></a></td><td>Milestones and acceptance criteria</td></tr>
+<tr><td><a href="/docs/architecture/system-overview.html"><code>docs/architecture/system-overview.md</code></a></td><td>How the pieces fit together</td></tr>
+<tr><td><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/docs/decisions"><code>docs/decisions/</code></a></td><td>Architecture Decision Records (ADR-001 … ADR-016)</td></tr>
+<tr><td><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/docs/security"><code>docs/security/</code></a></td><td>Threat model, risk register, security architecture</td></tr>
+<tr><td><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/docs/product"><code>docs/product/</code></a></td><td>Naming and product notes</td></tr>
+<tr><td><a href="/docs/operations/installation.html"><code>docs/operations/installation.md</code></a></td><td>The one-command install, requirements, flags, and troubleshooting</td></tr>
+<tr><td><a href="/docs/operations/deployment.html"><code>docs/operations/deployment.md</code></a></td><td>How the documentation site is built, deployed, verified, and rolled back</td></tr>
+<tr><td><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/progress.md"><code>progress.md</code></a></td><td>Running engineering log with verification evidence</td></tr>
+<tr><td><a href="/docs/changelog.html"><code>CHANGELOG.md</code></a></td><td>User-visible changes by release</td></tr>
+</tbody></table></div>
+<hr>
+<h2 id="project-layout">Project layout</h2>
+<pre><code class="language-text">cmd/scopra/           Mariner CLI
+cmd/scoprad/          Mio daemon
+internal/journal/     Bounded, metadata-only run journal
+internal/localipc/    Strict IPC: envelope, workspace, execution, logs
+internal/workspace/   Canonical paths, ownership, fingerprints, registry
+internal/execution/   Workspace lookup, revalidation, executor wiring
+internal/hollow/      Rootless Podman argument builder, preflight, runner
+internal/installer/   Installer state machine, preflight, install, screens
+internal/tui/         Raw-mode terminal, key decoding, cell-grid renderer
+packages/protocol/    Messenger v1 envelopes and lifecycle messages
+apps/docs-site/       Generated static documentation site
+docs/                 Plan, architecture, security, ADRs
+scripts/              Bootstrap and development helpers
+tools/docsite/        Markdown-to-HTML generator for the site
+</code></pre>
+<hr>
+<h2 id="contributing">Contributing</h2>
+<p>Contributions are welcome — code, docs, tests, threat-model review, and bug reports.</p>
+<ul>
+<li>Read <a href="/docs/community/contributing.html"><code>CONTRIBUTING.md</code></a> for the development setup, conventions, and review process.</li>
+<li>Everyone participating agrees to the <a href="/docs/community/code-of-conduct.html"><code>CODE_OF_CONDUCT.md</code></a>.</li>
+<li>Good first issues are labelled <a href="https://github.com/SynergyFlowLabs/scopra/labels/good%20first%20issue" rel="noopener noreferrer"><code>good first issue</code></a>.</li>
+<li>Security-sensitive changes need an issue, cross-review, positive and negative tests, and documentation in the same pull request.</li>
+<li>Report vulnerabilities privately as described in <a href="/docs/community/security-policy.html"><code>SECURITY.md</code></a>.</li>
+</ul>
+<hr>
+<h2 id="license">License</h2>
+<p>Scopra is <strong>free and open-source software</strong>, released under the <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE">MIT License</a>.</p>
+<p>There is no pricing model: no paid tiers, subscriptions, usage-based billing, plan limits, feature gates, or account requirements. Every capability is available to everyone under the same license. See <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/NOTICE"><code>NOTICE</code></a> for third-party material and <a href="/docs/decisions/014-open-source-no-pricing.html"><code>docs/decisions/014-open-source-no-pricing.md</code></a> for the decision.</p>
+<h2 id="acknowledgements">Acknowledgements</h2>
+<ul>
+<li>The protocol and security design borrows heavily from the OWASP Cheat Sheet Series and the broader Go security community.</li>
+<li><code>internal/hollow/testdata/podman-info-v4.0.0-docs.json</code> is Podman&#39;s documented example (Apache-2.0); see <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/internal/hollow/testdata/README.md"><code>internal/hollow/testdata/README.md</code></a>.</li>
+<li>Development used the open-source skills recorded in <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/skills-lock.json"><code>skills-lock.json</code></a>.</li>
+</ul>
+</article><p class="edit-link"><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/README.md" rel="noopener noreferrer">Edit this page on GitHub</a></p></main><aside class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#install">Install</a></li><li><a href="#why-scopra">Why Scopra</a></li><li><a href="#how-it-works">How it works</a></li><li><a href="#status">Status</a></li><li><a href="#requirements">Requirements</a></li><li><a href="#quick-start">Quick start</a></li><li><a href="#detailed-install-commands">Detailed install commands</a></li><li><a href="#commands">Commands</a></li><li><a href="#security-model">Security model</a></li><li><a href="#documentation">Documentation</a></li><li><a href="#project-layout">Project layout</a></li><li><a href="#contributing">Contributing</a></li><li><a href="#license">License</a></li><li><a href="#acknowledgements">Acknowledgements</a></li></ul></aside></div><footer class="site-footer">
+  <div class="footer-inner">
+    <p><strong>Scopra</strong> — controlled execution for AI agents. Free and open source under the <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE">MIT License</a>.</p>
+    <p class="muted">No pricing model, no telemetry, no account. Generated from the Markdown in <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">the repository</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

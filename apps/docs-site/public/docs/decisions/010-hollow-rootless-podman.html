@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADR-010: Hollow Containment Backend: Rootless Podman — Scopra</title>
+<meta name="description" content="ADR-010: Hollow Containment Backend: Rootless Podman — Scopra documentation.">
+<link rel="canonical" href="https://scopra-six.vercel.app/docs/decisions/010-hollow-rootless-podman.html">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0b0e14">
+<meta property="og:type" content="website">
+<meta property="og:title" content="ADR-010: Hollow Containment Backend: Rootless Podman — Scopra">
+<meta property="og:description" content="ADR-010: Hollow Containment Backend: Rootless Podman — Scopra documentation.">
+<meta property="og:url" content="https://scopra-six.vercel.app/docs/decisions/010-hollow-rootless-podman.html">
+<meta property="og:site_name" content="Scopra">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>Scopra</a>
+  <nav aria-label="Main">
+    <a href="/docs/">Docs</a>
+    <a href="/docs/overview.html">Overview</a>
+    <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">GitHub</a>
+  </nav>
+</header>
+<div class="layout"><nav class="sidebar" aria-label="Documentation"><p class="group">Overview</p><ul><li><a href="/docs/overview.html">Overview</a></li><li><a href="/docs/changelog.html">Changelog</a></li></ul><p class="group">Product</p><ul><li><a href="/docs/prd.html">Product Requirements</a></li><li><a href="/docs/product/alpha-scope.html">Alpha Scope</a></li><li><a href="/docs/product/naming.html">Naming</a></li></ul><p class="group">Architecture</p><ul><li><a href="/docs/architecture/system-overview.html">System Overview</a></li><li><a href="/docs/architecture/domain-model.html">Domain Model</a></li><li><a href="/docs/architecture/protocol.html">Protocol</a></li></ul><p class="group">Security</p><ul><li><a href="/docs/security/threat-model.html">Threat Model</a></li><li><a href="/docs/security/risk-register.html">Risk Register</a></li><li><a href="/docs/security/security-architecture.html">Security Architecture</a></li></ul><p class="group">Decisions</p><ul><li><a href="/docs/decisions.html">Architecture Decision Records</a></li><li><a href="/docs/decisions/001-go-module-layout.html">ADR-001: Initial Go Module Layout</a></li><li><a href="/docs/decisions/002-messenger-envelope-v1.html">ADR-002: Scopra Messenger Envelope v1 Structural Contract</a></li><li><a href="/docs/decisions/003-local-status-ipc.html">ADR-003: Mio Foreground Status Daemon and Local IPC v1</a></li><li><a href="/docs/decisions/004-workspace-validation.html">ADR-004: Workspace Path Validation and Fingerprint v1</a></li><li><a href="/docs/decisions/005-workspace-registry-storage.html">ADR-005: Workspace Registry Storage v1</a></li><li><a href="/docs/decisions/006-local-workspace-commands.html">ADR-006: Local Workspace Commands over IPC v1</a></li><li><a href="/docs/decisions/007-execution-request-v1.html">ADR-007: Execution Request v1 Structural Contract</a></li><li><a href="/docs/decisions/008-canonical-execution-request.html">ADR-008: Canonical Execution Request and Action Hash</a></li><li><a href="/docs/decisions/009-execution-lifecycle-messages.html">ADR-009: Execution States, Results, Output, Errors, and Cancellation</a></li><li><a href="/docs/decisions/010-hollow-rootless-podman.html" class="current" aria-current="page">ADR-010: Hollow Containment Backend: Rootless Podman</a></li><li><a href="/docs/decisions/011-local-execution.html">ADR-011: Local Execution over the Mio Socket</a></li><li><a href="/docs/decisions/012-systemd-user-service.html">ADR-012: Mio as a systemd User Service</a></li><li><a href="/docs/decisions/013-run-journal.html">ADR-013: Bounded Local Run Journal and scopra logs</a></li><li><a href="/docs/decisions/014-open-source-no-pricing.html">ADR-014: MIT License and No Pricing Model</a></li><li><a href="/docs/decisions/015-documentation-site.html">ADR-015: A Generated Static Documentation Site on Vercel</a></li><li><a href="/docs/decisions/016-one-command-installer.html">ADR-016: One-Command Interactive Installer</a></li><li><a href="/docs/decisions/017-opt-in-prerequisite-provisioning.html">ADR-017: Opt-In Prerequisite Provisioning</a></li></ul><p class="group">Planning</p><ul><li><a href="/docs/plan/implementation-plan.html">Implementation Plan</a></li></ul><p class="group">API</p><ul><li><a href="/docs/api/mcp-tools.html">MCP Tools</a></li></ul><p class="group">Operations</p><ul><li><a href="/docs/operations/installation.html">Installing Scopra</a></li><li><a href="/docs/operations/runbooks.html">Runbooks</a></li><li><a href="/docs/operations/deployment.html">Deploying the Site</a></li></ul><p class="group">Community</p><ul><li><a href="/docs/community/security-policy.html">Security Policy</a></li><li><a href="/docs/community/contributing.html">Contributing</a></li><li><a href="/docs/community/code-of-conduct.html">Code of Conduct</a></li></ul></nav><main id="main" class="content"><nav class="breadcrumb" aria-label="Breadcrumb"><a href="/docs/">Docs</a> <span aria-hidden="true">/</span> Decisions</nav><article class="prose"><h1 id="adr-010-hollow-containment-backend-rootless-podman">ADR-010: Hollow Containment Backend: Rootless Podman</h1>
+<p><strong>Status:</strong> Accepted (proposed, then accepted as written by the maintainer) <strong>Date:</strong> 2026-10-17</p>
+<h2 id="context">Context</h2>
+<h3 id="requirements">Requirements</h3>
+<p>Milestone 1 of the plan requires:</p>
+<ul>
+<li>a rootless Podman adapter behind a containment interface, mounting only the workspace and read-only by default;</li>
+<li>no network, devices, privileged mode, Docker socket, or host PID namespace;</li>
+<li>dropped capabilities and <code>no-new-privileges</code>;</li>
+<li>CPU, memory, PID, runtime, temporary-storage, and output limits;</li>
+<li>direct execution with an empty environment and an ephemeral home;</li>
+<li>no native fallback.</li>
+</ul>
+<p>The threat model adds restricted <code>/proc</code>, seccomp, and minimal mounts. The risk register adds that a command never reaches Mio&#39;s state directory or socket (R-01). The PRD adds that no host credentials are inherited.</p>
+<h3 id="what-earlier-adrs-leave-to-the-sandbox">What earlier ADRs leave to the sandbox</h3>
+<ul>
+<li><strong>ADR-007:</strong> the lookup of a bare executable name in a fixed search path, the fixed <code>PATH</code> and ephemeral <code>HOME</code>, empty standard input, the workspace-relative working directory, <code>workspaceAccess</code>, <code>network: none</code>, and the limits.</li>
+<li><strong>ADR-004:</strong> workspace revalidation immediately before use.</li>
+<li><p><strong>ADR-009:</strong> the states that the sandbox must produce:</p>
+<ul>
+<li><code>timed_out</code> and <code>cancelled</code>, which are kills that Mio initiates;</li>
+<li><code>out_of_memory</code>;</li>
+<li><code>errored</code>, with <code>start_failed</code> or <code>containment_failed</code>;</li>
+<li><code>rejected</code>, with <code>containment_unavailable</code>.</li>
+</ul>
+<p>ADR-009 also requires that output is never logged.</p>
+</li>
+</ul>
+<h3 id="facts-checked-against-podman">Facts checked against Podman</h3>
+<p>These were checked against Podman&#39;s documentation and source code at v6.1.4 (October 2026), with first versions from its release notes:</p>
+<ul>
+<li><strong>Logging:</strong> the default log driver is <code>journald</code>, which would store command output in the user&#39;s journal. <code>--log-driver=passthrough</code> instead hands stdout and stderr straight to the <code>podman</code> process. Podman refuses <code>passthrough</code> on a TTY, which is safe because Mio uses pipes. It exists since Podman 4.0.</li>
+<li><strong>Environment:</strong> <code>--unsetenv-all</code> clears the variables that come from Podman, the image, and <code>containers.conf</code>. It exists since Podman 4.0.</li>
+<li><strong>Swap:</strong> without <code>--memory-swap</code>, Podman sets the memory-plus-swap limit to twice <code>--memory</code>, so a command could swap as much as its memory limit.</li>
+<li><strong>Command:</strong> once <code>--entrypoint</code> is set, Podman ignores the image&#39;s <code>CMD</code>. The command is then exactly the entrypoint followed by the arguments (<code>makeCommand</code>).</li>
+<li><strong>Mount syntax:</strong> <code>--mount</code> values are parsed as CSV (<code>FindMountType</code> uses <code>encoding/csv</code>), and each option is split at its first <code>=</code>. <code>-v</code> splits on <code>:</code>, so it cannot express every path.</li>
+<li><strong>Rewriting the user&#39;s files:</strong> bind-mount options <code>relabel</code> (and <code>:z</code>/<code>:Z</code>) and <code>U</code>/<code>chown</code> recursively rewrite the SELinux labels or the ownership of the host files.</li>
+</ul>
+<h2 id="decision">Decision</h2>
+<h3 id="backend">Backend</h3>
+<p>Hollow runs each execution as one container through the local <code>podman</code> command, never the remote API and never as a native process.</p>
+<p>Mio requires all of the following:</p>
+<ul>
+<li>Podman 4.0 or later, running rootless;</li>
+<li>cgroups v2 with the <code>cpu</code>, <code>memory</code>, and <code>pids</code> controllers delegated to the user;</li>
+<li>a configured image.</li>
+</ul>
+<p>If any of these is missing, Mio rejects the request with <code>containment_unavailable</code> (ADR-009).</p>
+<p>The image is a required Mio setting with <strong>no default</strong>. It must be a reference pinned by digest (<code>name@sha256:</code> and 64 hexadecimal characters), and it must already be in local storage: Mio never pulls an image while running a command. Until the setting exists, every request is rejected.</p>
+<h3 id="invocation">Invocation</h3>
+<p>For a validated request, a workspace revalidated immediately before the run with canonical path <code>P</code>, and the configured image <code>I</code>, Mio runs <code>podman run</code> with exactly these arguments, in this order:</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Argument</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td><code>--name=scopra-&lt;first 32 hex characters of the action hash&gt;</code></td><td>lets Mio address the container for cancellation, inspection, and removal</td></tr>
+<tr><td><code>--label=scopra.action-hash=&lt;action hash&gt;</code></td><td>lets Mio find containers that a crashed run left behind</td></tr>
+<tr><td><code>--pull=never</code></td><td>never contacts a registry</td></tr>
+<tr><td><code>--log-driver=passthrough</code></td><td>output reaches only Mio&#39;s pipes, never <code>journald</code> or a log file</td></tr>
+<tr><td><code>--network=none</code></td><td>no network (<code>network: none</code>)</td></tr>
+<tr><td><code>--userns=keep-id</code></td><td>the command runs as the user&#39;s own UID, not as root, and workspace files keep their ownership</td></tr>
+<tr><td><code>--cap-drop=all</code></td><td>no capabilities</td></tr>
+<tr><td><code>--security-opt=no-new-privileges</code></td><td>setuid bits and file capabilities cannot raise privileges</td></tr>
+<tr><td><code>--security-opt=label=disable</code></td><td>see &#34;SELinux&#34; below</td></tr>
+<tr><td><code>--read-only</code></td><td>the image&#39;s root filesystem cannot be changed</td></tr>
+<tr><td><code>--tmpfs=/tmp:rw,exec,nosuid,nodev,mode=1777,size=&lt;memoryBytes&gt;</code></td><td>writable scratch space; build tools run binaries from <code>/tmp</code>; it counts against the memory limit</td></tr>
+<tr><td><code>--mount=type=bind,&#34;src=&lt;P&gt;&#34;,dst=/workspace,ro=&lt;true|false&gt;</code></td><td>the only host path; <code>ro=true</code> unless <code>workspaceAccess</code> is <code>read-write</code>. The <code>src</code> field is quoted as CSV, with inner quotes doubled.</td></tr>
+<tr><td><code>--workdir=/workspace</code> or <code>/workspace/&lt;workingDirectory&gt;</code></td><td>ADR-007&#39;s working directory</td></tr>
+<tr><td><code>--unsetenv-all</code>, <code>--env=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin</code>, <code>--env=HOME=/tmp</code></td><td>an empty environment plus the fixed search path and an ephemeral home</td></tr>
+<tr><td><code>--init</code></td><td>a minimal init runs as process 1, forwards signals, and reaps processes; ending the container ends every descendant</td></tr>
+<tr><td><code>--memory=&lt;memoryBytes&gt;b</code>, <code>--memory-swap=&lt;memoryBytes&gt;b</code></td><td>the memory limit, with no swap</td></tr>
+<tr><td><code>--cpus=&lt;cpuMillicores ÷ 1000, as an exact decimal&gt;</code></td><td>the CPU limit</td></tr>
+<tr><td><code>--pids-limit=&lt;pids&gt;</code></td><td>the process limit</td></tr>
+<tr><td><code>--timeout=&lt;timeoutSeconds + 10&gt;</code></td><td>a backstop if Mio dies; Mio&#39;s own timer decides <code>timed_out</code></td></tr>
+<tr><td><code>--entrypoint=[&#34;&lt;executable&gt;&#34;]</code> (JSON)</td><td>the exact executable, with no image entrypoint and no image <code>CMD</code></td></tr>
+<tr><td><code>I</code>, then each argument</td><td>the exact argument vector, even for arguments that look like Podman options</td></tr>
+</tbody></table></div>
+<p><strong>Never passed:</strong></p>
+<ul>
+<li><code>--privileged</code>, <code>--cap-add</code>, and <code>--device</code>;</li>
+<li>any other <code>--mount</code>, <code>--volume</code>, or host path;</li>
+<li>any host namespace (<code>--pid</code>, <code>--network</code>, <code>--ipc</code>, <code>--uts</code>, or <code>--userns</code> set to <code>host</code>);</li>
+<li><code>seccomp=unconfined</code> and <code>unmask</code>;</li>
+<li><code>--group-add</code>;</li>
+<li>the <code>relabel</code> and <code>U</code> mount options;</li>
+<li><code>--env-host</code>, <code>--env-file</code>, and <code>--secret</code>;</li>
+<li><code>--interactive</code> and <code>--tty</code>.</li>
+</ul>
+<p>Podman&#39;s default seccomp profile, its masked and read-only <code>/proc</code> and <code>/sys</code> paths, and its private PID, IPC, and UTS namespaces stay in force. Standard input is <code>/dev/null</code>, and stdout and stderr are pipes that Mio reads.</p>
+<h3 id="paths">Paths</h3>
+<p><code>P</code> must be absolute and valid UTF-8, with no control characters. Go&#39;s CSV reader drops a carriage return before a newline inside a quoted field, which would change the path. Any other character, including <code>,</code>, <code>&#34;</code>, <code>:</code>, <code>=</code>, and spaces, travels safely in the quoted <code>src</code> field. A workspace that cannot be mounted this way is rejected with <code>workspace_unavailable</code> and a message that says why.</p>
+<p>Symlinks inside the workspace resolve inside the container&#39;s filesystem, never the host&#39;s. ADR-004 and ADR-005 keep Mio&#39;s state directory, and with it Mio&#39;s socket, outside every workspace.</p>
+<h3 id="selinux">SELinux</h3>
+<p>To let a confined container read the workspace, Podman would have to relabel it, rewriting the labels of the user&#39;s files recursively. Hollow never relabels. It passes <code>label=disable</code> instead, so SELinux separation does not apply to the container. The other layers remain: the user namespace, no capabilities, <code>no-new-privileges</code>, seccomp, the read-only root, no network, and the single mount. A dedicated SELinux policy may replace this later.</p>
+<h3 id="lifecycle">Lifecycle</h3>
+<p>These belong to later increments:</p>
+<ul>
+<li>Mio&#39;s own timer and <code>podman kill</code> implement the timeout and cancellation.</li>
+<li>After the container exits, <code>podman inspect</code> tells <code>out_of_memory</code> (<code>OOMKilled</code>) apart from <code>failed</code>.</li>
+<li><code>podman rm</code> removes the container.</li>
+<li>At startup, Mio removes containers that carry a <code>scopra.action-hash</code> label from an earlier run.</li>
+<li>Output is read from the pipes under ADR-009&#39;s limits and turned into chunks.</li>
+</ul>
+<h3 id="increments">Increments</h3>
+<ol>
+<li><strong>Argument builder:</strong> a pure function in <code>internal/hollow</code> that builds the argument vector above from a validated request, a canonical workspace path, and a pinned image. It starts no process.</li>
+<li><strong>Preflight:</strong> checks that parse Podman&#39;s version and <code>podman info</code> output and fail closed unless every requirement under &#34;Backend&#34; holds. They are tested on recorded samples.</li>
+<li><strong>Runner:</strong> start, stream output, time out, cancel, map exits, and clean up. It must also verify every argument above against a real rootless Podman.</li>
+<li><strong>Adversarial tests:</strong> the plan&#39;s list, on that same host.</li>
+</ol>
+<p>Increments 1 and 2 can be built and tested in this sandbox. Increments 3 and 4 need a machine with rootless Podman.</p>
+<p><strong>Implementation status (2026-10-17):</strong> increments 1 and 2 are implemented in <code>internal/hollow</code>: <code>hollow.PodmanRunArgs</code> (Step 22), and <code>hollow.ParsePodmanInfo</code> with <code>PodmanInfo.Check</code> (Step 23). The preflight reads <code>podman info --format json</code>, which includes the version, and is tested on Podman&#39;s own documentation sample. Nothing ran Podman at that point; the runner status below records what came next.</p>
+<h2 id="consequences">Consequences</h2>
+<ul>
+<li>Commands run only where rootless Podman 4.0 or later and cgroup delegation exist. That excludes, for example, Ubuntu 22.04, which ships Podman 3.4. Elsewhere Mio says why it refuses and never falls back.</li>
+<li>The user pulls and pins the image ahead of time. The image&#39;s entrypoint, <code>CMD</code>, <code>USER</code>, and environment are ignored.</li>
+<li><code>/tmp</code> allows execution inside the container. Without it, common build and test tools fail.</li>
+<li>The flag set comes from documentation and source code. Increment 3 must confirm it on a real host before Mio runs anything.</li>
+</ul>
+<h2 id="security-considerations">Security Considerations</h2>
+<p>The boundary has several layers:</p>
+<ul>
+<li>a user namespace;</li>
+<li>no capabilities;</li>
+<li><code>no-new-privileges</code>;</li>
+<li>default seccomp;</li>
+<li>a read-only root;</li>
+<li>no network;</li>
+<li>the workspace as the only host path.</li>
+</ul>
+<p>The command can change the workspace when access is <code>read-write</code>, and nothing else on the host filesystem. Output never reaches <code>journald</code> or Podman&#39;s log files. Mio never pulls images, so what runs is exactly the pinned digest the user chose. Disabling SELinux labels for the container trades one layer for not rewriting the user&#39;s files. The kernel remains shared, which rootless operation mitigates but does not remove.</p>
+<h2 id="alternatives">Alternatives</h2>
+<ul>
+<li><strong>Native execution:</strong> rejected. The plan forbids a native fallback.</li>
+<li><strong>Docker:</strong> rejected. Its daemon is rootful, and access to its socket is equivalent to root.</li>
+<li><strong><code>podman run --rm</code>:</strong> rejected. Mio could not inspect the out-of-memory state after exit.</li>
+<li><strong>The default <code>journald</code> or <code>k8s-file</code> log drivers:</strong> rejected. They store output.</li>
+<li><strong><code>-v</code> volumes:</strong> rejected. They cannot express every path.</li>
+<li><strong>Relabelling the workspace:</strong> rejected. It rewrites the user&#39;s files.</li>
+<li><strong>gVisor, Kata, or Firecracker:</strong> deferred. They are stronger, but beyond the alpha and harder to run rootless.</li>
+<li><strong>The Podman remote API socket:</strong> rejected. It exposes a powerful socket, and the local client is enough.</li>
+</ul>
+<h2 id="amendment-2026-10-17-image-setting-and-runner-plan">Amendment — 2026-10-17: image setting and runner plan</h2>
+<p>Proposed, then accepted as written by the maintainer.</p>
+<h3 id="image-setting">Image setting</h3>
+<ul>
+<li><code>scoprad --sandbox-image=REF</code> sets the image for one run of Mio.</li>
+<li><code>REF</code> must pass the same rule that <code>hollow.PodmanRunArgs</code> applies: a name, then <code>@sha256:</code> and 64 lowercase hexadecimal characters.</li>
+<li>A malformed value is a usage error (exit status 2) that is reported before Mio takes its lock or touches the state directory.</li>
+<li>Without the flag, Mio starts as it does today and will reject every execution with <code>containment_unavailable</code>. No execution path exists yet, so nothing visible changes until then.</li>
+<li>Mio never pulls the image. Whether it exists locally is checked before each run (see below).</li>
+<li><strong>Command line only, until ADR-012.</strong> A persisted setting needed a durable place and format; ADR-012 settled that by putting it in the systemd user unit that <code>scopra service install</code> writes. <code>scopra status</code> does not report the setting, because that would change the status reply (ADR-003). <code>scopra doctor</code> checks it only when given its own <code>--sandbox-image</code>, read-only, so the status reply is unchanged.</li>
+</ul>
+<h3 id="splitting-increment-3">Splitting increment 3</h3>
+<p><strong>3a, buildable without Podman:</strong> the runner, tested against a fake Podman, a helper process in the tests that imitates <code>podman run</code>, <code>inspect</code>, <code>kill</code>, <code>rm</code>, and <code>ps</code> with scripted behaviour. It proves Mio&#39;s own logic:</p>
+<ul>
+<li>process handling;</li>
+<li>the start notice;</li>
+<li>ADR-009 output chunks;</li>
+<li>the timeout and cancellation;</li>
+<li>the mapping to result states;</li>
+<li>cleanup.</li>
+</ul>
+<p>It cannot prove isolation.</p>
+<p><strong>3b, which needs a host with rootless Podman:</strong> the same runner against real Podman, verifying every argument above, followed by increment 4. The arguments to verify are:</p>
+<ul>
+<li><code>passthrough</code> logging;</li>
+<li><code>--memory-swap</code> equal to <code>--memory</code>;</li>
+<li>the entrypoint override;</li>
+<li>the <code>/tmp</code> tmpfs replacing the default one;</li>
+<li>CSV-quoted mounts;</li>
+<li><code>label=disable</code>.</li>
+</ul>
+<h3 id="runner-rules">Runner rules</h3>
+<p><strong>Before the run</strong></p>
+<ul>
+<li>Mio runs the absolute path of <code>podman</code> that it resolves once at startup.</li>
+<li>Before each execution it runs the preflight check (<code>podman info</code>) and <code>podman image exists REF</code>. A failure rejects the request with <code>containment_unavailable</code>.</li>
+</ul>
+<p><strong>Launch and start notice</strong></p>
+<ul>
+<li>Mio launches <code>podman run</code> with the arguments above, standard input from <code>/dev/null</code>, and stdout and stderr on pipes.</li>
+<li>It polls <code>podman inspect</code> until <code>State.StartedAt</code> is set or <code>podman</code> exits. It then sends <code>execution.started</code> with that time, truncated to milliseconds, so the notice reports the command&#39;s start rather than the launch of Podman.</li>
+</ul>
+<p><strong>Output</strong></p>
+<ul>
+<li>Mio reads both pipes concurrently.</li>
+<li>Chunks hold at most 64 KiB and are numbered in one sequence, in the order they are read.</li>
+<li>Once the bytes sent reach <code>limits.outputBytes</code>, Mio keeps reading but discards the rest and marks the output truncated.</li>
+</ul>
+<p><strong>Timeout and cancellation</strong></p>
+<ul>
+<li>Mio&#39;s timer starts at launch. When it expires, Mio runs <code>podman kill --signal=KILL</code> on the container and reports <code>timed_out</code>.</li>
+<li>A cancel does the same and reports <code>cancelled</code>.</li>
+<li>The first kill wins.</li>
+</ul>
+<p><strong>Result</strong></p>
+<p>The result comes from <code>podman inspect</code>, never from <code>podman run</code>&#39;s own exit status. That status is 125, 126, or 127 for Podman&#39;s own failures, which a command can also return. The mapping is:</p>
+<ul>
+<li>a container that never started is <code>errored</code>, with <code>start_failed</code>;</li>
+<li><code>OOMKilled</code> is <code>out_of_memory</code>;</li>
+<li>otherwise <code>State.ExitCode</code> 0 is <code>succeeded</code>, and 1 to 255 is <code>failed</code>.</li>
+</ul>
+<p>With <code>passthrough</code> logging, Podman&#39;s own error text for a start failure may appear in the stderr stream. Increment 3b must confirm this.</p>
+<p><strong>Implementation status (2026-10-17):</strong> 3a-1 is implemented (Step 24). <code>scoprad --sandbox-image</code> is validated by <code>hollow.ValidateImage</code> and stated with <code>hollow.ImageRule</code>; it is a usage error reported before the state directory is touched, and the value reaches Mio&#39;s configuration for the runner. 3a-2 is implemented as <code>hollow.Runner</code> (Step 25) and tested against a fake Podman. It includes the whole mapping from <code>podman inspect</code> to a result, out-of-memory and start failure included, so 3a-3 keeps the timeout, cancellation, the image-presence check, and startup cleanup. 3a-3 is implemented (Step 26):</p>
+<ul>
+<li>Mio&#39;s own timer and context cancellation drive <code>podman kill --signal=KILL</code>, retried until it works or Podman exits. The first trigger wins, and a container that exits before any kill succeeds keeps its own result.</li>
+<li>The preflight check and <code>podman image exists</code> run before every execution and reject with <code>containment_unavailable</code>, using a bounded and sanitised message.</li>
+<li>Every helper call has a 30-second deadline.</li>
+<li><code>Runner.RemoveLeftovers</code> removes labelled <code>scopra-&lt;32 hex&gt;</code> containers.</li>
+</ul>
+<p>Increment 3a is therefore complete. Mio now uses the runner (ADR-011 increment 2), and it has not met a real Podman. Increment 3b and the adversarial tests need a host with rootless Podman.</p>
+<p><strong>Cleanup</strong></p>
+<ul>
+<li><code>podman rm --force</code> removes the container after its result.</li>
+<li>At startup, Mio removes every container that carries a <code>scopra.action-hash</code> label.</li>
+</ul>
+<h3 id="revised-increments">Revised increments</h3>
+<ol>
+<li>Done: the argument builder (Step 22).</li>
+<li>Done: the preflight check (Step 23).</li>
+<li>The runner, in parts:<ul>
+<li><strong>3a-1:</strong> the image setting (Step 24).</li>
+<li><strong>3a-2:</strong> the runner&#39;s launch, start notice, output chunks, normal exits, and cleanup, against the fake Podman.</li>
+<li><strong>3a-3:</strong> timeout, cancellation, out-of-memory and start-failure mapping, the image-presence check, and startup cleanup, against the fake Podman.</li>
+<li><strong>3b:</strong> verification on a real rootless host.</li>
+</ul>
+</li>
+<li>Adversarial tests, which also need that host.</li>
+</ol>
+</article><p class="edit-link"><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/docs/decisions/010-hollow-rootless-podman.md" rel="noopener noreferrer">Edit this page on GitHub</a></p></main><aside class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#context">Context</a></li><li class="toc-sub"><a href="#requirements">Requirements</a></li><li class="toc-sub"><a href="#what-earlier-adrs-leave-to-the-sandbox">What earlier ADRs leave to the sandbox</a></li><li class="toc-sub"><a href="#facts-checked-against-podman">Facts checked against Podman</a></li><li><a href="#decision">Decision</a></li><li class="toc-sub"><a href="#backend">Backend</a></li><li class="toc-sub"><a href="#invocation">Invocation</a></li><li class="toc-sub"><a href="#paths">Paths</a></li><li class="toc-sub"><a href="#selinux">SELinux</a></li><li class="toc-sub"><a href="#lifecycle">Lifecycle</a></li><li class="toc-sub"><a href="#increments">Increments</a></li><li><a href="#consequences">Consequences</a></li><li><a href="#security-considerations">Security Considerations</a></li><li><a href="#alternatives">Alternatives</a></li><li><a href="#amendment-2026-10-17-image-setting-and-runner-plan">Amendment — 2026-10-17: image setting and runner plan</a></li><li class="toc-sub"><a href="#image-setting">Image setting</a></li><li class="toc-sub"><a href="#splitting-increment-3">Splitting increment 3</a></li><li class="toc-sub"><a href="#runner-rules">Runner rules</a></li><li class="toc-sub"><a href="#revised-increments">Revised increments</a></li></ul></aside></div><footer class="site-footer">
+  <div class="footer-inner">
+    <p><strong>Scopra</strong> — controlled execution for AI agents. Free and open source under the <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE">MIT License</a>.</p>
+    <p class="muted">No pricing model, no telemetry, no account. Generated from the Markdown in <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">the repository</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

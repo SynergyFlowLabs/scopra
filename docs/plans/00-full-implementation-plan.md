@@ -2,7 +2,9 @@
 
 **Status:** Execution-ready draft v1.1  
 **Target:** Linux private alpha  
-**Last updated:** 2026-10-16
+**Last updated:** 2026-10-17
+
+**License:** MIT, free for everyone, with no pricing model (ADR-014)
 
 ## Implementation Rule
 
@@ -25,13 +27,15 @@ If any mandatory stage is unavailable or invalid, deny the request. Never add un
 ## Technical Baseline
 
 - Monorepo
-- Go Scopra Mio daemon, Scopra Mariner CLI, Scopra Goldstone relay, and security-sensitive services
+- Go Scopra Mio daemon and Scopra Mariner CLI; keep Go free of third-party dependencies
 - TypeScript, React, and Next.js dashboard
 - PostgreSQL system of record
-- Redis for ephemeral coordination
+- Redis for ephemeral coordination only when a measured need exists (ADR-018 defers it for the first hosted slice)
 - Encrypted object storage for optional artifacts
 - Scopra Goldstone outbound TLS WebSocket machine relay carrying authenticated Scopra Messenger Protocol envelopes
+- Dashboard is a separate Vercel project; the existing Vercel project remains the static docs site. Caloris/Goldstone run as a long-lived Docker service outside Vercel functions (ADR-018)
 - Rootless Podman behind a containment interface for Scopra Hollow
+- MIT-licensed open source, with no pricing model, paid tiers, or feature gates (ADR-014)
 - OpenTelemetry-compatible observability
 - Canonical component names are defined in `docs/product/naming.md`; retain `scopra` and `scoprad` executable names unless a separate compatibility decision changes them.
 
@@ -127,7 +131,7 @@ For the second task, validation tests exist, and the reference payloads in `pack
 
 ### Scopra Mio daemon and Scopra Mariner CLI
 
-**Initial increments implemented:** foreground `scoprad` with a persistent per-user state directory (`$XDG_STATE_HOME/scopra`, by default `~/.local/state/scopra`) and an exclusive state-directory lock (single daemon per state directory), `scopra status`, a minimal read-only `scopra doctor` (platform, state-directory, workspace-registry, registered-workspace revalidation, and Mio status checks), `scopra workspace add/list/remove`, local version reporting, context-driven shutdown, strict same-UID Unix-socket status IPC, a startup check of the workspace registry, and workspace registration commands over that IPC (ADR-006) are in place. Workspace CRUD, service installation, broader doctor checks (such as containment readiness), execution, and the broader CLI remain pending; the checklist items below describe those larger milestones and are intentionally unchecked.
+**Initial increments implemented:** foreground `scoprad` with a persistent per-user state directory (`$XDG_STATE_HOME/scopra`, by default `~/.local/state/scopra`) and an exclusive state-directory lock (single daemon per state directory), `scopra status`, a read-only `scopra doctor` (platform, state-directory, workspace-registry, registered-workspace revalidation, Mio status, and containment-readiness checks), `scopra workspace add/list/remove`, local version reporting, context-driven shutdown, strict same-UID Unix-socket status IPC, a startup check of the workspace registry, and workspace registration commands over that IPC (ADR-006) are in place. Local execution is now wired end to end: `scoprad` resolves Podman, removes leftover containers, revalidates the workspace, and runs the request in Hollow (ADR-011 increment 2), so a run executes through the sandbox when the host has rootless Podman and a pinned image. `scopra run` runs a command in a registered workspace through Mio and Hollow, with human and `--json` output and the exit statuses of ADR-011. `scopra service install/uninstall/status` manages Mio as a systemd user service whose unit carries the durable configuration (ADR-012), tested against a fake `systemctl`. Mio also keeps a bounded, metadata-only journal of answered runs (ADR-013), which `scopra logs` reads over the read-only `execution.logs` command as text or schema-v1 JSON; the journal stores no command line or output. Real systemd verification, broader doctor checks (such as service and enrollment readiness), output capture, and the rest of the CLI remain pending; the checklist items below describe those larger milestones and are intentionally unchecked.
 
 - [ ] Implement Scopra Mio (`scoprad`), foreground mode, Linux service, state directory, lock, shutdown, health, logging, and versioning.
 - [ ] Implement Scopra Mariner commands, including `scopra doctor`, daemon status, workspace CRUD, local execution, status, logs, cancellation, JSON output, and TTY output.
@@ -145,9 +149,9 @@ For the second task, validation tests exist, and the reference payloads in `pack
 - `internal/hollow` builds the exact rootless `podman run` argument vector for a validated request: no network, no capabilities, `no-new-privileges`, a read-only root, the workspace as the only mount, an empty environment, and limits with no swap.
 - Its preflight check parses `podman info --format json` and fails closed unless Podman is 4.0 or later, rootless, on cgroups v2, with the `cpu`, `memory`, and `pids` controllers delegated.
 - `scoprad --sandbox-image` takes the image, pinned by digest, and rejects a malformed value at startup.
-- `hollow.Runner` runs one request through `podman run`, sending the start notice and chunked, truncated output (ADR-009). It derives the result from `podman inspect` and removes the container. Its own timer and context cancellation kill the container with `podman kill`. It checks the host and the image before each run, bounds every helper call, and can remove leftover containers. It is tested only against a fake Podman, and Mio does not use it yet.
+- `hollow.Runner` runs one request through `podman run`, sending the start notice and chunked, truncated output (ADR-009). It derives the result from `podman inspect` and removes the container. Its own timer and context cancellation kill the container with `podman kill`. It checks the host and the image before each run, bounds every helper call, and can remove leftover containers. It is tested only against a fake Podman, and Mio now uses it for local runs (ADR-011 increment 2).
 
-Nothing runs Podman yet, so the containment tasks below stay unchecked until the runner exists and has been verified on a host with rootless Podman.
+Mio now runs Podman for local runs, but no host with rootless Podman has been used yet, so the containment tasks below stay unchecked until the runner has been verified on such a host.
 
 - [ ] Implement the Scopra Hollow rootless Podman adapter behind the containment interface.
 - [ ] Mount only workspace; default read-only.
@@ -181,6 +185,8 @@ Nothing runs Podman yet, so the containment tasks below stay unchecked until the
 ---
 
 ## Milestone 2: Cloud Identity, Enrollment, and Relay
+
+**Initial increment implemented (code complete, but not hosted or end-to-end verified):** GitHub sign-in and a short-lived server assertion; PostgreSQL-backed enrollment with a one-time, 128-bit, proof-of-possession-bound code; explicit fingerprint/path approval; an authenticated machine inventory; and device-signed outbound presence. `scopra init` now registers/reuses the local workspace, performs enrollment, and persists token-free cloud metadata; Mio starts presence without a daemon restart. The API is tested against a fake store, and the Go integration still needs a Go 1.26.9 test run. PostgreSQL/Docker runtime, OAuth credentials, and production deployment have not been exercised. Relay transport, credential rotation/revocation, notifications, grants, remote execution, and audit remain out of scope for this increment. The checklists below track the full milestones and remain open where their broader requirements are unfinished.
 
 ### Foundation and authentication
 
@@ -337,7 +343,7 @@ Nothing runs Podman yet, so the containment tasks below stay unchecked until the
 ## Milestone 6: Public Beta Hardening
 
 - [ ] Analyze alpha activation, approvals, failures, unmet workflows, remaining manual relay, trust, and churn.
-- [ ] Add local redaction, destination profiles, egress records, encrypted artifacts, retention, custom policy, simulation, improved integrations, billing, and plan limits.
+- [ ] Add local redaction, destination profiles, egress records, encrypted artifacts, retention, custom policy, simulation, and improved integrations.
 - [ ] Decide Linux ARM64 and macOS based on evidence.
 - [ ] Commission penetration test and remediate serious findings.
 - [ ] Verify audit integrity, stronger approval, anomaly detection, key rotation, incident response, recovery, and deletion.

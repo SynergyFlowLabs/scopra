@@ -37,6 +37,9 @@ type request struct {
 	// Run is execution.run's run object as JSON text, whose exact keys
 	// decodeRequest checks. Mio checks the values when it builds the request.
 	Run string
+	// LogsWorkspaceID and LogsLimit are execution.logs's filter (ADR-013).
+	LogsWorkspaceID string
+	LogsLimit       int
 }
 
 // requestHeader holds the fields that every request carries.
@@ -53,6 +56,7 @@ var requestKeys = map[string][]string{
 	listWorkspacesCommand:  {"protocolVersion", "requestId", "command", "cursor"},
 	removeWorkspaceCommand: {"protocolVersion", "requestId", "command", "id"},
 	runCommand:             {"protocolVersion", "requestId", "command", "run"},
+	logsCommand:            {"protocolVersion", "requestId", "command", "workspaceId", "limit"},
 }
 
 // StatusResponse is the versioned read-only status reply from Mio.
@@ -93,6 +97,12 @@ func encodeRequest(message request) ([]byte, error) {
 			requestHeader
 			Run json.RawMessage `json:"run"`
 		}{header, json.RawMessage(message.Run)})
+	case logsCommand:
+		return json.Marshal(struct {
+			requestHeader
+			WorkspaceID string `json:"workspaceId"`
+			Limit       int    `json:"limit"`
+		}{header, message.LogsWorkspaceID, message.LogsLimit})
 	default:
 		return json.Marshal(header)
 	}
@@ -136,6 +146,13 @@ func decodeRequest(encoded []byte) (request, error) {
 		message.ID, err = jsonString(fields["id"])
 	case runCommand:
 		message.Run = string(fields["run"])
+	case logsCommand:
+		if message.LogsWorkspaceID, err = jsonString(fields["workspaceId"]); err != nil {
+			return request{}, err
+		}
+		if err := json.Unmarshal(fields["limit"], &message.LogsLimit); err != nil {
+			return request{}, fmt.Errorf("%w: malformed limit", ErrInvalidMessage)
+		}
 	}
 	if err != nil {
 		return request{}, err
@@ -162,6 +179,10 @@ func validateRequest(message request) error {
 		valid = validWorkspaceID(message.ID) && message.Path == "" && message.Cursor == "" && message.Run == ""
 	case runCommand:
 		valid = validateObjectKeys([]byte(message.Run), runKeys) == nil && message.Path == "" && message.ID == "" && message.Cursor == ""
+	case logsCommand:
+		valid = (message.LogsWorkspaceID == "" || validWorkspaceID(message.LogsWorkspaceID)) &&
+			message.LogsLimit >= 1 && message.LogsLimit <= MaxLogLimit &&
+			message.Path == "" && message.ID == "" && message.Cursor == "" && message.Run == ""
 	}
 	if !valid {
 		return fmt.Errorf("%w: unsupported command or fields", ErrInvalidMessage)

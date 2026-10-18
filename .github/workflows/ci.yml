@@ -26,8 +26,9 @@ jobs:
 
       - name: Verify required project documents and secret-file hygiene
         run: |
-          test -f PRD.md
-          test -f progress.md
+          for document in README.md LICENSE NOTICE CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md CHANGELOG.md PRD.md progress.md; do
+            test -f "$document" || { echo "Missing required document: $document" >&2; exit 1; }
+          done
           test -f docs/plans/00-full-implementation-plan.md
           test -f docs/security/threat-model.md
           test -f docs/security/risk-register.md
@@ -56,3 +57,10 @@ jobs:
 
       - name: Run go vet
         run: go vet ./...
+
+      - name: Build both binaries
+        run: |
+          go build -o /tmp/scopra ./cmd/scopra
+          go build -o /tmp/scoprad ./cmd/scoprad
+          /tmp/scopra version
+          /tmp/scoprad --version

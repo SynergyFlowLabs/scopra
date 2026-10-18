@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Threat Model — Scopra</title>
+<meta name="description" content="Threat Model — Scopra documentation.">
+<link rel="canonical" href="https://scopra-six.vercel.app/docs/security/threat-model.html">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0b0e14">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Threat Model — Scopra">
+<meta property="og:description" content="Threat Model — Scopra documentation.">
+<meta property="og:url" content="https://scopra-six.vercel.app/docs/security/threat-model.html">
+<meta property="og:site_name" content="Scopra">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>Scopra</a>
+  <nav aria-label="Main">
+    <a href="/docs/">Docs</a>
+    <a href="/docs/overview.html">Overview</a>
+    <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">GitHub</a>
+  </nav>
+</header>
+<div class="layout"><nav class="sidebar" aria-label="Documentation"><p class="group">Overview</p><ul><li><a href="/docs/overview.html">Overview</a></li><li><a href="/docs/changelog.html">Changelog</a></li></ul><p class="group">Product</p><ul><li><a href="/docs/prd.html">Product Requirements</a></li><li><a href="/docs/product/alpha-scope.html">Alpha Scope</a></li><li><a href="/docs/product/naming.html">Naming</a></li></ul><p class="group">Architecture</p><ul><li><a href="/docs/architecture/system-overview.html">System Overview</a></li><li><a href="/docs/architecture/domain-model.html">Domain Model</a></li><li><a href="/docs/architecture/protocol.html">Protocol</a></li></ul><p class="group">Security</p><ul><li><a href="/docs/security/threat-model.html" class="current" aria-current="page">Threat Model</a></li><li><a href="/docs/security/risk-register.html">Risk Register</a></li><li><a href="/docs/security/security-architecture.html">Security Architecture</a></li></ul><p class="group">Decisions</p><ul><li><a href="/docs/decisions.html">Architecture Decision Records</a></li><li><a href="/docs/decisions/001-go-module-layout.html">ADR-001: Initial Go Module Layout</a></li><li><a href="/docs/decisions/002-messenger-envelope-v1.html">ADR-002: Scopra Messenger Envelope v1 Structural Contract</a></li><li><a href="/docs/decisions/003-local-status-ipc.html">ADR-003: Mio Foreground Status Daemon and Local IPC v1</a></li><li><a href="/docs/decisions/004-workspace-validation.html">ADR-004: Workspace Path Validation and Fingerprint v1</a></li><li><a href="/docs/decisions/005-workspace-registry-storage.html">ADR-005: Workspace Registry Storage v1</a></li><li><a href="/docs/decisions/006-local-workspace-commands.html">ADR-006: Local Workspace Commands over IPC v1</a></li><li><a href="/docs/decisions/007-execution-request-v1.html">ADR-007: Execution Request v1 Structural Contract</a></li><li><a href="/docs/decisions/008-canonical-execution-request.html">ADR-008: Canonical Execution Request and Action Hash</a></li><li><a href="/docs/decisions/009-execution-lifecycle-messages.html">ADR-009: Execution States, Results, Output, Errors, and Cancellation</a></li><li><a href="/docs/decisions/010-hollow-rootless-podman.html">ADR-010: Hollow Containment Backend: Rootless Podman</a></li><li><a href="/docs/decisions/011-local-execution.html">ADR-011: Local Execution over the Mio Socket</a></li><li><a href="/docs/decisions/012-systemd-user-service.html">ADR-012: Mio as a systemd User Service</a></li><li><a href="/docs/decisions/013-run-journal.html">ADR-013: Bounded Local Run Journal and scopra logs</a></li><li><a href="/docs/decisions/014-open-source-no-pricing.html">ADR-014: MIT License and No Pricing Model</a></li><li><a href="/docs/decisions/015-documentation-site.html">ADR-015: A Generated Static Documentation Site on Vercel</a></li><li><a href="/docs/decisions/016-one-command-installer.html">ADR-016: One-Command Interactive Installer</a></li><li><a href="/docs/decisions/017-opt-in-prerequisite-provisioning.html">ADR-017: Opt-In Prerequisite Provisioning</a></li></ul><p class="group">Planning</p><ul><li><a href="/docs/plan/implementation-plan.html">Implementation Plan</a></li></ul><p class="group">API</p><ul><li><a href="/docs/api/mcp-tools.html">MCP Tools</a></li></ul><p class="group">Operations</p><ul><li><a href="/docs/operations/installation.html">Installing Scopra</a></li><li><a href="/docs/operations/runbooks.html">Runbooks</a></li><li><a href="/docs/operations/deployment.html">Deploying the Site</a></li></ul><p class="group">Community</p><ul><li><a href="/docs/community/security-policy.html">Security Policy</a></li><li><a href="/docs/community/contributing.html">Contributing</a></li><li><a href="/docs/community/code-of-conduct.html">Code of Conduct</a></li></ul></nav><main id="main" class="content"><nav class="breadcrumb" aria-label="Breadcrumb"><a href="/docs/">Docs</a> <span aria-hidden="true">/</span> Security</nav><article class="prose"><h1 id="scopra-security-threat-model">Scopra Security Threat Model</h1>
+<h2 id="objective">Objective</h2>
+<p>Permit explicitly authorized agent operations in an explicitly authorized workspace while preventing escape, credential theft, privilege escalation, approval bypass, replay, audit evasion, exfiltration, persistence, lateral movement, and unbounded resource use.</p>
+<h2 id="trust-assumptions">Trust Assumptions</h2>
+<p>Agents, prompts, repositories, terminal output, web content, dependencies, networks, users, cloud components, and hosts may be malicious or compromised. Content never grants authority.</p>
+<h2 id="assets">Assets</h2>
+<p>Operating system, source and files, credentials, device keys, grants, sessions, policies, approvals, audit records, output, artifacts, signing keys, and ownership boundaries.</p>
+<h2 id="actors">Actors</h2>
+<p>External attacker, compromised agent, prompt-injected agent, malicious repository or dependency, compromised user, malicious insider, and compromised daemon or host.</p>
+<h2 id="boundaries">Boundaries</h2>
+<pre><code class="language-text">AI host -&gt; Scopra Caloris -&gt; Scopra Goldstone / Messenger -&gt; Scopra Mio -&gt; Scopra Rupes -&gt; Scopra Hollow -&gt; workspace / network
+</code></pre>
+<h2 id="security-invariants">Security Invariants</h2>
+<ol>
+<li>No ambient terminal authority.</li>
+<li>Every request is attributable.</li>
+<li>Local authorization is mandatory.</li>
+<li>Agents cannot approve themselves.</li>
+<li>Approval binds to exact effect.</li>
+<li>Default deny applies.</li>
+<li>Daemon cannot silently increase privilege.</li>
+<li>Audit is append-only.</li>
+<li>Output is untrusted.</li>
+<li>Revocation is prompt for connected systems.</li>
+</ol>
+<h2 id="threats-and-controls">Threats and Controls</h2>
+<h3 id="spoofing-and-credential-theft">Spoofing and credential theft</h3>
+<p>Short-lived grants, audience/resource binding, asymmetric machine identity, public-key-bound activation, secure storage, revocation, and no permanent chat-pasted master key.</p>
+<h3 id="tampering-and-replay">Tampering and replay</h3>
+<p>Canonical requests, action hash, authenticated envelopes, nonce, sequence, expiry, replay cache, local recomputation, and atomic approval use.</p>
+<h3 id="workspace-escape">Workspace escape</h3>
+<p>Rootless containment, minimal mounts, canonical paths, restricted <code>/proc</code>, no Docker socket, no host PID namespace, dropped capabilities, seccomp/MAC where available, and adversarial tests.</p>
+<h3 id="prompt-injection-and-tool-abuse">Prompt injection and tool abuse</h3>
+<p>Model-independent permissions, untrusted content labeling, network and secrets denied by default, session-aware limits, and exact approval.</p>
+<h3 id="disclosure-and-exfiltration">Disclosure and exfiltration</h3>
+<p>Empty environment baseline, no home or credential sockets, separate network capability, destination controls, metadata blocking, local redaction, and bounded retention.</p>
+<h3 id="privilege-escalation">Privilege escalation</h3>
+<p>Unprivileged daemon and worker, no <code>sudo</code>, rootless runtime, no privileged mode or device mounts, and separate updater/executor.</p>
+<h3 id="confused-deputy">Confused deputy</h3>
+<p>Preserve requesting principal, authorize the final resource, validate token audience, and never use a broad shared downstream credential.</p>
+<h3 id="denial-of-service-or-wallet">Denial of service or wallet</h3>
+<p>CPU, memory, PID, runtime, output, artifact, concurrency, request, and budget limits; backpressure; process-tree termination; loop detection.</p>
+<h3 id="audit-repudiation">Audit repudiation</h3>
+<p>Append-only events, sequence integrity, checkpoints, buffering, reconciliation, and fail-closed behavior for configured high-risk actions.</p>
+<h3 id="supply-chain">Supply chain</h3>
+<p>Signed artifacts and metadata, checksums, SBOM, dependency scanning, protected keys, staged rollout, minimum safe versions, and emergency revocation.</p>
+<h2 id="residual-risks">Residual Risks</h2>
+<p>Approved actions may expose data; unknown sandbox vulnerabilities may exist; users may approve danger; redaction may miss formats; root-compromised hosts are untrustworthy; agents may split harmful goals across actions.</p>
+<h2 id="verification">Verification</h2>
+<p>Fuzzing; path, symlink, replay, approval, ownership, exhaustion, leakage, and prompt-injection tests; external penetration testing; and release-pipeline review.</p>
+</article><p class="edit-link"><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/docs/security/threat-model.md" rel="noopener noreferrer">Edit this page on GitHub</a></p></main><aside class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#objective">Objective</a></li><li><a href="#trust-assumptions">Trust Assumptions</a></li><li><a href="#assets">Assets</a></li><li><a href="#actors">Actors</a></li><li><a href="#boundaries">Boundaries</a></li><li><a href="#security-invariants">Security Invariants</a></li><li><a href="#threats-and-controls">Threats and Controls</a></li><li class="toc-sub"><a href="#spoofing-and-credential-theft">Spoofing and credential theft</a></li><li class="toc-sub"><a href="#tampering-and-replay">Tampering and replay</a></li><li class="toc-sub"><a href="#workspace-escape">Workspace escape</a></li><li class="toc-sub"><a href="#prompt-injection-and-tool-abuse">Prompt injection and tool abuse</a></li><li class="toc-sub"><a href="#disclosure-and-exfiltration">Disclosure and exfiltration</a></li><li class="toc-sub"><a href="#privilege-escalation">Privilege escalation</a></li><li class="toc-sub"><a href="#confused-deputy">Confused deputy</a></li><li class="toc-sub"><a href="#denial-of-service-or-wallet">Denial of service or wallet</a></li><li class="toc-sub"><a href="#audit-repudiation">Audit repudiation</a></li><li class="toc-sub"><a href="#supply-chain">Supply chain</a></li><li><a href="#residual-risks">Residual Risks</a></li><li><a href="#verification">Verification</a></li></ul></aside></div><footer class="site-footer">
+  <div class="footer-inner">
+    <p><strong>Scopra</strong> — controlled execution for AI agents. Free and open source under the <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE">MIT License</a>.</p>
+    <p class="muted">No pricing model, no telemetry, no account. Generated from the Markdown in <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">the repository</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

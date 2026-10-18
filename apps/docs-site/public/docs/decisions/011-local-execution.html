@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADR-011: Local Execution over the Mio Socket — Scopra</title>
+<meta name="description" content="ADR-011: Local Execution over the Mio Socket — Scopra documentation.">
+<link rel="canonical" href="https://scopra-six.vercel.app/docs/decisions/011-local-execution.html">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0b0e14">
+<meta property="og:type" content="website">
+<meta property="og:title" content="ADR-011: Local Execution over the Mio Socket — Scopra">
+<meta property="og:description" content="ADR-011: Local Execution over the Mio Socket — Scopra documentation.">
+<meta property="og:url" content="https://scopra-six.vercel.app/docs/decisions/011-local-execution.html">
+<meta property="og:site_name" content="Scopra">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>Scopra</a>
+  <nav aria-label="Main">
+    <a href="/docs/">Docs</a>
+    <a href="/docs/overview.html">Overview</a>
+    <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">GitHub</a>
+  </nav>
+</header>
+<div class="layout"><nav class="sidebar" aria-label="Documentation"><p class="group">Overview</p><ul><li><a href="/docs/overview.html">Overview</a></li><li><a href="/docs/changelog.html">Changelog</a></li></ul><p class="group">Product</p><ul><li><a href="/docs/prd.html">Product Requirements</a></li><li><a href="/docs/product/alpha-scope.html">Alpha Scope</a></li><li><a href="/docs/product/naming.html">Naming</a></li></ul><p class="group">Architecture</p><ul><li><a href="/docs/architecture/system-overview.html">System Overview</a></li><li><a href="/docs/architecture/domain-model.html">Domain Model</a></li><li><a href="/docs/architecture/protocol.html">Protocol</a></li></ul><p class="group">Security</p><ul><li><a href="/docs/security/threat-model.html">Threat Model</a></li><li><a href="/docs/security/risk-register.html">Risk Register</a></li><li><a href="/docs/security/security-architecture.html">Security Architecture</a></li></ul><p class="group">Decisions</p><ul><li><a href="/docs/decisions.html">Architecture Decision Records</a></li><li><a href="/docs/decisions/001-go-module-layout.html">ADR-001: Initial Go Module Layout</a></li><li><a href="/docs/decisions/002-messenger-envelope-v1.html">ADR-002: Scopra Messenger Envelope v1 Structural Contract</a></li><li><a href="/docs/decisions/003-local-status-ipc.html">ADR-003: Mio Foreground Status Daemon and Local IPC v1</a></li><li><a href="/docs/decisions/004-workspace-validation.html">ADR-004: Workspace Path Validation and Fingerprint v1</a></li><li><a href="/docs/decisions/005-workspace-registry-storage.html">ADR-005: Workspace Registry Storage v1</a></li><li><a href="/docs/decisions/006-local-workspace-commands.html">ADR-006: Local Workspace Commands over IPC v1</a></li><li><a href="/docs/decisions/007-execution-request-v1.html">ADR-007: Execution Request v1 Structural Contract</a></li><li><a href="/docs/decisions/008-canonical-execution-request.html">ADR-008: Canonical Execution Request and Action Hash</a></li><li><a href="/docs/decisions/009-execution-lifecycle-messages.html">ADR-009: Execution States, Results, Output, Errors, and Cancellation</a></li><li><a href="/docs/decisions/010-hollow-rootless-podman.html">ADR-010: Hollow Containment Backend: Rootless Podman</a></li><li><a href="/docs/decisions/011-local-execution.html" class="current" aria-current="page">ADR-011: Local Execution over the Mio Socket</a></li><li><a href="/docs/decisions/012-systemd-user-service.html">ADR-012: Mio as a systemd User Service</a></li><li><a href="/docs/decisions/013-run-journal.html">ADR-013: Bounded Local Run Journal and scopra logs</a></li><li><a href="/docs/decisions/014-open-source-no-pricing.html">ADR-014: MIT License and No Pricing Model</a></li><li><a href="/docs/decisions/015-documentation-site.html">ADR-015: A Generated Static Documentation Site on Vercel</a></li><li><a href="/docs/decisions/016-one-command-installer.html">ADR-016: One-Command Interactive Installer</a></li><li><a href="/docs/decisions/017-opt-in-prerequisite-provisioning.html">ADR-017: Opt-In Prerequisite Provisioning</a></li></ul><p class="group">Planning</p><ul><li><a href="/docs/plan/implementation-plan.html">Implementation Plan</a></li></ul><p class="group">API</p><ul><li><a href="/docs/api/mcp-tools.html">MCP Tools</a></li></ul><p class="group">Operations</p><ul><li><a href="/docs/operations/installation.html">Installing Scopra</a></li><li><a href="/docs/operations/runbooks.html">Runbooks</a></li><li><a href="/docs/operations/deployment.html">Deploying the Site</a></li></ul><p class="group">Community</p><ul><li><a href="/docs/community/security-policy.html">Security Policy</a></li><li><a href="/docs/community/contributing.html">Contributing</a></li><li><a href="/docs/community/code-of-conduct.html">Code of Conduct</a></li></ul></nav><main id="main" class="content"><nav class="breadcrumb" aria-label="Breadcrumb"><a href="/docs/">Docs</a> <span aria-hidden="true">/</span> Decisions</nav><article class="prose"><h1 id="adr-011-local-execution-over-the-mio-socket">ADR-011: Local Execution over the Mio Socket</h1>
+<p><strong>Status:</strong> Accepted (proposed, then accepted as written by the maintainer, including that local runs need no grant or approval) <strong>Date:</strong> 2026-10-17</p>
+<h2 id="context">Context</h2>
+<p>The plan&#39;s Milestone 1 asks Mariner for &#34;local execution, status, logs, cancellation&#34;, and its exit gate begins &#34;Direct execution works in rootless containment&#34;. Hollow&#39;s runner (ADR-010) can run one validated request, but nothing calls it.</p>
+<p>ADR-006 made the local socket the user&#39;s administrative channel, authorized by same-UID peer credentials. It also said that any execution &#34;will also need a grant, policy evaluation, approval where policy requires it, and enforcement by Rupes&#34;. That sentence was written for <strong>delegated</strong> execution: an agent acting for the user through Caloris. A local run, in which the user asks for a command in their own workspace, is a different case. This ADR decides it explicitly.</p>
+<p>IPC v1 is bounded:</p>
+<ul>
+<li>frames of 64 KiB;</li>
+<li>one request per connection;</li>
+<li>a 2-second deadline for the whole exchange;</li>
+<li>16 concurrent connections.</li>
+</ul>
+<p>ADR-009 output chunks can hold 64 KiB, which is about 87 KiB in base64, so they do not fit in an IPC frame.</p>
+<h2 id="decision">Decision</h2>
+<h3 id="who-may-run-what">Who may run what</h3>
+<p><strong>Local execution is the user&#39;s own action, contained.</strong> Any process with the user&#39;s UID can ask Mio, through the local socket only, to run a command in a registered workspace. The command runs in Hollow, exactly as a delegated execution would.</p>
+<p><strong>It needs no grant or approval</strong>, because nothing is delegated. The caller could already run the same command natively with the same rights, so the sandbox only removes authority; it adds none.</p>
+<p>This <strong>qualifies ADR-006&#39;s sentence for local runs only</strong>. Delegated execution through Caloris still needs everything that sentence lists. The local socket is never reachable through Caloris, Goldstone, or Messenger, so a remote agent cannot use this path. When Resolution and Rupes exist, their local maximum policy also applies to local runs.</p>
+<h3 id="the-request">The request</h3>
+<p><code>execution.run</code> carries:</p>
+<ul>
+<li><code>workspaceId</code>: a registration ID;</li>
+<li><code>command</code>: ADR-007&#39;s executable, arguments, <code>shell: false</code>, and working directory;</li>
+<li><code>workspaceAccess</code>;</li>
+<li><code>limits</code>;</li>
+<li><code>reason</code>.</li>
+</ul>
+<p>The usual <code>protocolVersion</code>, <code>requestId</code>, and <code>command</code> keys are reused, with the payload under a <code>run</code> field. The key set is exact, and the same field rules as ADR-007 apply.</p>
+<p><strong>Mio builds the full ADR-007 request itself,</strong> so a client cannot claim to be anyone else:</p>
+<ul>
+<li><code>principals</code>, with <code>userId</code> set to <code>local:&lt;uid&gt;</code> from the peer credentials, <code>agentId</code> set to <code>local</code>, and <code>clientId</code> set to <code>local-socket</code>;</li>
+<li><code>grantId</code> and <code>sessionId</code> set to <code>local</code>;</li>
+<li>a random <code>executionId</code> and nonce;</li>
+<li><code>createdAt</code> set to now and <code>expiresAt</code> set to now plus one hour;</li>
+<li><code>network: none</code>.</li>
+</ul>
+<p><strong>Before the runner, Mio:</strong></p>
+<ol>
+<li>looks up the workspace and revalidates it (ADR-004), rejecting with <code>workspace_unavailable</code> on failure;</li>
+<li>requires a configured <code>--sandbox-image</code> and a <code>podman</code> found at startup, rejecting with <code>containment_unavailable</code> otherwise;</li>
+<li>allows at most <strong>4</strong> executions at a time, rejecting a fifth with <code>busy</code>, so that runs can never hold all 16 connections.</li>
+</ol>
+<h3 id="streaming-replies">Streaming replies</h3>
+<p><strong>Frames on one connection.</strong> After the request, Mio answers on the same connection with several frames, each <code>{protocolVersion, requestId, ...}</code>:</p>
+<ol>
+<li>at most one <code>started</code> frame, carrying ADR-009&#39;s start notice;</li>
+<li>any number of <code>output</code> frames, each <code>{stream, data}</code>, with <code>data</code> as unpadded base64url of 1 to 32768 bytes;</li>
+<li>exactly one final <code>result</code> frame, carrying ADR-009&#39;s result.</li>
+</ol>
+<p>Mio splits each runner chunk to fit the frame limit, and the result&#39;s counts still describe the chunks that ADR-009 defines.</p>
+<p><strong>Connection deadlines.</strong> An <code>execution.run</code> connection keeps the 2-second deadline only for reading the request. After that:</p>
+<ul>
+<li>every reply frame must be written within <strong>30 seconds</strong>;</li>
+<li>a client that stops reading therefore slows the command (the pipes apply backpressure) until the deadline cancels it;</li>
+<li><strong>closing the connection cancels the run.</strong> Mio kills the container, and the result is lost with the connection.</li>
+</ul>
+<p><strong>What gets no reply.</strong> A malformed request gets no reply, as in ADR-006. A well-formed request that Mio refuses gets a single <code>result</code> frame with state <code>rejected</code>.</p>
+<h3 id="mio-startup">Mio startup</h3>
+<ul>
+<li>Mio resolves <code>podman</code> once, with <code>exec.LookPath</code>, and keeps its absolute path.</li>
+<li>If <code>--sandbox-image</code> is set and <code>podman</code> is found, Mio removes leftover containers (<code>Runner.RemoveLeftovers</code>).</li>
+<li>Without either one, Mio starts as before and rejects executions.</li>
+</ul>
+<h3 id="the-scopra-run-command-mariner">The <code>scopra run</code> command (Mariner)</h3>
+<pre><code class="language-text">scopra run [--state-dir PATH] [--json] (--workspace ID | --path PATH) [--write] [--workdir DIR]
+           [--timeout DURATION] [--memory BYTES] [--cpus N] [--pids N] [--output-limit BYTES]
+           [--reason TEXT] -- EXECUTABLE [ARGUMENT...]
+</code></pre>
+<p><strong>Defaults:</strong></p>
+<ul>
+<li>read-only access, working directory <code>.</code>, and reason &#34;local run by the workspace owner&#34;;</li>
+<li>a timeout of 10 minutes, 2 GiB of memory, 2 CPUs, 512 processes, and 16 MiB of output.</li>
+</ul>
+<p><code>--path</code> resolves a workspace as <code>workspace remove --path</code> does.</p>
+<p><strong>Output:</strong></p>
+<ul>
+<li><strong>Default:</strong> stdout and stderr bytes go unchanged to the terminal&#39;s stdout and stderr, as for a native run.</li>
+<li><strong><code>--json</code>:</strong> writes one JSON object per line for the start notice, each output frame (in base64url), and the result.</li>
+</ul>
+<p><strong>Exit status:</strong></p>
+<div class="table-wrap"><table>
+<thead><tr><th>Outcome</th><th>Exit status</th></tr></thead>
+<tbody>
+<tr><td>The command exited</td><td>Its own exit status</td></tr>
+<tr><td><code>timed_out</code></td><td>124 (as <code>timeout(1)</code>)</td></tr>
+<tr><td><code>cancelled</code></td><td>130</td></tr>
+<tr><td><code>out_of_memory</code></td><td>137</td></tr>
+<tr><td><code>rejected</code> or <code>errored</code></td><td>1, with the error code and message</td></tr>
+<tr><td>A usage error</td><td>2</td></tr>
+</tbody></table></div>
+<p>Ctrl-C closes the connection, which cancels the run.</p>
+<h3 id="increments">Increments</h3>
+<ol>
+<li><p><strong>IPC protocol (done, Step 27):</strong> <code>execution.run</code> in <code>internal/localipc</code>, with:</p>
+<ul>
+<li>request validation and the exact key set;</li>
+<li>streamed frames and splitting;</li>
+<li>the deadlines, the concurrency cap, and cancellation on disconnect;</li>
+<li>a client function that returns the events and the result.</li>
+</ul>
+<p>It is tested with a fake executor, not Hollow.</p>
+</li>
+<li><strong>Mio wiring (done, Step 28):</strong> Podman resolution, leftover cleanup, workspace revalidation, and running Hollow. It is tested with the fake Podman.</li>
+<li><strong><code>scopra run</code> (done, Step 29):</strong> flags, output, exit status, and <code>--json</code>. It is tested against a real in-process Mio with a fake executor.</li>
+<li><strong>Real-host verification,</strong> together with ADR-010&#39;s increment 3b.</li>
+</ol>
+<h2 id="implementation-status">Implementation Status</h2>
+<p><strong>Increment 1 (IPC protocol): implemented</strong> in <code>internal/localipc</code>, tested against a real in-process Mio with a fake executor.</p>
+<ul>
+<li><strong>Server:</strong> <code>Daemon.EnableExecutions(executor)</code>, before <code>Serve</code>, enables <code>execution.run</code>. Without it, the command gets no reply.</li>
+<li><strong>Client:</strong> <code>RunExecution(ctx, stateDir, run, events)</code> delivers the start notice and output frames to callbacks and returns the result. A refusal is a <code>rejected</code> result, not an error.</li>
+<li><p><strong>Building the request moved into increment 1.</strong> Applying ADR-007&#39;s rules means decoding a complete request, and the <code>busy</code> refusal must carry the request&#39;s <code>executionId</code> and <code>actionHash</code>. Mio splices the client&#39;s <code>run</code> values, unchanged, into a request with its own fields:</p>
+<ul>
+<li>execution IDs are <code>local-</code> plus 32 random hex digits;</li>
+<li>nonces are 16 random bytes.</li>
+</ul>
+<p>It then decodes the whole request with <code>protocol.DecodeExecutionRequest</code>, so a <code>null</code> or a lone surrogate escape is rejected instead of becoming zero or U+FFFD. Increment 2 keeps the rest of its list.</p>
+</li>
+<li><strong>Faults end the run without a result.</strong> This happens when the executor returns an error, or returns a result, start notice, or chunk that does not belong to the request, or when events arrive out of order. Mio then cancels the run and closes the connection without a <code>result</code>, so a client never shows an invented outcome. The client reports <code>ErrNoRunResult</code> for any connection that ends before the result.</li>
+<li><strong>Shutdown cancels runs.</strong> Each run&#39;s context ends with <code>Serve</code>&#39;s, so stopping Mio cancels the run and still sends a reading client its <code>cancelled</code> result. A client that has stopped reading can delay shutdown by at most one frame-write deadline (30 seconds).</li>
+<li><strong>Client bounds:</strong> the client keeps the 2-second deadline for sending its request. After that, only its context bounds the run.</li>
+</ul>
+<p><strong>Increment 2 (Mio wiring): implemented.</strong> <code>scoprad</code> always enables <code>execution.run</code> and gives it a service from <code>internal/execution</code>, which runs commands through ADR-010&#39;s Hollow runner.</p>
+<ul>
+<li><strong>Resolution and cleanup:</strong> Mio resolves <code>podman</code> once with <code>exec.LookPath</code>, keeps the absolute path, and — when <code>--sandbox-image</code> is set and Podman exists — removes labelled leftover containers before it serves. A cleanup failure fails closed: this Mio process refuses every run with <code>containment_unavailable</code> and reports it on stderr after the listening line. Status and workspace commands keep working.</li>
+<li><strong>Per run:</strong> the service looks the workspace ID up in the registry, revalidates the recorded workspace with ADR-004&#39;s validator immediately before use, and passes the record&#39;s canonical path to Hollow. An unknown ID or a failed revalidation is rejected with <code>workspace_unavailable</code>; missing containment is rejected with <code>containment_unavailable</code>. A client cannot name a path.</li>
+<li><strong>Always a typed answer:</strong> without <code>--sandbox-image</code>, or without Podman, Mio starts as before and rejects every run, naming the missing requirement, instead of leaving the connection unanswered.</li>
+<li><strong>Unchanged:</strong> the wire format, the result states, and Hollow&#39;s arguments. Status and workspace commands are unaffected.</li>
+<li><strong>Testing:</strong> increment 2 is tested with ADR-010&#39;s fake Podman through a real in-process Mio: a successful run (start notice, output, result, and the mounted path), an unknown workspace, a replaced workspace, a missing image, a missing Podman, leftover cleanup, and a refused cleanup. Mio still has not run a real container.</li>
+</ul>
+<p><strong>Increment 3 (<code>scopra run</code>): implemented</strong> in <code>cmd/scopra/run.go</code>, on top of <code>localipc.ValidateRun</code> and <code>localipc.RunExecution</code>.</p>
+<ul>
+<li><strong>CLI rules.</strong> The synopsis above is implemented as written. Two rules make it exact:<ul>
+<li><code>--timeout</code> accepts a whole number of seconds from 1s to 24h, because ADR-007 carries integer seconds;</li>
+<li><code>--cpus</code> accepts a whole number from 1 to 1000, multiplied by 1000 into <code>cpuMillicores</code>.</li>
+</ul>
+<p>These are usage errors, found by <code>localipc.ValidateRun</code> before anything reaches the socket: every ADR-007 field rule, every limit range, an empty executable, an empty workdir, and an invalid reason. The command follows <code>--</code>; without it, <code>scopra run</code> refuses, so an option can never become an executable or an argument.</p>
+</li>
+<li><strong><code>--path</code></strong> uses the same resolution as <code>workspace remove --path</code>: an exact recorded path, or the directory it now resolves to through symlinks; an ambiguous match is refused. Resolution needs Mio, so the other fields are checked first against a placeholder registration ID and checked again with the resolved ID before sending.</li>
+<li><p><strong>Output.</strong> Without <code>--json</code>, stdout and stderr bytes go unchanged to <code>scopra</code>&#39;s stdout and stderr, as a native run. With <code>--json</code>, stdout carries one JSON object per line in arrival order:</p>
+<ul>
+<li><code>{&#34;type&#34;:&#34;started&#34;, ...}</code> with ADR-009&#39;s start-notice fields;</li>
+<li><code>{&#34;type&#34;:&#34;output&#34;,&#34;executionId&#34;:...,&#34;stream&#34;:&#34;stdout&#34;|&#34;stderr&#34;,&#34;data&#34;:&#34;&lt;unpadded base64url&gt;&#34;}</code> for each output frame, in order;</li>
+<li><code>{&#34;type&#34;:&#34;result&#34;, ...}</code> with ADR-009&#39;s result fields.</li>
+</ul>
+<p>The <code>type</code> field is the only addition to the payloads; the rest are the canonical ADR-008 encodings. Diagnostics stay on stderr, so stdout is always valid JSON lines. Frames, not ADR-009 chunks, are reported: Mio splits a chunk to fit its IPC frames, so <code>sequence</code> is not preserved on this path.</p>
+</li>
+<li><strong>Exit status.</strong> As the table above: the command&#39;s own status, 124, 130, 137, and 1 with <code>&lt;code&gt;: &lt;message&gt;</code> for <code>rejected</code> and <code>errored</code>. A failure to reach Mio is 1. Ctrl-C cancels the run and exits 130 without an error line.</li>
+<li><strong>Smoke test, with the real binaries and a scripted Podman:</strong> a successful run (0, streams split), a failing command (its own status), <code>--json</code> (four lines, base64url output, the exit status preserved), <code>--write</code> (<code>ro=false</code> on the mount), a bad workdir (2), a missing <code>--</code> (2), a missing image (<code>rejected</code>, exit 1, reason shown), and Ctrl-C (130).</li>
+</ul>
+<h2 id="consequences">Consequences</h2>
+<ul>
+<li>Scopra can run a command end to end on one machine. That is what the exit gate needs, and it is the first real use of the sandbox.</li>
+<li>Local runs are attributed to <code>local:&lt;uid&gt;</code>. They are not yet audited, because Catena is not implemented.</li>
+<li>A long run holds one IPC connection, and at most 4 runs can hold connections at once.</li>
+</ul>
+<h2 id="security-considerations">Security Considerations</h2>
+<p><strong>Same-UID callers.</strong> Any process running as the user, including a locally running agent, can start sandboxed commands. That gives it nothing it lacks: it can already run commands natively. The containment, the read-only default, and the limits only take authority away.</p>
+<p><strong>Remote callers.</strong> Remote callers cannot reach this path. ADR-003&#39;s rule still holds: commands that approve or authorize actions for others must not use same-UID trust. <code>execution.run</code> approves nothing; it is the user&#39;s own action.</p>
+<p><strong>Spoofed identity.</strong> Mio, not the client, fills the principals, so a client cannot pose as a cloud principal.</p>
+<p><strong>Terminal output.</strong> Output is untrusted. By default it reaches the terminal as raw bytes, exactly as a native run would, so terminal escape sequences are as dangerous as they are natively. Programs should use <code>--json</code>.</p>
+<p><strong>Bounds.</strong> Frames stay at 64 KiB, the write deadline and the cancellation on disconnect bound a stuck client, and the concurrency cap bounds resource use.</p>
+<h2 id="alternatives">Alternatives</h2>
+<ul>
+<li><strong>Requiring a grant for local runs:</strong> rejected. No principal other than the user is involved, and same-UID code could bypass a local grant anyway.</li>
+<li><strong>Letting the client build the full ADR-007 request:</strong> rejected. It would let any local process forge principals.</li>
+<li><strong>Raising the IPC frame limit for output:</strong> rejected. Bounded frames are a core defence (ADR-006).</li>
+<li><strong>A separate socket for execution:</strong> rejected. It is the same trust level, and a second socket would add surface without adding protection.</li>
+<li><strong>Running natively when containment is unavailable:</strong> rejected (ADR-010).</li>
+</ul>
+<h2 id="amendments">Amendments</h2>
+<ul>
+<li>2026-10-17: ADR-013 adds <code>&lt;state-dir&gt;/runs.jsonl</code>, a bounded metadata-only journal of answered runs, served read-only over <code>execution.logs</code> and rendered by <code>scopra logs</code>. It stores the result metadata above (IDs, state, times, exit code, output counts) but <strong>no output and no command line</strong>, so &#34;output ... never logged&#34; still holds.</li>
+</ul>
+</article><p class="edit-link"><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/docs/decisions/011-local-execution.md" rel="noopener noreferrer">Edit this page on GitHub</a></p></main><aside class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#context">Context</a></li><li><a href="#decision">Decision</a></li><li class="toc-sub"><a href="#who-may-run-what">Who may run what</a></li><li class="toc-sub"><a href="#the-request">The request</a></li><li class="toc-sub"><a href="#streaming-replies">Streaming replies</a></li><li class="toc-sub"><a href="#mio-startup">Mio startup</a></li><li class="toc-sub"><a href="#the-scopra-run-command-mariner">The scopra run command (Mariner)</a></li><li class="toc-sub"><a href="#increments">Increments</a></li><li><a href="#implementation-status">Implementation Status</a></li><li><a href="#consequences">Consequences</a></li><li><a href="#security-considerations">Security Considerations</a></li><li><a href="#alternatives">Alternatives</a></li><li><a href="#amendments">Amendments</a></li></ul></aside></div><footer class="site-footer">
+  <div class="footer-inner">
+    <p><strong>Scopra</strong> — controlled execution for AI agents. Free and open source under the <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE">MIT License</a>.</p>
+    <p class="muted">No pricing model, no telemetry, no account. Generated from the Markdown in <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">the repository</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

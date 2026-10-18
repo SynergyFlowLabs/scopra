@@ -12,7 +12,10 @@ import (
 
 	"github.com/SynergyFlowLabs/scopra/internal/buildinfo"
 	"github.com/SynergyFlowLabs/scopra/internal/hollow"
+	"github.com/SynergyFlowLabs/scopra/internal/identity"
+	"github.com/SynergyFlowLabs/scopra/internal/journal"
 	"github.com/SynergyFlowLabs/scopra/internal/localipc"
+	"github.com/SynergyFlowLabs/scopra/internal/presence"
 	"github.com/SynergyFlowLabs/scopra/internal/workspace"
 	"github.com/SynergyFlowLabs/scopra/internal/workspace/registry"
 )
@@ -65,17 +68,38 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	// The daemon now holds the state-directory lock, which makes Mio the
 	// registry's only writer (ADR-005). Mio refuses to serve if the registry
 	// is unusable, and serves workspace commands from it otherwise (ADR-006).
-	workspaces, err := openWorkspaceRegistry(daemon.StateDir())
+	workspaces, validator, err := openWorkspaceRegistry(daemon.StateDir())
 	if err == nil {
 		err = daemon.EnableWorkspaces(workspaces)
 	}
 	if err != nil {
 		return errors.Join(fmt.Errorf("start Scopra Mio: %w", err), daemon.Close())
 	}
+	// The run journal is opened before serving: Mio never runs anything it
+	// cannot record (ADR-013). A journal it cannot open or validate prevents
+	// it from starting, like an unusable registry.
+	runJournal, err := journal.Open(daemon.StateDir())
+	if err != nil {
+		return errors.Join(fmt.Errorf("start Scopra Mio: %w", err), daemon.Close())
+	}
+	defer func() { _ = runJournal.Close() }()
+	// Local execution is always enabled (ADR-011): when containment cannot be
+	// offered, every run is answered with a typed refusal rather than silence.
+	executor, warning := newExecutor(workspaces, validator, config.sandboxImage)
+	if err := daemon.EnableExecutions(executor, runJournal); err != nil {
+		return errors.Join(fmt.Errorf("start Scopra Mio: %w", err), daemon.Close())
+	}
 	if _, err := fmt.Fprintln(stderr, "scoprad: listening"); err != nil {
 		_ = daemon.Close()
 		return fmt.Errorf("report daemon startup: %w", err)
 	}
+	if warning != "" {
+		if _, err := fmt.Fprintln(stderr, "scoprad: warning: "+warning); err != nil {
+			_ = daemon.Close()
+			return fmt.Errorf("report daemon startup: %w", err)
+		}
+	}
+	startPresence(ctx, daemon.StateDir(), stderr)
 	return daemon.Serve(ctx)
 }
 
@@ -126,18 +150,19 @@ func newWorkspaceValidator(stateDir string) (*workspace.Validator, error) {
 }
 
 // openWorkspaceRegistry loads the workspace registry from Mio's state
-// directory, which the caller must hold locked. Recorded workspaces are
-// revalidated before use, not here, so a missing workspace does not stop Mio.
-func openWorkspaceRegistry(stateDir string) (*registry.Registry, error) {
+// directory, which the caller must hold locked, and returns the validator
+// that execution reuses. Recorded workspaces are revalidated before use, not
+// here, so a missing workspace does not stop Mio.
+func openWorkspaceRegistry(stateDir string) (*registry.Registry, *workspace.Validator, error) {
 	validator, err := newWorkspaceValidator(stateDir)
 	if err != nil {
-		return nil, fmt.Errorf("prepare workspace validation: %w", err)
+		return nil, nil, fmt.Errorf("prepare workspace validation: %w", err)
 	}
 	workspaces, err := registry.Open(stateDir, validator)
 	if err != nil {
-		return nil, fmt.Errorf("open workspace registry: %w", err)
+		return nil, nil, fmt.Errorf("open workspace registry: %w", err)
 	}
-	return workspaces, nil
+	return workspaces, validator, nil
 }
 
 func failUsage(writer io.Writer, format string, values ...any) error {

@@ -5,9 +5,17 @@ import "runtime/debug"
 
 const fallbackVersion = "dev"
 
+// VersionOverride is stamped into release binaries with
+// -ldflags "-X github.com/SynergyFlowLabs/scopra/internal/buildinfo.VersionOverride=vX".
+// A checkout built by hand leaves it empty and reports its module version.
+var VersionOverride string
+
 // Version returns the main module version, or dev when the binary was built
 // from an untagged checkout or without Go build metadata.
 func Version() string {
+	if validVersionToken(VersionOverride) {
+		return VersionOverride
+	}
 	info, ok := debug.ReadBuildInfo()
 	return versionFromBuildInfo(info, ok)
 }

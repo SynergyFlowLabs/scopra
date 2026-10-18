@@ -38,12 +38,22 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	}
 
 	switch args[0] {
+	case "init":
+		return runInit(ctx, args[1:], stdout, stderr)
 	case "status":
 		return runStatus(ctx, args[1:], stdout, stderr)
 	case "doctor":
 		return runDoctor(ctx, args[1:], stdout, stderr)
 	case "workspace":
 		return runWorkspace(ctx, args[1:], stdout, stderr)
+	case "run":
+		return runRun(ctx, args[1:], stdout, stderr)
+	case "logs":
+		return runLogs(ctx, args[1:], stdout, stderr)
+	case "service":
+		return runService(ctx, args[1:], stdout, stderr)
+	case "install":
+		return runInstall(ctx, args[1:], stdout, stderr)
 	case "version", "--version":
 		if len(args) != 1 {
 			return failUsage(stderr, "version takes no arguments")
@@ -85,14 +95,19 @@ func runStatus(ctx context.Context, args []string, stdout, stderr io.Writer) err
 
 // exitCode reports err on stderr unless it was already reported, and returns
 // the exit status: 0 for success and help, 2 for usage errors (reported with
-// the usage text), 130 when interrupted, and 1 otherwise. Error text is
-// escaped, because it can include paths and messages from Mio.
+// the usage text), a command's own status (or 124, 130, or 137) for a run's
+// outcome, 130 when interrupted, and 1 otherwise. Error text is escaped,
+// because it can include paths and messages from Mio.
 func exitCode(err error, stderr io.Writer) int {
 	switch {
 	case err == nil, errors.Is(err, flag.ErrHelp):
 		return 0
 	case errors.Is(err, context.Canceled):
 		return 130
+	}
+	var statusErr *commandExitError
+	if errors.As(err, &statusErr) {
+		return statusErr.code
 	}
 	var usageErr *usageError
 	if errors.As(err, &usageErr) {
@@ -113,12 +128,26 @@ func printUsage(writer io.Writer) {
 	_, _ = fmt.Fprint(writer, `usage: scopra <command> [flags]
 
 commands:
+  init [--state-dir PATH] [--api-url ORIGIN] [--dashboard-url ORIGIN]
+       [--timeout DURATION] [PATH]                  enroll this machine and workspace
   status [--state-dir PATH] [--json]               query Scopra Mio's local IPC status
   doctor [--state-dir PATH] [--json]               run read-only local diagnostics
   workspace add [--state-dir PATH] [--json] PATH   register a workspace directory with Mio
   workspace list [--state-dir PATH] [--json]       list registered workspaces
   workspace remove [--state-dir PATH] [--json] (ID | --path PATH)
                                                    remove a registration; the directory is not changed
+  run [--state-dir PATH] [--json] (--workspace ID | --path PATH) [--write]
+      [--workdir DIR] [--timeout DURATION] [--memory BYTES] [--cpus N]
+      [--pids N] [--output-limit BYTES] [--reason TEXT] -- EXECUTABLE [ARGUMENT...]
+                                                   run a command in the workspace, inside Scopra Hollow
+  logs [--state-dir PATH] [--workspace ID] [--limit N] [--json]
+                                                   list recorded runs from Mio's journal
+  service install [--state-dir PATH] [--sandbox-image IMAGE] [--scoprad PATH] [--force]
+                                                   install Scopra Mio as a systemd user service
+  service uninstall                                stop and remove the systemd user service
+  service status [--json]                          report the unit and its systemd state
+  install [--dir PATH] [--sandbox-image IMAGE] [--scoprad PATH]
+      [--no-service] [--yes]                       install Scopra interactively, or plainly with --yes
   version                                          print the scopra version
 
 Flags go before PATH or ID.

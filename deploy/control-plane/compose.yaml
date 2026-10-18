@@ -1,0 +1,65 @@
+services:
+  control-plane:
+    build:
+      context: ../..
+      dockerfile: apps/control-plane/Dockerfile
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      SCOPRA_API_HOST: 0.0.0.0
+      SCOPRA_API_PORT: "8080"
+    expose:
+      - "8080"
+    init: true
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 128
+    stop_grace_period: 15s
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 30s
+    networks:
+      - scopra-edge
+
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      SCOPRA_API_DOMAIN: ${SCOPRA_API_DOMAIN:?Set SCOPRA_API_DOMAIN in deploy/control-plane/.env.production}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+    depends_on:
+      control-plane:
+        condition: service_healthy
+    networks:
+      - scopra-edge
+
+networks:
+  scopra-edge:
+    name: scopra-edge
+
+volumes:
+  caddy_data:
+  caddy_config:

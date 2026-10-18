@@ -218,3 +218,40 @@ func FuzzParsePodmanInfo(f *testing.F) {
 		}
 	})
 }
+
+func TestDelegationMissing(t *testing.T) {
+	tests := []struct {
+		name string
+		info PodmanInfo
+		want bool
+	}{
+		{
+			name: "delegation is the only gap",
+			info: PodmanInfo{Version: "4.9.3", Rootless: true, CgroupVersion: "v2", CgroupControllers: []string{"memory", "pids"}},
+			want: true,
+		},
+		{
+			name: "everything is present",
+			info: PodmanInfo{Version: "4.9.3", Rootless: true, CgroupVersion: "v2", CgroupControllers: []string{"cpu", "memory", "pids"}},
+		},
+		{
+			name: "podman is too old",
+			info: PodmanInfo{Version: "3.4.4", Rootless: true, CgroupVersion: "v2", CgroupControllers: []string{"memory"}},
+		},
+		{
+			name: "podman runs as root",
+			info: PodmanInfo{Version: "4.9.3", Rootless: false, CgroupVersion: "v2", CgroupControllers: []string{"memory"}},
+		},
+		{
+			name: "cgroups are v1",
+			info: PodmanInfo{Version: "4.9.3", Rootless: true, CgroupVersion: "v1", CgroupControllers: []string{"memory"}},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := test.info.DelegationMissing(); got != test.want {
+				t.Fatalf("DelegationMissing() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}

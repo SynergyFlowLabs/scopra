@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADR-004: Workspace Path Validation and Fingerprint v1 — Scopra</title>
+<meta name="description" content="ADR-004: Workspace Path Validation and Fingerprint v1 — Scopra documentation.">
+<link rel="canonical" href="https://scopra-six.vercel.app/docs/decisions/004-workspace-validation.html">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0b0e14">
+<meta property="og:type" content="website">
+<meta property="og:title" content="ADR-004: Workspace Path Validation and Fingerprint v1 — Scopra">
+<meta property="og:description" content="ADR-004: Workspace Path Validation and Fingerprint v1 — Scopra documentation.">
+<meta property="og:url" content="https://scopra-six.vercel.app/docs/decisions/004-workspace-validation.html">
+<meta property="og:site_name" content="Scopra">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>Scopra</a>
+  <nav aria-label="Main">
+    <a href="/docs/">Docs</a>
+    <a href="/docs/overview.html">Overview</a>
+    <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">GitHub</a>
+  </nav>
+</header>
+<div class="layout"><nav class="sidebar" aria-label="Documentation"><p class="group">Overview</p><ul><li><a href="/docs/overview.html">Overview</a></li><li><a href="/docs/changelog.html">Changelog</a></li></ul><p class="group">Product</p><ul><li><a href="/docs/prd.html">Product Requirements</a></li><li><a href="/docs/product/alpha-scope.html">Alpha Scope</a></li><li><a href="/docs/product/naming.html">Naming</a></li></ul><p class="group">Architecture</p><ul><li><a href="/docs/architecture/system-overview.html">System Overview</a></li><li><a href="/docs/architecture/domain-model.html">Domain Model</a></li><li><a href="/docs/architecture/protocol.html">Protocol</a></li></ul><p class="group">Security</p><ul><li><a href="/docs/security/threat-model.html">Threat Model</a></li><li><a href="/docs/security/risk-register.html">Risk Register</a></li><li><a href="/docs/security/security-architecture.html">Security Architecture</a></li></ul><p class="group">Decisions</p><ul><li><a href="/docs/decisions.html">Architecture Decision Records</a></li><li><a href="/docs/decisions/001-go-module-layout.html">ADR-001: Initial Go Module Layout</a></li><li><a href="/docs/decisions/002-messenger-envelope-v1.html">ADR-002: Scopra Messenger Envelope v1 Structural Contract</a></li><li><a href="/docs/decisions/003-local-status-ipc.html">ADR-003: Mio Foreground Status Daemon and Local IPC v1</a></li><li><a href="/docs/decisions/004-workspace-validation.html" class="current" aria-current="page">ADR-004: Workspace Path Validation and Fingerprint v1</a></li><li><a href="/docs/decisions/005-workspace-registry-storage.html">ADR-005: Workspace Registry Storage v1</a></li><li><a href="/docs/decisions/006-local-workspace-commands.html">ADR-006: Local Workspace Commands over IPC v1</a></li><li><a href="/docs/decisions/007-execution-request-v1.html">ADR-007: Execution Request v1 Structural Contract</a></li><li><a href="/docs/decisions/008-canonical-execution-request.html">ADR-008: Canonical Execution Request and Action Hash</a></li><li><a href="/docs/decisions/009-execution-lifecycle-messages.html">ADR-009: Execution States, Results, Output, Errors, and Cancellation</a></li><li><a href="/docs/decisions/010-hollow-rootless-podman.html">ADR-010: Hollow Containment Backend: Rootless Podman</a></li><li><a href="/docs/decisions/011-local-execution.html">ADR-011: Local Execution over the Mio Socket</a></li><li><a href="/docs/decisions/012-systemd-user-service.html">ADR-012: Mio as a systemd User Service</a></li><li><a href="/docs/decisions/013-run-journal.html">ADR-013: Bounded Local Run Journal and scopra logs</a></li><li><a href="/docs/decisions/014-open-source-no-pricing.html">ADR-014: MIT License and No Pricing Model</a></li><li><a href="/docs/decisions/015-documentation-site.html">ADR-015: A Generated Static Documentation Site on Vercel</a></li><li><a href="/docs/decisions/016-one-command-installer.html">ADR-016: One-Command Interactive Installer</a></li><li><a href="/docs/decisions/017-opt-in-prerequisite-provisioning.html">ADR-017: Opt-In Prerequisite Provisioning</a></li></ul><p class="group">Planning</p><ul><li><a href="/docs/plan/implementation-plan.html">Implementation Plan</a></li></ul><p class="group">API</p><ul><li><a href="/docs/api/mcp-tools.html">MCP Tools</a></li></ul><p class="group">Operations</p><ul><li><a href="/docs/operations/installation.html">Installing Scopra</a></li><li><a href="/docs/operations/runbooks.html">Runbooks</a></li><li><a href="/docs/operations/deployment.html">Deploying the Site</a></li></ul><p class="group">Community</p><ul><li><a href="/docs/community/security-policy.html">Security Policy</a></li><li><a href="/docs/community/contributing.html">Contributing</a></li><li><a href="/docs/community/code-of-conduct.html">Code of Conduct</a></li></ul></nav><main id="main" class="content"><nav class="breadcrumb" aria-label="Breadcrumb"><a href="/docs/">Docs</a> <span aria-hidden="true">/</span> Decisions</nav><article class="prose"><h1 id="adr-004-workspace-path-validation-and-fingerprint-v1">ADR-004: Workspace Path Validation and Fingerprint v1</h1>
+<p><strong>Status:</strong> Accepted<br><strong>Date:</strong> 2026-10-16</p>
+<h2 id="context">Context</h2>
+<p>A workspace is the only host directory that Scopra may expose to agent commands. The PRD requires registering an existing directory with a &#34;canonical path and repository fingerprint&#34;. The plan requires rejecting the filesystem root and the complete home directory, and revalidating a workspace before execution. Neither document defines the fingerprint. The registry, IPC commands, and CLI will all depend on one vetted rule set, and Mio, as the local authority, must apply the rules itself rather than trusting Mariner or the cloud.</p>
+<h2 id="decision">Decision</h2>
+<ul>
+<li>The standard-library package <code>internal/workspace</code> validates workspace roots. Mio will call it when a workspace is registered and again before each use. Only Linux is supported; other platforms fail closed.</li>
+<li>The input must be an absolute, valid UTF-8 path, so Mio never interprets a path relative to its own working directory. The canonical path has every symlink resolved, with <code>..</code> resolved physically after the symlinks before it, as the kernel resolves it. The canonical path must also be valid UTF-8, so it can be stored and transmitted unambiguously.</li>
+<li>The root must be an existing directory owned by the effective user. This excludes system directories and other users&#39; trees without a denylist.</li>
+<li>A workspace must not be, or contain, any of the following:<ul>
+<li>the filesystem root;</li>
+<li>the current user&#39;s home directories, taken from both <code>$HOME</code> and the account database, so that overriding <code>$HOME</code> cannot unprotect the account home;</li>
+<li>additional protected directories that Mio supplies, such as its state directory, whose control socket and lock must never be visible to workspace processes.</li>
+</ul>
+</li>
+<li>Protected paths are compared after resolving symlinks in their existing prefix, so they need not exist yet. Containment respects path-separator boundaries, and directories inside the home directory remain allowed.</li>
+<li>Fingerprint version 1 is the root directory&#39;s device and inode numbers.</li>
+<li><code>Revalidate</code> re-applies every rule. It then requires that the recorded canonical path still resolves to itself and that the fingerprint still matches; otherwise it returns <code>ErrChanged</code>.</li>
+<li>Validation reads only filesystem metadata. It never reads repository contents and never runs commands such as <code>git</code>, whose repository-controlled configuration can execute code.</li>
+</ul>
+<h2 id="consequences">Consequences</h2>
+<ul>
+<li>The registry, IPC, and CLI increments can rely on a single rule set. That rule set is tested against symlinks, physical <code>..</code> resolution, aliases for the root and home directory, protected paths that do not exist yet, ownership, and directory replacement.</li>
+<li>The fingerprint identifies the directory, not the repository&#39;s history or remotes. A directory deleted and recreated at the same path may reuse its inode number and go undetected. Some filesystems renumber devices on remount, which causes a spurious <code>ErrChanged</code>; that fails safe by requiring re-registration. A content-based repository identity, such as the Git root commit, needs a separate decision.</li>
+<li>Nothing is persisted yet, so the fingerprint definition can still change without migrating data.</li>
+</ul>
+<h2 id="security-considerations">Security Considerations</h2>
+<ul>
+<li>Validation is a point-in-time check: a path can change between validation and use. Callers must revalidate immediately before use, and execution should later bind the workspace by file descriptor (for example, <code>openat2</code> with <code>RESOLVE_BENEATH</code>) when mounting it.</li>
+<li>Paths are compared byte by byte. A bind mount or other mount alias can expose a protected directory under an unrelated path; mount-aware checks belong with the containment work.</li>
+<li>Sensitive subdirectories inside the home directory, such as <code>~/.ssh</code>, are not denylisted. The user&#39;s explicit registration remains the authority, and containment, not path rules, keeps credentials and sockets out of the workspace mount.</li>
+<li>Any process running as the same user can change a workspace between checks. Same-UID processes remain outside this boundary, as in ADR-003.</li>
+</ul>
+<h2 id="alternatives">Alternatives</h2>
+<ul>
+<li><strong>Git-based fingerprint (root commit or remote URL):</strong> rejected for version 1. It requires parsing untrusted repository data or running <code>git</code>, and remote URLs are mutable.</li>
+<li><strong>Lexical canonicalization (<code>filepath.Clean</code>, then resolve):</strong> rejected, because it resolves <code>..</code> differently from the kernel when a symlink precedes it.</li>
+<li><strong>Rejecting only the exact home directory:</strong> rejected, because an ancestor such as <code>/home</code> or <code>/</code> exposes the whole home directory just the same.</li>
+<li><strong>A denylist of system directories:</strong> rejected in favour of the ownership rule, which needs no maintenance and also covers other users&#39; directories.</li>
+</ul>
+</article><p class="edit-link"><a href="https://github.com/SynergyFlowLabs/scopra/blob/main/docs/decisions/004-workspace-validation.md" rel="noopener noreferrer">Edit this page on GitHub</a></p></main><aside class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#context">Context</a></li><li><a href="#decision">Decision</a></li><li><a href="#consequences">Consequences</a></li><li><a href="#security-considerations">Security Considerations</a></li><li><a href="#alternatives">Alternatives</a></li></ul></aside></div><footer class="site-footer">
+  <div class="footer-inner">
+    <p><strong>Scopra</strong> — controlled execution for AI agents. Free and open source under the <a href="https://github.com/SynergyFlowLabs/scopra/blob/main/LICENSE">MIT License</a>.</p>
+    <p class="muted">No pricing model, no telemetry, no account. Generated from the Markdown in <a href="https://github.com/SynergyFlowLabs/scopra" rel="noopener noreferrer">the repository</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

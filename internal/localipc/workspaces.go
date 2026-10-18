@@ -64,14 +64,14 @@ type Workspace struct {
 	Path string `json:"path"`
 }
 
-// WorkspaceError is Mio's reply to a well-formed workspace request that failed.
+// ReplyError is Mio's reply to a well-formed local IPC request that failed.
 // Message is diagnostic text from Mio; escape it before displaying it.
-type WorkspaceError struct {
+type ReplyError struct {
 	Code    string
 	Message string
 }
 
-func (e *WorkspaceError) Error() string {
+func (e *ReplyError) Error() string {
 	return "localipc: Mio reported " + e.Code + ": " + e.Message
 }
 
@@ -364,7 +364,7 @@ func decodeListReply(encoded []byte, requestID, cursor string) ([]Workspace, str
 
 // decodeReplyFields checks a reply's envelope and returns its fields, which
 // must be exactly keys besides protocolVersion and requestId. An error reply
-// is returned as a *WorkspaceError.
+// is returned as a *ReplyError.
 func decodeReplyFields(encoded []byte, requestID string, keys ...string) (map[string]json.RawMessage, error) {
 	if err := checkJSONDocument(encoded); err != nil {
 		return nil, err
@@ -410,7 +410,7 @@ func decodeErrorReply(raw json.RawMessage) error {
 	if !validErrorCode(code) || message == "" || len(message) > maxErrorMessageBytes {
 		return fmt.Errorf("%w: malformed error reply", ErrInvalidMessage)
 	}
-	return &WorkspaceError{Code: code, Message: message}
+	return &ReplyError{Code: code, Message: message}
 }
 
 func decodeWorkspace(raw json.RawMessage) (Workspace, error) {
