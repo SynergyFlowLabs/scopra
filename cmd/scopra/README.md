@@ -5,6 +5,8 @@ Scopra Mariner is the CLI/TUI for onboarding and machine enrollment. The executa
 ## Implemented commands
 
 ```text
+scopra init [--state-dir PATH] [--api-url ORIGIN] [--dashboard-url ORIGIN]
+           [--timeout DURATION] [PATH]
 scopra status [--state-dir PATH] [--json]
 scopra doctor [--state-dir PATH] [--sandbox-image IMAGE] [--json]
 scopra workspace add [--state-dir PATH] [--json] PATH
@@ -21,6 +23,22 @@ scopra version
 ```
 
 By default both binaries use `$XDG_STATE_HOME/scopra`, or `~/.local/state/scopra` when `XDG_STATE_HOME` is unset; a relative value fails closed. Pass the same `--state-dir` to `scoprad` and `scopra` to override it. No command starts the daemon automatically. Flags go before `PATH` or `ID`. Errors go to stderr, with control characters escaped.
+
+### `scopra init`
+
+`scopra init [--state-dir PATH] [--api-url ORIGIN] [--dashboard-url ORIGIN] [--timeout DURATION] [PATH]` enrolls the current directory (or the optional `PATH`) as a cloud workspace. Mio must already be running. The command registers the canonical directory with Mio, loads or creates a stable Ed25519 machine key in the owner-only state directory, signs a device enrollment request, and prints a one-time code. It never opens a listener or accepts a remote command.
+
+Set `SCOPRA_API_URL` and `SCOPRA_DASHBOARD_URL` in the CLI process environment, or pass the two origin flags. The CLI does not read `.env` files. Origins must be HTTPS; HTTP is allowed only for `localhost` or a loopback IP during local development. The dashboard URL and API URL must remain the same as the first successful pairing for a machine.
+
+Paste the displayed code into the signed-in hosted dashboard. Before claiming it, the dashboard shows the exact 24-hex-character machine fingerprint and canonical workspace path and requires an explicit confirmation. The code is 128 bits, single-use, expires after five minutes, is never put in a URL, and is kept only in process memory and terminal output. The CLI polls signed enrollment status until approval, expiry, cancellation, or the bounded timeout (default five minutes). It saves only the machine ID, service origins, and workspace binding in `<state-dir>/cloud.json` with mode `0600`; the private key is a separate owner-only `machine.ed25519` file. No access token or pairing code is persisted.
+
+When Mio is running, it notices the new owner-only metadata and begins signed outbound presence heartbeats automatically (every 30 seconds; the service expires presence after 90 seconds). If the daemon is not running, presence starts when it next starts. Re-running `scopra init` for an already-paired workspace is idempotent and does not issue another code. A second workspace on the same machine uses the same key and machine record; each workspace still receives a separate explicit dashboard approval.
+
+```text
+scopra init [--state-dir PATH] [--api-url ORIGIN] [--dashboard-url ORIGIN] [--timeout 1s..5m] [PATH]
+```
+
+Exit status: `0` when pairing succeeds or the workspace is already paired; `1` when local Mio, the API, or pairing refuses/fails; `2` for usage or unsafe-origin errors; and `130` when interrupted. A timed-out or interrupted pairing leaves no saved cloud binding; run `scopra init` again to create a fresh code. If dashboard approval succeeded but saving local metadata failed, running it again safely reuses the same machine key and the existing cloud machine/workspace record.
 
 ### `scopra status`
 
@@ -39,7 +57,7 @@ By default both binaries use `$XDG_STATE_HOME/scopra`, or `~/.local/state/scopra
 | `daemon` | Mio's local IPC endpoint answers the existing authenticated `status` request. | `fail`, with a hint, when Mio is not running, its socket is unsafe, or its response is invalid. If Mio is not running and the `workspace-registry` check failed, the hint says to fix the registry first, because `scoprad` would refuse to start. |
 | `containment` | `podman` and `systemd-run` are on `PATH`; `podman info` runs in a transient systemd user service with `Delegate=cpu cpuset io memory pids` and meets ADR-010 (rootless, cgroups v2, the `cpu`, `memory`, and `pids` controllers, Podman 4.0 or later); and, with `--sandbox-image`, the image is pinned by digest and present in local storage. | `warn` when `podman` is not installed, or when no `--sandbox-image` was given: status and workspaces still work, but Mio refuses every run. `fail` when the delegated probe fails or the host does not meet ADR-010, or when the configured image is invalid or not in local storage: the configured execution setup cannot run. |
 
-Doctor never creates or repairs the state directory, removes stale sockets, starts Mio, or contacts a socket with unsafe ownership or permissions. It never opens or locks Mio's lock file, so it cannot make a concurrent `scoprad` start fail. It reads the workspace registry without changing it, which is safe while Mio runs because Mio replaces the file atomically. Revalidation inspects only the metadata of registered directories; it changes neither the registry nor any workspace. It sends only the existing `status` request. The containment check runs `podman info --format json` through `systemd-run --user` in a transient service requesting `Delegate=cpu cpuset io memory pids`, then, when `--sandbox-image` is given, runs `podman image exists IMAGE` read-only. Each command is bounded by a 10-second deadline, and doctor never pulls, starts, or removes a container. It does not ask Mio which image is configured, so it checks the image it is given. A passing result means only that the local platform, state directory, workspace registry, registered workspaces, Mio IPC endpoint, and the requested containment setup look healthy. Enrollment, relay, policy, and execution are not checked because they are not implemented. A pass does not mean Scopra has authorized anything or run a command.
+Doctor never creates or repairs the state directory, removes stale sockets, starts Mio, or contacts a socket with unsafe ownership or permissions. It never opens or locks Mio's lock file, so it cannot make a concurrent `scoprad` start fail. It reads the workspace registry without changing it, which is safe while Mio runs because Mio replaces the file atomically. Revalidation inspects only the metadata of registered directories; it changes neither the registry nor any workspace. It sends only the existing `status` request. The containment check runs `podman info --format json` through `systemd-run --user` in a transient service requesting `Delegate=cpu cpuset io memory pids`, then, when `--sandbox-image` is given, runs `podman image exists IMAGE` read-only. Each command is bounded by a 10-second deadline, and doctor never pulls, starts, or removes a container. It does not ask Mio which image is configured, so it checks the image it is given. A passing result means only that the local platform, state directory, workspace registry, registered workspaces, Mio IPC endpoint, and the requested containment setup look healthy. Hosted enrollment and presence are not checked by doctor; relay, policy, and remote command execution remain deferred. A pass does not mean Scopra has authorized anything or run a command.
 
 Revalidation is a point-in-time diagnostic: a workspace can change after doctor runs, so a later check by Mio is still needed before any use. A directory that is deleted and recreated at the same path can reuse its inode number and go unnoticed (ADR-004). A stale registration is a warning, not a failure, so on its own it leaves the exit status `0`:
 

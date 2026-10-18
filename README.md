@@ -83,7 +83,9 @@ Scopra replaces that with a controlled path:
 | **Scopra Mio** | `scoprad` | Local daemon: IPC, workspace registry, execution, journal | Implemented |
 | **Scopra Hollow** | — | Rootless Podman sandbox for one command | Implemented, tested against a fake Podman |
 | **Scopra Messenger** | — | Versioned protocol for requests, output, and results (ADR-007/008/009) | Implemented |
-| Scopra Caloris / Goldstone / Rupes / Resolution / Catena / Facula | — | Cloud control plane, relay, policy, audit chain, signals | Planned |
+| **Scopra Dashboard** | `apps/dashboard` | GitHub sign-in, machine inventory, explicit enrollment approval (Vercel target) | Implemented; OAuth/deployment not configured |
+| **Scopra Caloris** | `apps/control-plane` | Device enrollment, GitHub-owned machine inventory, signed presence API | Implemented; PostgreSQL runtime not yet verified |
+| Scopra Goldstone / Rupes / Resolution / Catena / Facula | — | Remote relay, policy, audit chain, signals | Planned |
 
 The containment boundary is Hollow. Mio resolves `podman` once at startup, revalidates the registered workspace immediately before use, and runs one container per request with no network, no capabilities, `no-new-privileges`, a read-only root, an empty environment, and explicit limits.
 
@@ -108,12 +110,28 @@ Scopra is **pre-alpha**. It is not ready for production or sensitive machines.
   preflight, a digest-pinned image field, and an optional systemd user service
   (ADR-016).
 
+**Built, but not yet hosted end-to-end**
+
+- Scopra Caloris: PostgreSQL-backed, proof-of-possession enrollment, explicit
+  GitHub-account claim, device-signed status and presence, and authenticated
+  machine inventory. Docker Compose/Caddy and Render deployment runbooks are
+  included; API tests use a fake store, and a live PostgreSQL service has not
+  been exercised here.
+- Scopra Dashboard: Next.js/Auth.js GitHub sign-in, authenticated same-origin
+  routes, and a pairing screen that displays the exact fingerprint and
+  workspace path before explicit confirmation. A separate Vercel deployment
+  runbook is included, but OAuth credentials, a dashboard Vercel project, and a
+  production API host are not configured in this checkout.
+- `scopra init` enrolls a local workspace with a one-time code; `scoprad` sends
+  outbound signed presence after local approval. These Go changes still need
+  `go test ./...` on a Go 1.26.9 environment; this sandbox has no Go toolchain.
+
 **Not implemented yet**
 
+- Remote relay (Goldstone) and remote command execution.
 - Policy evaluation, grants, approvals, and the audit chain (Catena).
-- Enrollment, relay (Goldstone), and the cloud control plane (Caloris).
-- MCP server, dashboard, and SDKs.
-- Output capture in the journal (deliberately deferred), and remote log access.
+- MCP server and SDKs.
+- Output capture in the journal (deliberately deferred) and remote log access.
 - macOS, Windows, and non-Linux sandboxing.
 
 **Not verified yet**

@@ -19,6 +19,7 @@ coverage/
 *.tfstate
 *.tfstate.*
 *.log
+*.tsbuildinfo
 *.sock
 .tmp/
 tmp/

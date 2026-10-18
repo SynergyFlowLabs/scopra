@@ -2,9 +2,17 @@
   "name": "scopra-monorepo",
   "private": true,
   "version": "0.0.0",
+  "workspaces": [
+    "apps/dashboard",
+    "apps/control-plane"
+  ],
   "scripts": {
-    "lint": "echo 'Added in Milestone 1'",
-    "test": "echo 'Added in Milestone 1'",
-    "build": "echo 'Added in Milestone 1'"
+    "dashboard:dev": "npm run dev --workspace=@scopra/dashboard",
+    "dashboard:start": "npm run start --workspace=@scopra/dashboard",
+    "control-plane:dev": "npm run dev --workspace=@scopra/control-plane",
+    "control-plane:start": "npm run start --workspace=@scopra/control-plane",
+    "build": "npm run build --workspace=@scopra/dashboard && npm run build --workspace=@scopra/control-plane",
+    "lint": "npm run lint --workspace=@scopra/dashboard && npm run lint --workspace=@scopra/control-plane",
+    "test": "npm run test --workspace=@scopra/dashboard && npm run test --workspace=@scopra/control-plane"
   }
 }

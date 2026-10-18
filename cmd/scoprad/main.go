@@ -12,8 +12,10 @@ import (
 
 	"github.com/SynergyFlowLabs/scopra/internal/buildinfo"
 	"github.com/SynergyFlowLabs/scopra/internal/hollow"
+	"github.com/SynergyFlowLabs/scopra/internal/identity"
 	"github.com/SynergyFlowLabs/scopra/internal/journal"
 	"github.com/SynergyFlowLabs/scopra/internal/localipc"
+	"github.com/SynergyFlowLabs/scopra/internal/presence"
 	"github.com/SynergyFlowLabs/scopra/internal/workspace"
 	"github.com/SynergyFlowLabs/scopra/internal/workspace/registry"
 )
@@ -97,6 +99,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 			return fmt.Errorf("report daemon startup: %w", err)
 		}
 	}
+	startPresence(ctx, daemon.StateDir(), stderr)
 	return daemon.Serve(ctx)
 }
 

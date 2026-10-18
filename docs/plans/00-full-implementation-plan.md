@@ -27,12 +27,13 @@ If any mandatory stage is unavailable or invalid, deny the request. Never add un
 ## Technical Baseline
 
 - Monorepo
-- Go Scopra Mio daemon, Scopra Mariner CLI, Scopra Goldstone relay, and security-sensitive services
+- Go Scopra Mio daemon and Scopra Mariner CLI; keep Go free of third-party dependencies
 - TypeScript, React, and Next.js dashboard
 - PostgreSQL system of record
-- Redis for ephemeral coordination
+- Redis for ephemeral coordination only when a measured need exists (ADR-018 defers it for the first hosted slice)
 - Encrypted object storage for optional artifacts
 - Scopra Goldstone outbound TLS WebSocket machine relay carrying authenticated Scopra Messenger Protocol envelopes
+- Dashboard is a separate Vercel project; the existing Vercel project remains the static docs site. Caloris/Goldstone run as a long-lived Docker service outside Vercel functions (ADR-018)
 - Rootless Podman behind a containment interface for Scopra Hollow
 - MIT-licensed open source, with no pricing model, paid tiers, or feature gates (ADR-014)
 - OpenTelemetry-compatible observability
@@ -184,6 +185,8 @@ Mio now runs Podman for local runs, but no host with rootless Podman has been us
 ---
 
 ## Milestone 2: Cloud Identity, Enrollment, and Relay
+
+**Initial increment implemented (code complete, but not hosted or end-to-end verified):** GitHub sign-in and a short-lived server assertion; PostgreSQL-backed enrollment with a one-time, 128-bit, proof-of-possession-bound code; explicit fingerprint/path approval; an authenticated machine inventory; and device-signed outbound presence. `scopra init` now registers/reuses the local workspace, performs enrollment, and persists token-free cloud metadata; Mio starts presence without a daemon restart. The API is tested against a fake store, and the Go integration still needs a Go 1.26.9 test run. PostgreSQL/Docker runtime, OAuth credentials, and production deployment have not been exercised. Relay transport, credential rotation/revocation, notifications, grants, remote execution, and audit remain out of scope for this increment. The checklists below track the full milestones and remain open where their broader requirements are unfinished.
 
 ### Foundation and authentication
 

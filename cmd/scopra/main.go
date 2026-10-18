@@ -38,6 +38,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	}
 
 	switch args[0] {
+	case "init":
+		return runInit(ctx, args[1:], stdout, stderr)
 	case "status":
 		return runStatus(ctx, args[1:], stdout, stderr)
 	case "doctor":
@@ -126,6 +128,8 @@ func printUsage(writer io.Writer) {
 	_, _ = fmt.Fprint(writer, `usage: scopra <command> [flags]
 
 commands:
+  init [--state-dir PATH] [--api-url ORIGIN] [--dashboard-url ORIGIN]
+       [--timeout DURATION] [PATH]                  enroll this machine and workspace
   status [--state-dir PATH] [--json]               query Scopra Mio's local IPC status
   doctor [--state-dir PATH] [--json]               run read-only local diagnostics
   workspace add [--state-dir PATH] [--json] PATH   register a workspace directory with Mio
